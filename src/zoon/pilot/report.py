@@ -12,6 +12,7 @@ from zoon.pilot.models import (
     LEARNING_RATE_BOUNDS,
     PROBABILITY_FLOOR,
     TEMPERATURE_BOUNDS,
+    TEMPERATURE_PRIOR_SCALE,
     Bools,
     Floats,
     Sequences,
@@ -98,6 +99,7 @@ def run_power() -> None:
     print(f"times each dilemma is held out = {power.HELD_OUT_DILEMMAS}")
     print(f"learning rate bounds = {list(LEARNING_RATE_BOUNDS)}")
     print(f"temperature bounds = {list(TEMPERATURE_BOUNDS)}")
+    print(f"temperature prior = lognormal(0, {TEMPERATURE_PRIOR_SCALE}), as in the paper's model")
     print(f"bootstrap resamples = {power.RESAMPLES}")
     print(f"probability clamp = [{PROBABILITY_FLOOR}, {1 - PROBABILITY_FLOOR}]")
     print(f"test = paired t across participants, two-sided alpha = {power.ALPHA}")

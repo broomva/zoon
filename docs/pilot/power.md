@@ -106,7 +106,8 @@ four models are one likelihood with different parts fixed:
 
 - The authors fit each participant separately, with priors, by sampling, and compare models
   by each participant's marginal likelihood. Here each model has one set of parameters
-  shared by all participants and is fitted by maximum likelihood. This pooling is a
+  shared by all participants and is fitted by maximum likelihood, with the paper's prior
+  on the temperature kept as a penalty. This pooling is a
   simplification. It is used because the question is about predicting people the model was
   not fitted to, and it ignores differences between people in how fast they learn.
 - Only the paper's model-free learner over the two kinds of option is used. Its model-based
@@ -167,43 +168,41 @@ All four experiments pooled. Every figure is copied from the output at the end.
 
 | Split | Models | Effect, nats per choice | 95% interval | SD | Detectable | Power, observed | Power, half |
 |---|---|---|---|---|---|---|---|
-| participant | plain | +0.00593 | [+0.00387, +0.00809] | 0.04337 | 0.00467 | 0.945 | 0.428 |
-| participant | dilemma intercepts | +0.00952 | [+0.00720, +0.01193] | 0.04859 | 0.00523 | 0.999 | 0.723 |
-| participant and dilemma | plain | +0.01986 | [+0.01775, +0.02201] | 0.04395 | 0.00473 | 1.000 | 1.000 |
-| participant and dilemma | dilemma intercepts | +0.00571 | [+0.00330, +0.00820] | 0.05047 | 0.00543 | 0.838 | 0.313 |
+| participant | plain | +0.00589 | [+0.00383, +0.00803] | 0.04311 | 0.00464 | 0.945 | 0.428 |
+| participant | dilemma intercepts | +0.00955 | [+0.00722, +0.01194] | 0.04841 | 0.00521 | 0.999 | 0.728 |
+| participant and dilemma | plain | +0.01981 | [+0.01771, +0.02194] | 0.04368 | 0.00470 | 1.000 | 1.000 |
+| participant and dilemma | dilemma intercepts | +0.00572 | [+0.00333, +0.00820] | 0.05022 | 0.00540 | 0.843 | 0.317 |
 
 **The third row is not an effect of state.** Under the dilemma split the plain pair differs
 by +0.01595 on trial 1, before any participant has seen an outcome. The learning model starts
 at one half, and the constant model's shared probability is fitted on other dilemmas. That
-offset accounts for most of the +0.01986. The nested pair shows -0.00061 on trial 1 under the
+offset accounts for most of the +0.01981. The nested pair shows -0.00059 on trial 1 under the
 same split, as it should.
 
 **The effect grows with trial number.** For the nested pair under the participant split it
-is +0.00014 on trial 1, +0.00546 on trials 2-7 and +0.01515 on trials 8-13. Under the
-dilemma split it is -0.00061, +0.00285 and +0.00962. Learning can only show after feedback,
+is +0.00014 on trial 1, +0.00551 on trials 2-7 and +0.01515 on trials 8-13. Under the
+dilemma split it is -0.00059, +0.00287 and +0.00963. Learning can only show after feedback,
 so trial 1 adds nothing, and about half the trials carry little.
 
 **It depends on which feedback followed which choice.** With each participant's ratings
-permuted across their own trials, the effect under the participant split falls to +0.00039
-(interval [-0.00094, +0.00175]) for the plain pair and to +0.00215 (interval [+0.00093,
-+0.00340]) for the nested pair. A remainder is expected, because the permutation keeps how
+permuted across their own trials, the effect under the participant split falls to +0.00031
+(interval [-0.00098, +0.00163]) for the plain pair and to +0.00207 (interval [+0.00089, +0.00327]) for the nested pair. A remainder is expected, because the permutation keeps how
 often a person chose each option and how good their ratings were overall.
 
 **No single experiment is enough.** For the nested pair, the power to detect the observed
-effect is 0.746, 0.386, 0.792 and 0.727 in experiments 1 to 4 under the participant split,
-and 0.338, 0.131, 0.288 and 0.294 under the dilemma split.
+effect is 0.746, 0.393, 0.792 and 0.737 in experiments 1 to 4 under the participant split,
+and 0.321, 0.140, 0.282 and 0.307 under the dilemma split.
 
 **The two conditions agree.** For the nested pair under the dilemma split the effect is
-+0.00487 (interval [+0.00140, +0.00844]) in `cbr_success` and +0.00653 (interval [+0.00313,
-+0.00986]) in `rule_success`. Under the participant split it is +0.01013 and +0.00893.
++0.00492 (interval [+0.00146, +0.00846]) in `cbr_success` and +0.00651 (interval [+0.00315, +0.00982]) in `rule_success`. Under the participant split it is +0.01010 and +0.00900.
 
-**Only the product of learning rate and temperature is pinned down.** Fitted to all
-training participants, the nested model gives a learning rate of 0.1489 and a temperature of
-0.6627, a product of 0.0987. The plain model gives 0.0029 and 20.0000, with the temperature
-at its upper bound, a product of 0.0585. The nested model's temperature is also at the bound
-in experiments 1 and 3. Values change so little within 13 trials that the two parameters
-trade against each other. The predictions, and so the effect, are not sensitive to this; any
-reading of the learning rate itself would be.
+**Learning rate and temperature are pinned only by the prior.** Over 13 trials the values
+move so little that the two parameters trade off: the data fix their product and little
+else. The paper's prior on the temperature is kept as a penalty so that the fit lands on one
+point. Fitted to all training participants, the nested model gives a learning rate of 0.1836, a
+temperature of 0.5713 and a product of 0.1049; the plain model gives 0.0773, 0.8792 and
+0.0679. The predictions, and so the effect, depend on the product. Neither parameter should
+be read on its own.
 
 ## Conclusion
 
@@ -211,10 +210,10 @@ Is the state effect large enough that H1 can be tested on this task with the hel
 participants available? Yes, with little margin.
 
 - With all four experiments pooled there are 680 held-out participants. Under the split the
-  task needs, by participant and by dilemma, the nested effect is +0.00571 nats per choice
-  and the smallest detectable effect is 0.00543. The power is 0.838 if the held-out effect
-  equals the training estimate and 0.313 if it is half of it.
-- Under the participant split the same comparison has power 0.999, and 0.723 at half.
+  task needs, by participant and by dilemma, the nested effect is +0.00572 nats per choice
+  and the smallest detectable effect is 0.00540. The power is 0.843 if the held-out effect
+  equals the training estimate and 0.317 if it is half of it.
+- Under the participant split the same comparison has power 0.999, and 0.728 at half.
 - Within one experiment the power of the nested comparison is below the target in every
   case.
 
@@ -235,11 +234,10 @@ pooled. Two courses are defensible, and this note does not choose between them:
 
 1. **Pre-register H1 on this task.** Pool all four experiments, compare arms that share the
    same per-dilemma lean, and state the power figures above in the pre-registration. The
-   risk is an inconclusive result: at half the training effect the power is 0.313.
-2. **Fall back to H1′**, the two-task version in the design. Each of its two tasks is far
-   better powered. But the design itself says H1′ shows that each half works where it should
-   and does not show that they work together, which is the question the project exists to
-   ask.
+   risk is an inconclusive result: at half the training effect the power is 0.317.
+2. **Fall back to H1′**, the two-task version in the design. No power has been computed for
+   its two tasks. The design itself says H1′ shows that each half works where it should and
+   does not show that they work together, which is the question the project exists to ask.
 
 The choice belongs in the pre-registration. Either way the present note does not change the
 design. It supplies the number the task-selection note asked for.
@@ -340,7 +338,8 @@ dilemmas = 13
 dilemmas held out at a time = 2
 times each dilemma is held out = 2
 learning rate bounds = [0.0, 1.0]
-temperature bounds = [0.0, 20.0]
+temperature bounds = [1e-06, 20.0]
+temperature prior = lognormal(0, 1.4), as in the paper's model
 bootstrap resamples = 10000
 probability clamp = [0.001, 0.999]
 test = paired t across participants, two-sided alpha = 0.05
@@ -367,356 +366,357 @@ target power = 0.8
 [pooled] feedback range in training data = [-1.00, +1.00]
 
 [experiment 1] constant | fitted P(cost-benefit option) = 0.5231
-[experiment 1] learning, plain | fitted learning rate = 0.0039
-[experiment 1] learning, plain | fitted temperature = 20.0000
-[experiment 1] learning, plain | fitted learning rate x temperature = 0.0779
-[experiment 1] learning, plain | in-sample gain over constant = +0.01191 nats/choice
-[experiment 1] learning, dilemma intercepts | fitted learning rate = 0.0051
-[experiment 1] learning, dilemma intercepts | fitted temperature = 20.0000
-[experiment 1] learning, dilemma intercepts | fitted learning rate x temperature = 0.1011
-[experiment 1] learning, dilemma intercepts | in-sample gain over constant = +0.01708 nats/choice
-[experiment 1] split = participant | models = plain | effect = +0.01147 nats/choice
-[experiment 1] split = participant | models = plain | effect 95% interval = [+0.00566, +0.01718]
-[experiment 1] split = participant | models = plain | sd across participants = 0.05017
-[experiment 1] split = participant | models = plain | detectable effect at 80% power = 0.01449
-[experiment 1] split = participant | models = plain | power for the observed effect = 0.601
-[experiment 1] split = participant | models = plain | power for half the observed effect = 0.198
+[experiment 1] learning, plain | fitted learning rate = 0.0765
+[experiment 1] learning, plain | fitted temperature = 1.1556
+[experiment 1] learning, plain | fitted learning rate x temperature = 0.0884
+[experiment 1] learning, plain | in-sample gain over constant = +0.01168 nats/choice
+[experiment 1] learning, dilemma intercepts | fitted learning rate = 0.0983
+[experiment 1] learning, dilemma intercepts | fitted temperature = 1.2208
+[experiment 1] learning, dilemma intercepts | fitted learning rate x temperature = 0.1200
+[experiment 1] learning, dilemma intercepts | in-sample gain over constant = +0.01688 nats/choice
+[experiment 1] split = participant | models = plain | effect = +0.01116 nats/choice
+[experiment 1] split = participant | models = plain | effect 95% interval = [+0.00549, +0.01675]
+[experiment 1] split = participant | models = plain | sd across participants = 0.04914
+[experiment 1] split = participant | models = plain | detectable effect at 80% power = 0.01419
+[experiment 1] split = participant | models = plain | power for the observed effect = 0.596
+[experiment 1] split = participant | models = plain | power for half the observed effect = 0.196
 [experiment 1] split = participant | models = plain | effect on trial 1 = -0.00012
-[experiment 1] split = participant | models = plain | effect on trials 2-7 = +0.00372
-[experiment 1] split = participant | models = plain | effect on trials 2-7 95% interval = [-0.00092, +0.00816]
-[experiment 1] split = participant | models = plain | effect on trials 8-13 = +0.02114
-[experiment 1] split = participant | models = plain | effect on trials 8-13 95% interval = [+0.01025, +0.03189]
-[experiment 1] split = participant | models = dilemma intercepts | effect = +0.01662 nats/choice
-[experiment 1] split = participant | models = dilemma intercepts | effect 95% interval = [+0.00953, +0.02368]
-[experiment 1] split = participant | models = dilemma intercepts | sd across participants = 0.06146
-[experiment 1] split = participant | models = dilemma intercepts | detectable effect at 80% power = 0.01775
+[experiment 1] split = participant | models = plain | effect on trials 2-7 = +0.00367
+[experiment 1] split = participant | models = plain | effect on trials 2-7 95% interval = [-0.00124, +0.00836]
+[experiment 1] split = participant | models = plain | effect on trials 8-13 = +0.02053
+[experiment 1] split = participant | models = plain | effect on trials 8-13 95% interval = [+0.01010, +0.03084]
+[experiment 1] split = participant | models = dilemma intercepts | effect = +0.01633 nats/choice
+[experiment 1] split = participant | models = dilemma intercepts | effect 95% interval = [+0.00933, +0.02329]
+[experiment 1] split = participant | models = dilemma intercepts | sd across participants = 0.06041
+[experiment 1] split = participant | models = dilemma intercepts | detectable effect at 80% power = 0.01745
 [experiment 1] split = participant | models = dilemma intercepts | power for the observed effect = 0.746
 [experiment 1] split = participant | models = dilemma intercepts | power for half the observed effect = 0.259
-[experiment 1] split = participant | models = dilemma intercepts | effect on trial 1 = -0.00078
-[experiment 1] split = participant | models = dilemma intercepts | effect on trials 2-7 = +0.00689
-[experiment 1] split = participant | models = dilemma intercepts | effect on trials 2-7 95% interval = [+0.00179, +0.01200]
-[experiment 1] split = participant | models = dilemma intercepts | effect on trials 8-13 = +0.02924
-[experiment 1] split = participant | models = dilemma intercepts | effect on trials 8-13 95% interval = [+0.01619, +0.04229]
-[experiment 1] split = participant and dilemma | models = plain | effect = +0.02747 nats/choice
-[experiment 1] split = participant and dilemma | models = plain | effect 95% interval = [+0.02161, +0.03327]
-[experiment 1] split = participant and dilemma | models = plain | sd across participants = 0.05023
-[experiment 1] split = participant and dilemma | models = plain | detectable effect at 80% power = 0.01451
+[experiment 1] split = participant | models = dilemma intercepts | effect on trial 1 = -0.00083
+[experiment 1] split = participant | models = dilemma intercepts | effect on trials 2-7 = +0.00682
+[experiment 1] split = participant | models = dilemma intercepts | effect on trials 2-7 95% interval = [+0.00115, +0.01244]
+[experiment 1] split = participant | models = dilemma intercepts | effect on trials 8-13 = +0.02871
+[experiment 1] split = participant | models = dilemma intercepts | effect on trials 8-13 95% interval = [+0.01621, +0.04110]
+[experiment 1] split = participant and dilemma | models = plain | effect = +0.02713 nats/choice
+[experiment 1] split = participant and dilemma | models = plain | effect 95% interval = [+0.02140, +0.03283]
+[experiment 1] split = participant and dilemma | models = plain | sd across participants = 0.04916
+[experiment 1] split = participant and dilemma | models = plain | detectable effect at 80% power = 0.01420
 [experiment 1] split = participant and dilemma | models = plain | power for the observed effect = 1.000
-[experiment 1] split = participant and dilemma | models = plain | power for half the observed effect = 0.755
+[experiment 1] split = participant and dilemma | models = plain | power for half the observed effect = 0.763
 [experiment 1] split = participant and dilemma | models = plain | effect on trial 1 = +0.02005
-[experiment 1] split = participant and dilemma | models = plain | effect on trials 2-7 = +0.02019
-[experiment 1] split = participant and dilemma | models = plain | effect on trials 2-7 95% interval = [+0.01518, +0.02510]
-[experiment 1] split = participant and dilemma | models = plain | effect on trials 8-13 = +0.03598
-[experiment 1] split = participant and dilemma | models = plain | effect on trials 8-13 95% interval = [+0.02503, +0.04684]
-[experiment 1] split = participant and dilemma | models = dilemma intercepts | effect = +0.01006 nats/choice
-[experiment 1] split = participant and dilemma | models = dilemma intercepts | effect 95% interval = [+0.00273, +0.01735]
-[experiment 1] split = participant and dilemma | models = dilemma intercepts | sd across participants = 0.06331
-[experiment 1] split = participant and dilemma | models = dilemma intercepts | detectable effect at 80% power = 0.01829
-[experiment 1] split = participant and dilemma | models = dilemma intercepts | power for the observed effect = 0.338
-[experiment 1] split = participant and dilemma | models = dilemma intercepts | power for half the observed effect = 0.120
-[experiment 1] split = participant and dilemma | models = dilemma intercepts | effect on trial 1 = -0.00056
-[experiment 1] split = participant and dilemma | models = dilemma intercepts | effect on trials 2-7 = +0.00317
-[experiment 1] split = participant and dilemma | models = dilemma intercepts | effect on trials 2-7 95% interval = [-0.00251, +0.00874]
-[experiment 1] split = participant and dilemma | models = dilemma intercepts | effect on trials 8-13 = +0.01873
-[experiment 1] split = participant and dilemma | models = dilemma intercepts | effect on trials 8-13 95% interval = [+0.00481, +0.03242]
+[experiment 1] split = participant and dilemma | models = plain | effect on trials 2-7 = +0.02014
+[experiment 1] split = participant and dilemma | models = plain | effect on trials 2-7 95% interval = [+0.01480, +0.02531]
+[experiment 1] split = participant and dilemma | models = plain | effect on trials 8-13 = +0.03529
+[experiment 1] split = participant and dilemma | models = plain | effect on trials 8-13 95% interval = [+0.02488, +0.04561]
+[experiment 1] split = participant and dilemma | models = dilemma intercepts | effect = +0.00964 nats/choice
+[experiment 1] split = participant and dilemma | models = dilemma intercepts | effect 95% interval = [+0.00241, +0.01682]
+[experiment 1] split = participant and dilemma | models = dilemma intercepts | sd across participants = 0.06249
+[experiment 1] split = participant and dilemma | models = dilemma intercepts | detectable effect at 80% power = 0.01805
+[experiment 1] split = participant and dilemma | models = dilemma intercepts | power for the observed effect = 0.321
+[experiment 1] split = participant and dilemma | models = dilemma intercepts | power for half the observed effect = 0.116
+[experiment 1] split = participant and dilemma | models = dilemma intercepts | effect on trial 1 = -0.00053
+[experiment 1] split = participant and dilemma | models = dilemma intercepts | effect on trials 2-7 = +0.00260
+[experiment 1] split = participant and dilemma | models = dilemma intercepts | effect on trials 2-7 95% interval = [-0.00373, +0.00883]
+[experiment 1] split = participant and dilemma | models = dilemma intercepts | effect on trials 8-13 = +0.01837
+[experiment 1] split = participant and dilemma | models = dilemma intercepts | effect on trials 8-13 95% interval = [+0.00524, +0.03138]
 
 [experiment 2] constant | fitted P(cost-benefit option) = 0.5311
-[experiment 2] learning, plain | fitted learning rate = 0.7284
-[experiment 2] learning, plain | fitted temperature = 0.2551
-[experiment 2] learning, plain | fitted learning rate x temperature = 0.1858
+[experiment 2] learning, plain | fitted learning rate = 0.7389
+[experiment 2] learning, plain | fitted temperature = 0.2527
+[experiment 2] learning, plain | fitted learning rate x temperature = 0.1867
 [experiment 2] learning, plain | in-sample gain over constant = +0.00687 nats/choice
-[experiment 2] learning, dilemma intercepts | fitted learning rate = 0.6861
-[experiment 2] learning, dilemma intercepts | fitted temperature = 0.3268
-[experiment 2] learning, dilemma intercepts | fitted learning rate x temperature = 0.2242
+[experiment 2] learning, dilemma intercepts | fitted learning rate = 0.6992
+[experiment 2] learning, dilemma intercepts | fitted temperature = 0.3231
+[experiment 2] learning, dilemma intercepts | fitted learning rate x temperature = 0.2259
 [experiment 2] learning, dilemma intercepts | in-sample gain over constant = +0.01116 nats/choice
-[experiment 2] split = participant | models = plain | effect = +0.00524 nats/choice
-[experiment 2] split = participant | models = plain | effect 95% interval = [-0.00051, +0.01099]
-[experiment 2] split = participant | models = plain | sd across participants = 0.04879
-[experiment 2] split = participant | models = plain | detectable effect at 80% power = 0.01327
-[experiment 2] split = participant | models = plain | power for the observed effect = 0.197
+[experiment 2] split = participant | models = plain | effect = +0.00526 nats/choice
+[experiment 2] split = participant | models = plain | effect 95% interval = [-0.00047, +0.01099]
+[experiment 2] split = participant | models = plain | sd across participants = 0.04853
+[experiment 2] split = participant | models = plain | detectable effect at 80% power = 0.01320
+[experiment 2] split = participant | models = plain | power for the observed effect = 0.200
 [experiment 2] split = participant | models = plain | power for half the observed effect = 0.086
 [experiment 2] split = participant | models = plain | effect on trial 1 = -0.00359
 [experiment 2] split = participant | models = plain | effect on trials 2-7 = +0.00760
-[experiment 2] split = participant | models = plain | effect on trials 2-7 95% interval = [+0.00095, +0.01430]
-[experiment 2] split = participant | models = plain | effect on trials 8-13 = +0.00435
-[experiment 2] split = participant | models = plain | effect on trials 8-13 95% interval = [-0.00512, +0.01382]
-[experiment 2] split = participant | models = dilemma intercepts | effect = +0.00909 nats/choice
-[experiment 2] split = participant | models = dilemma intercepts | effect 95% interval = [+0.00252, +0.01575]
-[experiment 2] split = participant | models = dilemma intercepts | sd across participants = 0.05604
-[experiment 2] split = participant | models = dilemma intercepts | detectable effect at 80% power = 0.01525
-[experiment 2] split = participant | models = dilemma intercepts | power for the observed effect = 0.386
-[experiment 2] split = participant | models = dilemma intercepts | power for half the observed effect = 0.133
-[experiment 2] split = participant | models = dilemma intercepts | effect on trial 1 = +0.00005
-[experiment 2] split = participant | models = dilemma intercepts | effect on trials 2-7 = +0.00736
-[experiment 2] split = participant | models = dilemma intercepts | effect on trials 2-7 95% interval = [+0.00019, +0.01460]
-[experiment 2] split = participant | models = dilemma intercepts | effect on trials 8-13 = +0.01233
-[experiment 2] split = participant | models = dilemma intercepts | effect on trials 8-13 95% interval = [+0.00161, +0.02315]
-[experiment 2] split = participant and dilemma | models = plain | effect = +0.01858 nats/choice
-[experiment 2] split = participant and dilemma | models = plain | effect 95% interval = [+0.01282, +0.02439]
-[experiment 2] split = participant and dilemma | models = plain | sd across participants = 0.04872
-[experiment 2] split = participant and dilemma | models = plain | detectable effect at 80% power = 0.01325
-[experiment 2] split = participant and dilemma | models = plain | power for the observed effect = 0.975
-[experiment 2] split = participant and dilemma | models = plain | power for half the observed effect = 0.502
+[experiment 2] split = participant | models = plain | effect on trials 2-7 95% interval = [+0.00094, +0.01430]
+[experiment 2] split = participant | models = plain | effect on trials 8-13 = +0.00440
+[experiment 2] split = participant | models = plain | effect on trials 8-13 95% interval = [-0.00499, +0.01378]
+[experiment 2] split = participant | models = dilemma intercepts | effect = +0.00912 nats/choice
+[experiment 2] split = participant | models = dilemma intercepts | effect 95% interval = [+0.00259, +0.01572]
+[experiment 2] split = participant | models = dilemma intercepts | sd across participants = 0.05564
+[experiment 2] split = participant | models = dilemma intercepts | detectable effect at 80% power = 0.01514
+[experiment 2] split = participant | models = dilemma intercepts | power for the observed effect = 0.393
+[experiment 2] split = participant | models = dilemma intercepts | power for half the observed effect = 0.135
+[experiment 2] split = participant | models = dilemma intercepts | effect on trial 1 = +0.00006
+[experiment 2] split = participant | models = dilemma intercepts | effect on trials 2-7 = +0.00737
+[experiment 2] split = participant | models = dilemma intercepts | effect on trials 2-7 95% interval = [+0.00020, +0.01464]
+[experiment 2] split = participant | models = dilemma intercepts | effect on trials 8-13 = +0.01239
+[experiment 2] split = participant | models = dilemma intercepts | effect on trials 8-13 95% interval = [+0.00179, +0.02308]
+[experiment 2] split = participant and dilemma | models = plain | effect = +0.01868 nats/choice
+[experiment 2] split = participant and dilemma | models = plain | effect 95% interval = [+0.01293, +0.02445]
+[experiment 2] split = participant and dilemma | models = plain | sd across participants = 0.04840
+[experiment 2] split = participant and dilemma | models = plain | detectable effect at 80% power = 0.01317
+[experiment 2] split = participant and dilemma | models = plain | power for the observed effect = 0.978
+[experiment 2] split = participant and dilemma | models = plain | power for half the observed effect = 0.511
 [experiment 2] split = participant and dilemma | models = plain | effect on trial 1 = +0.01497
-[experiment 2] split = participant and dilemma | models = plain | effect on trials 2-7 = +0.02133
-[experiment 2] split = participant and dilemma | models = plain | effect on trials 2-7 95% interval = [+0.01446, +0.02825]
-[experiment 2] split = participant and dilemma | models = plain | effect on trials 8-13 = +0.01644
-[experiment 2] split = participant and dilemma | models = plain | effect on trials 8-13 95% interval = [+0.00700, +0.02582]
-[experiment 2] split = participant and dilemma | models = dilemma intercepts | effect = +0.00470 nats/choice
-[experiment 2] split = participant and dilemma | models = dilemma intercepts | effect 95% interval = [-0.00225, +0.01167]
-[experiment 2] split = participant and dilemma | models = dilemma intercepts | sd across participants = 0.05867
-[experiment 2] split = participant and dilemma | models = dilemma intercepts | detectable effect at 80% power = 0.01596
-[experiment 2] split = participant and dilemma | models = dilemma intercepts | power for the observed effect = 0.131
-[experiment 2] split = participant and dilemma | models = dilemma intercepts | power for half the observed effect = 0.070
-[experiment 2] split = participant and dilemma | models = dilemma intercepts | effect on trial 1 = -0.00101
-[experiment 2] split = participant and dilemma | models = dilemma intercepts | effect on trials 2-7 = +0.00640
-[experiment 2] split = participant and dilemma | models = dilemma intercepts | effect on trials 2-7 95% interval = [-0.00117, +0.01397]
-[experiment 2] split = participant and dilemma | models = dilemma intercepts | effect on trials 8-13 = +0.00394
-[experiment 2] split = participant and dilemma | models = dilemma intercepts | effect on trials 8-13 95% interval = [-0.00792, +0.01584]
+[experiment 2] split = participant and dilemma | models = plain | effect on trials 2-7 = +0.02140
+[experiment 2] split = participant and dilemma | models = plain | effect on trials 2-7 95% interval = [+0.01449, +0.02835]
+[experiment 2] split = participant and dilemma | models = plain | effect on trials 8-13 = +0.01658
+[experiment 2] split = participant and dilemma | models = plain | effect on trials 8-13 95% interval = [+0.00729, +0.02583]
+[experiment 2] split = participant and dilemma | models = dilemma intercepts | effect = +0.00489 nats/choice
+[experiment 2] split = participant and dilemma | models = dilemma intercepts | effect 95% interval = [-0.00196, +0.01175]
+[experiment 2] split = participant and dilemma | models = dilemma intercepts | sd across participants = 0.05793
+[experiment 2] split = participant and dilemma | models = dilemma intercepts | detectable effect at 80% power = 0.01576
+[experiment 2] split = participant and dilemma | models = dilemma intercepts | power for the observed effect = 0.140
+[experiment 2] split = participant and dilemma | models = dilemma intercepts | power for half the observed effect = 0.072
+[experiment 2] split = participant and dilemma | models = dilemma intercepts | effect on trial 1 = -0.00099
+[experiment 2] split = participant and dilemma | models = dilemma intercepts | effect on trials 2-7 = +0.00645
+[experiment 2] split = participant and dilemma | models = dilemma intercepts | effect on trials 2-7 95% interval = [-0.00110, +0.01405]
+[experiment 2] split = participant and dilemma | models = dilemma intercepts | effect on trials 8-13 = +0.00431
+[experiment 2] split = participant and dilemma | models = dilemma intercepts | effect on trials 8-13 95% interval = [-0.00727, +0.01597]
 
 [experiment 3] constant | fitted P(cost-benefit option) = 0.5381
-[experiment 3] learning, plain | fitted learning rate = 0.0026
-[experiment 3] learning, plain | fitted temperature = 20.0000
-[experiment 3] learning, plain | fitted learning rate x temperature = 0.0518
-[experiment 3] learning, plain | in-sample gain over constant = +0.00313 nats/choice
-[experiment 3] learning, dilemma intercepts | fitted learning rate = 0.0034
-[experiment 3] learning, dilemma intercepts | fitted temperature = 20.0000
-[experiment 3] learning, dilemma intercepts | fitted learning rate x temperature = 0.0670
-[experiment 3] learning, dilemma intercepts | in-sample gain over constant = +0.00807 nats/choice
-[experiment 3] split = participant | models = plain | effect = +0.00358 nats/choice
-[experiment 3] split = participant | models = plain | effect 95% interval = [-0.00007, +0.00713]
-[experiment 3] split = participant | models = plain | sd across participants = 0.04386
-[experiment 3] split = participant | models = plain | detectable effect at 80% power = 0.00760
-[experiment 3] split = participant | models = plain | power for the observed effect = 0.261
-[experiment 3] split = participant | models = plain | power for half the observed effect = 0.101
+[experiment 3] learning, plain | fitted learning rate = 0.0657
+[experiment 3] learning, plain | fitted temperature = 0.8830
+[experiment 3] learning, plain | fitted learning rate x temperature = 0.0580
+[experiment 3] learning, plain | in-sample gain over constant = +0.00302 nats/choice
+[experiment 3] learning, dilemma intercepts | fitted learning rate = 0.0684
+[experiment 3] learning, dilemma intercepts | fitted temperature = 1.1051
+[experiment 3] learning, dilemma intercepts | fitted learning rate x temperature = 0.0756
+[experiment 3] learning, dilemma intercepts | in-sample gain over constant = +0.00796 nats/choice
+[experiment 3] split = participant | models = plain | effect = +0.00344 nats/choice
+[experiment 3] split = participant | models = plain | effect 95% interval = [-0.00015, +0.00694]
+[experiment 3] split = participant | models = plain | sd across participants = 0.04319
+[experiment 3] split = participant | models = plain | detectable effect at 80% power = 0.00749
+[experiment 3] split = participant | models = plain | power for the observed effect = 0.251
+[experiment 3] split = participant | models = plain | power for half the observed effect = 0.099
 [experiment 3] split = participant | models = plain | effect on trial 1 = -0.00450
-[experiment 3] split = participant | models = plain | effect on trials 2-7 = -0.00147
-[experiment 3] split = participant | models = plain | effect on trials 2-7 95% interval = [-0.00499, +0.00199]
-[experiment 3] split = participant | models = plain | effect on trials 8-13 = +0.00996
-[experiment 3] split = participant | models = plain | effect on trials 8-13 95% interval = [+0.00362, +0.01628]
-[experiment 3] split = participant | models = dilemma intercepts | effect = +0.00788 nats/choice
-[experiment 3] split = participant | models = dilemma intercepts | effect 95% interval = [+0.00413, +0.01161]
-[experiment 3] split = participant | models = dilemma intercepts | sd across participants = 0.04588
-[experiment 3] split = participant | models = dilemma intercepts | detectable effect at 80% power = 0.00795
+[experiment 3] split = participant | models = plain | effect on trials 2-7 = -0.00141
+[experiment 3] split = participant | models = plain | effect on trials 2-7 95% interval = [-0.00504, +0.00212]
+[experiment 3] split = participant | models = plain | effect on trials 8-13 = +0.00962
+[experiment 3] split = participant | models = plain | effect on trials 8-13 95% interval = [+0.00350, +0.01576]
+[experiment 3] split = participant | models = dilemma intercepts | effect = +0.00772 nats/choice
+[experiment 3] split = participant | models = dilemma intercepts | effect 95% interval = [+0.00404, +0.01137]
+[experiment 3] split = participant | models = dilemma intercepts | sd across participants = 0.04496
+[experiment 3] split = participant | models = dilemma intercepts | detectable effect at 80% power = 0.00780
 [experiment 3] split = participant | models = dilemma intercepts | power for the observed effect = 0.792
 [experiment 3] split = participant | models = dilemma intercepts | power for half the observed effect = 0.284
 [experiment 3] split = participant | models = dilemma intercepts | effect on trial 1 = -0.00002
-[experiment 3] split = participant | models = dilemma intercepts | effect on trials 2-7 = +0.00379
-[experiment 3] split = participant | models = dilemma intercepts | effect on trials 2-7 95% interval = [+0.00114, +0.00643]
-[experiment 3] split = participant | models = dilemma intercepts | effect on trials 8-13 = +0.01328
-[experiment 3] split = participant | models = dilemma intercepts | effect on trials 8-13 95% interval = [+0.00636, +0.02015]
-[experiment 3] split = participant and dilemma | models = plain | effect = +0.01795 nats/choice
-[experiment 3] split = participant and dilemma | models = plain | effect 95% interval = [+0.01422, +0.02159]
-[experiment 3] split = participant and dilemma | models = plain | sd across participants = 0.04517
-[experiment 3] split = participant and dilemma | models = plain | detectable effect at 80% power = 0.00783
+[experiment 3] split = participant | models = dilemma intercepts | effect on trials 2-7 = +0.00384
+[experiment 3] split = participant | models = dilemma intercepts | effect on trials 2-7 95% interval = [+0.00102, +0.00664]
+[experiment 3] split = participant | models = dilemma intercepts | effect on trials 8-13 = +0.01289
+[experiment 3] split = participant | models = dilemma intercepts | effect on trials 8-13 95% interval = [+0.00621, +0.01947]
+[experiment 3] split = participant and dilemma | models = plain | effect = +0.01768 nats/choice
+[experiment 3] split = participant and dilemma | models = plain | effect 95% interval = [+0.01403, +0.02126]
+[experiment 3] split = participant and dilemma | models = plain | sd across participants = 0.04447
+[experiment 3] split = participant and dilemma | models = plain | detectable effect at 80% power = 0.00771
 [experiment 3] split = participant and dilemma | models = plain | power for the observed effect = 1.000
-[experiment 3] split = participant and dilemma | models = plain | power for half the observed effect = 0.894
+[experiment 3] split = participant and dilemma | models = plain | power for half the observed effect = 0.895
 [experiment 3] split = participant and dilemma | models = plain | effect on trial 1 = +0.01123
-[experiment 3] split = participant and dilemma | models = plain | effect on trials 2-7 = +0.01352
-[experiment 3] split = participant and dilemma | models = plain | effect on trials 2-7 95% interval = [+0.00986, +0.01716]
-[experiment 3] split = participant and dilemma | models = plain | effect on trials 8-13 = +0.02350
-[experiment 3] split = participant and dilemma | models = plain | effect on trials 8-13 95% interval = [+0.01706, +0.03004]
-[experiment 3] split = participant and dilemma | models = dilemma intercepts | effect = +0.00412 nats/choice
-[experiment 3] split = participant and dilemma | models = dilemma intercepts | effect 95% interval = [+0.00028, +0.00802]
-[experiment 3] split = participant and dilemma | models = dilemma intercepts | sd across participants = 0.04763
-[experiment 3] split = participant and dilemma | models = dilemma intercepts | detectable effect at 80% power = 0.00826
-[experiment 3] split = participant and dilemma | models = dilemma intercepts | power for the observed effect = 0.288
-[experiment 3] split = participant and dilemma | models = dilemma intercepts | power for half the observed effect = 0.108
-[experiment 3] split = participant and dilemma | models = dilemma intercepts | effect on trial 1 = -0.00044
-[experiment 3] split = participant and dilemma | models = dilemma intercepts | effect on trials 2-7 = +0.00148
-[experiment 3] split = participant and dilemma | models = dilemma intercepts | effect on trials 2-7 95% interval = [-0.00143, +0.00437]
-[experiment 3] split = participant and dilemma | models = dilemma intercepts | effect on trials 8-13 = +0.00752
-[experiment 3] split = participant and dilemma | models = dilemma intercepts | effect on trials 8-13 95% interval = [+0.00028, +0.01499]
+[experiment 3] split = participant and dilemma | models = plain | effect on trials 2-7 = +0.01355
+[experiment 3] split = participant and dilemma | models = plain | effect on trials 2-7 95% interval = [+0.00976, +0.01728]
+[experiment 3] split = participant and dilemma | models = plain | effect on trials 8-13 = +0.02288
+[experiment 3] split = participant and dilemma | models = plain | effect on trials 8-13 95% interval = [+0.01671, +0.02916]
+[experiment 3] split = participant and dilemma | models = dilemma intercepts | effect = +0.00399 nats/choice
+[experiment 3] split = participant and dilemma | models = dilemma intercepts | effect 95% interval = [+0.00022, +0.00781]
+[experiment 3] split = participant and dilemma | models = dilemma intercepts | sd across participants = 0.04663
+[experiment 3] split = participant and dilemma | models = dilemma intercepts | detectable effect at 80% power = 0.00809
+[experiment 3] split = participant and dilemma | models = dilemma intercepts | power for the observed effect = 0.282
+[experiment 3] split = participant and dilemma | models = dilemma intercepts | power for half the observed effect = 0.106
+[experiment 3] split = participant and dilemma | models = dilemma intercepts | effect on trial 1 = -0.00042
+[experiment 3] split = participant and dilemma | models = dilemma intercepts | effect on trials 2-7 = +0.00136
+[experiment 3] split = participant and dilemma | models = dilemma intercepts | effect on trials 2-7 95% interval = [-0.00177, +0.00447]
+[experiment 3] split = participant and dilemma | models = dilemma intercepts | effect on trials 8-13 = +0.00735
+[experiment 3] split = participant and dilemma | models = dilemma intercepts | effect on trials 8-13 95% interval = [+0.00043, +0.01447]
 
 [experiment 4] constant | fitted P(cost-benefit option) = 0.5210
-[experiment 4] learning, plain | fitted learning rate = 0.1820
-[experiment 4] learning, plain | fitted temperature = 0.4281
-[experiment 4] learning, plain | fitted learning rate x temperature = 0.0779
+[experiment 4] learning, plain | fitted learning rate = 0.2171
+[experiment 4] learning, plain | fitted temperature = 0.3793
+[experiment 4] learning, plain | fitted learning rate x temperature = 0.0823
 [experiment 4] learning, plain | in-sample gain over constant = +0.00584 nats/choice
-[experiment 4] learning, dilemma intercepts | fitted learning rate = 0.3992
-[experiment 4] learning, dilemma intercepts | fitted temperature = 0.3446
-[experiment 4] learning, dilemma intercepts | fitted learning rate x temperature = 0.1376
+[experiment 4] learning, dilemma intercepts | fitted learning rate = 0.4102
+[experiment 4] learning, dilemma intercepts | fitted temperature = 0.3392
+[experiment 4] learning, dilemma intercepts | fitted learning rate x temperature = 0.1391
 [experiment 4] learning, dilemma intercepts | in-sample gain over constant = +0.00856 nats/choice
-[experiment 4] split = participant | models = plain | effect = +0.00536 nats/choice
-[experiment 4] split = participant | models = plain | effect 95% interval = [+0.00180, +0.00881]
-[experiment 4] split = participant | models = plain | sd across participants = 0.04001
-[experiment 4] split = participant | models = plain | detectable effect at 80% power = 0.00771
-[experiment 4] split = participant | models = plain | power for the observed effect = 0.494
-[experiment 4] split = participant | models = plain | power for half the observed effect = 0.164
+[experiment 4] split = participant | models = plain | effect = +0.00553 nats/choice
+[experiment 4] split = participant | models = plain | effect 95% interval = [+0.00203, +0.00894]
+[experiment 4] split = participant | models = plain | sd across participants = 0.03947
+[experiment 4] split = participant | models = plain | detectable effect at 80% power = 0.00761
+[experiment 4] split = participant | models = plain | power for the observed effect = 0.530
+[experiment 4] split = participant | models = plain | power for half the observed effect = 0.175
 [experiment 4] split = participant | models = plain | effect on trial 1 = -0.00100
-[experiment 4] split = participant | models = plain | effect on trials 2-7 = +0.00147
-[experiment 4] split = participant | models = plain | effect on trials 2-7 95% interval = [-0.00198, +0.00492]
-[experiment 4] split = participant | models = plain | effect on trials 8-13 = +0.01030
-[experiment 4] split = participant | models = plain | effect on trials 8-13 95% interval = [+0.00423, +0.01630]
-[experiment 4] split = participant | models = dilemma intercepts | effect = +0.00784 nats/choice
-[experiment 4] split = participant | models = dilemma intercepts | effect 95% interval = [+0.00393, +0.01170]
-[experiment 4] split = participant | models = dilemma intercepts | sd across participants = 0.04444
-[experiment 4] split = participant | models = dilemma intercepts | detectable effect at 80% power = 0.00857
-[experiment 4] split = participant | models = dilemma intercepts | power for the observed effect = 0.727
-[experiment 4] split = participant | models = dilemma intercepts | power for half the observed effect = 0.250
+[experiment 4] split = participant | models = plain | effect on trials 2-7 = +0.00150
+[experiment 4] split = participant | models = plain | effect on trials 2-7 95% interval = [-0.00207, +0.00507]
+[experiment 4] split = participant | models = plain | effect on trials 8-13 = +0.01066
+[experiment 4] split = participant | models = plain | effect on trials 8-13 95% interval = [+0.00473, +0.01642]
+[experiment 4] split = participant | models = dilemma intercepts | effect = +0.00789 nats/choice
+[experiment 4] split = participant | models = dilemma intercepts | effect 95% interval = [+0.00399, +0.01170]
+[experiment 4] split = participant | models = dilemma intercepts | sd across participants = 0.04419
+[experiment 4] split = participant | models = dilemma intercepts | detectable effect at 80% power = 0.00852
+[experiment 4] split = participant | models = dilemma intercepts | power for the observed effect = 0.737
+[experiment 4] split = participant | models = dilemma intercepts | power for half the observed effect = 0.254
 [experiment 4] split = participant | models = dilemma intercepts | effect on trial 1 = +0.00066
-[experiment 4] split = participant | models = dilemma intercepts | effect on trials 2-7 = +0.00474
-[experiment 4] split = participant | models = dilemma intercepts | effect on trials 2-7 95% interval = [+0.00074, +0.00875]
-[experiment 4] split = participant | models = dilemma intercepts | effect on trials 8-13 = +0.01214
-[experiment 4] split = participant | models = dilemma intercepts | effect on trials 8-13 95% interval = [+0.00567, +0.01863]
-[experiment 4] split = participant and dilemma | models = plain | effect = +0.01813 nats/choice
-[experiment 4] split = participant and dilemma | models = plain | effect 95% interval = [+0.01457, +0.02160]
-[experiment 4] split = participant and dilemma | models = plain | sd across participants = 0.04032
-[experiment 4] split = participant and dilemma | models = plain | detectable effect at 80% power = 0.00778
+[experiment 4] split = participant | models = dilemma intercepts | effect on trials 2-7 = +0.00475
+[experiment 4] split = participant | models = dilemma intercepts | effect on trials 2-7 95% interval = [+0.00073, +0.00878]
+[experiment 4] split = participant | models = dilemma intercepts | effect on trials 8-13 = +0.01223
+[experiment 4] split = participant | models = dilemma intercepts | effect on trials 8-13 95% interval = [+0.00584, +0.01867]
+[experiment 4] split = participant and dilemma | models = plain | effect = +0.01831 nats/choice
+[experiment 4] split = participant and dilemma | models = plain | effect 95% interval = [+0.01480, +0.02174]
+[experiment 4] split = participant and dilemma | models = plain | sd across participants = 0.03981
+[experiment 4] split = participant and dilemma | models = plain | detectable effect at 80% power = 0.00768
 [experiment 4] split = participant and dilemma | models = plain | power for the observed effect = 1.000
-[experiment 4] split = participant and dilemma | models = plain | power for half the observed effect = 0.904
+[experiment 4] split = participant and dilemma | models = plain | power for half the observed effect = 0.916
 [experiment 4] split = participant and dilemma | models = plain | effect on trial 1 = +0.01815
-[experiment 4] split = participant and dilemma | models = plain | effect on trials 2-7 = +0.01466
-[experiment 4] split = participant and dilemma | models = plain | effect on trials 2-7 95% interval = [+0.01102, +0.01832]
-[experiment 4] split = participant and dilemma | models = plain | effect on trials 8-13 = +0.02160
-[experiment 4] split = participant and dilemma | models = plain | effect on trials 8-13 95% interval = [+0.01541, +0.02757]
-[experiment 4] split = participant and dilemma | models = dilemma intercepts | effect = +0.00454 nats/choice
-[experiment 4] split = participant and dilemma | models = dilemma intercepts | effect 95% interval = [+0.00044, +0.00857]
-[experiment 4] split = participant and dilemma | models = dilemma intercepts | sd across participants = 0.04651
-[experiment 4] split = participant and dilemma | models = dilemma intercepts | detectable effect at 80% power = 0.00897
-[experiment 4] split = participant and dilemma | models = dilemma intercepts | power for the observed effect = 0.294
-[experiment 4] split = participant and dilemma | models = dilemma intercepts | power for half the observed effect = 0.109
+[experiment 4] split = participant and dilemma | models = plain | effect on trials 2-7 = +0.01468
+[experiment 4] split = participant and dilemma | models = plain | effect on trials 2-7 95% interval = [+0.01094, +0.01846]
+[experiment 4] split = participant and dilemma | models = plain | effect on trials 8-13 = +0.02196
+[experiment 4] split = participant and dilemma | models = plain | effect on trials 8-13 95% interval = [+0.01600, +0.02778]
+[experiment 4] split = participant and dilemma | models = dilemma intercepts | effect = +0.00462 nats/choice
+[experiment 4] split = participant and dilemma | models = dilemma intercepts | effect 95% interval = [+0.00056, +0.00862]
+[experiment 4] split = participant and dilemma | models = dilemma intercepts | sd across participants = 0.04617
+[experiment 4] split = participant and dilemma | models = dilemma intercepts | detectable effect at 80% power = 0.00890
+[experiment 4] split = participant and dilemma | models = dilemma intercepts | power for the observed effect = 0.307
+[experiment 4] split = participant and dilemma | models = dilemma intercepts | power for half the observed effect = 0.112
 [experiment 4] split = participant and dilemma | models = dilemma intercepts | effect on trial 1 = -0.00065
-[experiment 4] split = participant and dilemma | models = dilemma intercepts | effect on trials 2-7 = +0.00147
-[experiment 4] split = participant and dilemma | models = dilemma intercepts | effect on trials 2-7 95% interval = [-0.00298, +0.00590]
-[experiment 4] split = participant and dilemma | models = dilemma intercepts | effect on trials 8-13 = +0.00847
-[experiment 4] split = participant and dilemma | models = dilemma intercepts | effect on trials 8-13 95% interval = [+0.00163, +0.01511]
+[experiment 4] split = participant and dilemma | models = dilemma intercepts | effect on trials 2-7 = +0.00143
+[experiment 4] split = participant and dilemma | models = dilemma intercepts | effect on trials 2-7 95% interval = [-0.00306, +0.00589]
+[experiment 4] split = participant and dilemma | models = dilemma intercepts | effect on trials 8-13 = +0.00869
+[experiment 4] split = participant and dilemma | models = dilemma intercepts | effect on trials 8-13 95% interval = [+0.00198, +0.01525]
 
 [pooled] constant | fitted P(cost-benefit option) = 0.5289
-[pooled] learning, plain | fitted learning rate = 0.0029
-[pooled] learning, plain | fitted temperature = 20.0000
-[pooled] learning, plain | fitted learning rate x temperature = 0.0585
-[pooled] learning, plain | in-sample gain over constant = +0.00591 nats/choice
-[pooled] learning, dilemma intercepts | fitted learning rate = 0.1489
-[pooled] learning, dilemma intercepts | fitted temperature = 0.6627
-[pooled] learning, dilemma intercepts | fitted learning rate x temperature = 0.0987
+[pooled] learning, plain | fitted learning rate = 0.0773
+[pooled] learning, plain | fitted temperature = 0.8792
+[pooled] learning, plain | fitted learning rate x temperature = 0.0679
+[pooled] learning, plain | in-sample gain over constant = +0.00588 nats/choice
+[pooled] learning, dilemma intercepts | fitted learning rate = 0.1836
+[pooled] learning, dilemma intercepts | fitted temperature = 0.5713
+[pooled] learning, dilemma intercepts | fitted learning rate x temperature = 0.1049
 [pooled] learning, dilemma intercepts | in-sample gain over constant = +0.00971 nats/choice
-[pooled] split = participant | models = plain | effect = +0.00593 nats/choice
-[pooled] split = participant | models = plain | effect 95% interval = [+0.00387, +0.00809]
-[pooled] split = participant | models = plain | sd across participants = 0.04337
-[pooled] split = participant | models = plain | detectable effect at 80% power = 0.00467
+[pooled] split = participant | models = plain | effect = +0.00589 nats/choice
+[pooled] split = participant | models = plain | effect 95% interval = [+0.00383, +0.00803]
+[pooled] split = participant | models = plain | sd across participants = 0.04311
+[pooled] split = participant | models = plain | detectable effect at 80% power = 0.00464
 [pooled] split = participant | models = plain | power for the observed effect = 0.945
 [pooled] split = participant | models = plain | power for half the observed effect = 0.428
 [pooled] split = participant | models = plain | effect on trial 1 = -0.00205
-[pooled] split = participant | models = plain | effect on trials 2-7 = +0.00170
-[pooled] split = participant | models = plain | effect on trials 2-7 95% interval = [-0.00013, +0.00355]
-[pooled] split = participant | models = plain | effect on trials 8-13 = +0.01148
-[pooled] split = participant | models = plain | effect on trials 8-13 95% interval = [+0.00771, +0.01537]
-[pooled] split = participant | models = plain | effect on trial 2 = -0.00197
-[pooled] split = participant | models = plain | effect on trial 3 = -0.00029
-[pooled] split = participant | models = plain | effect on trial 4 = -0.00076
-[pooled] split = participant | models = plain | effect on trial 5 = +0.00339
-[pooled] split = participant | models = plain | effect on trial 6 = +0.00292
-[pooled] split = participant | models = plain | effect on trial 7 = +0.00691
-[pooled] split = participant | models = plain | effect on trial 8 = +0.00996
-[pooled] split = participant | models = plain | effect on trial 9 = +0.01084
-[pooled] split = participant | models = plain | effect on trial 10 = +0.01368
-[pooled] split = participant | models = plain | effect on trial 11 = +0.00674
-[pooled] split = participant | models = plain | effect on trial 12 = +0.01265
-[pooled] split = participant | models = plain | effect on trial 13 = +0.01502
-[pooled] split = participant | models = plain | effect, cbr_success = +0.00537
-[pooled] split = participant | models = plain | effect, cbr_success 95% interval = [+0.00358, +0.00716]
-[pooled] split = participant | models = plain | effect, cbr_success, lowest dilemma = -0.02524
-[pooled] split = participant | models = plain | effect, cbr_success, highest dilemma = +0.03356
-[pooled] split = participant | models = plain | effect, rule_success = +0.00648
-[pooled] split = participant | models = plain | effect, rule_success 95% interval = [+0.00266, +0.01022]
-[pooled] split = participant | models = plain | effect, rule_success, lowest dilemma = -0.11720
-[pooled] split = participant | models = plain | effect, rule_success, highest dilemma = +0.08827
-[pooled] split = participant | models = plain | effect with feedback shuffled within participant = +0.00039
-[pooled] split = participant | models = plain | effect with feedback shuffled within participant 95% interval = [-0.00094, +0.00175]
-[pooled] split = participant | models = dilemma intercepts | effect = +0.00952 nats/choice
-[pooled] split = participant | models = dilemma intercepts | effect 95% interval = [+0.00720, +0.01193]
-[pooled] split = participant | models = dilemma intercepts | sd across participants = 0.04859
-[pooled] split = participant | models = dilemma intercepts | detectable effect at 80% power = 0.00523
+[pooled] split = participant | models = plain | effect on trials 2-7 = +0.00179
+[pooled] split = participant | models = plain | effect on trials 2-7 95% interval = [-0.00016, +0.00374]
+[pooled] split = participant | models = plain | effect on trials 8-13 = +0.01131
+[pooled] split = participant | models = plain | effect on trials 8-13 95% interval = [+0.00761, +0.01513]
+[pooled] split = participant | models = plain | effect on trial 2 = -0.00199
+[pooled] split = participant | models = plain | effect on trial 3 = -0.00004
+[pooled] split = participant | models = plain | effect on trial 4 = -0.00072
+[pooled] split = participant | models = plain | effect on trial 5 = +0.00352
+[pooled] split = participant | models = plain | effect on trial 6 = +0.00303
+[pooled] split = participant | models = plain | effect on trial 7 = +0.00694
+[pooled] split = participant | models = plain | effect on trial 8 = +0.00981
+[pooled] split = participant | models = plain | effect on trial 9 = +0.01075
+[pooled] split = participant | models = plain | effect on trial 10 = +0.01324
+[pooled] split = participant | models = plain | effect on trial 11 = +0.00693
+[pooled] split = participant | models = plain | effect on trial 12 = +0.01252
+[pooled] split = participant | models = plain | effect on trial 13 = +0.01463
+[pooled] split = participant | models = plain | effect, cbr_success = +0.00527
+[pooled] split = participant | models = plain | effect, cbr_success 95% interval = [+0.00353, +0.00702]
+[pooled] split = participant | models = plain | effect, cbr_success, lowest dilemma = -0.02607
+[pooled] split = participant | models = plain | effect, cbr_success, highest dilemma = +0.03463
+[pooled] split = participant | models = plain | effect, rule_success = +0.00650
+[pooled] split = participant | models = plain | effect, rule_success 95% interval = [+0.00272, +0.01024]
+[pooled] split = participant | models = plain | effect, rule_success, lowest dilemma = -0.11805
+[pooled] split = participant | models = plain | effect, rule_success, highest dilemma = +0.08920
+[pooled] split = participant | models = plain | effect with feedback shuffled within participant = +0.00031
+[pooled] split = participant | models = plain | effect with feedback shuffled within participant 95% interval = [-0.00098, +0.00163]
+[pooled] split = participant | models = dilemma intercepts | effect = +0.00955 nats/choice
+[pooled] split = participant | models = dilemma intercepts | effect 95% interval = [+0.00722, +0.01194]
+[pooled] split = participant | models = dilemma intercepts | sd across participants = 0.04841
+[pooled] split = participant | models = dilemma intercepts | detectable effect at 80% power = 0.00521
 [pooled] split = participant | models = dilemma intercepts | power for the observed effect = 0.999
-[pooled] split = participant | models = dilemma intercepts | power for half the observed effect = 0.723
+[pooled] split = participant | models = dilemma intercepts | power for half the observed effect = 0.728
 [pooled] split = participant | models = dilemma intercepts | effect on trial 1 = +0.00014
-[pooled] split = participant | models = dilemma intercepts | effect on trials 2-7 = +0.00546
-[pooled] split = participant | models = dilemma intercepts | effect on trials 2-7 95% interval = [+0.00349, +0.00744]
+[pooled] split = participant | models = dilemma intercepts | effect on trials 2-7 = +0.00551
+[pooled] split = participant | models = dilemma intercepts | effect on trials 2-7 95% interval = [+0.00347, +0.00754]
 [pooled] split = participant | models = dilemma intercepts | effect on trials 8-13 = +0.01515
-[pooled] split = participant | models = dilemma intercepts | effect on trials 8-13 95% interval = [+0.01105, +0.01942]
+[pooled] split = participant | models = dilemma intercepts | effect on trials 8-13 95% interval = [+0.01111, +0.01936]
 [pooled] split = participant | models = dilemma intercepts | effect on trial 2 = +0.00024
-[pooled] split = participant | models = dilemma intercepts | effect on trial 3 = +0.00228
-[pooled] split = participant | models = dilemma intercepts | effect on trial 4 = +0.00304
-[pooled] split = participant | models = dilemma intercepts | effect on trial 5 = +0.00660
-[pooled] split = participant | models = dilemma intercepts | effect on trial 6 = +0.00963
-[pooled] split = participant | models = dilemma intercepts | effect on trial 7 = +0.01096
-[pooled] split = participant | models = dilemma intercepts | effect on trial 8 = +0.01094
-[pooled] split = participant | models = dilemma intercepts | effect on trial 9 = +0.01516
-[pooled] split = participant | models = dilemma intercepts | effect on trial 10 = +0.01645
-[pooled] split = participant | models = dilemma intercepts | effect on trial 11 = +0.01413
-[pooled] split = participant | models = dilemma intercepts | effect on trial 12 = +0.01743
-[pooled] split = participant | models = dilemma intercepts | effect on trial 13 = +0.01682
-[pooled] split = participant | models = dilemma intercepts | effect, cbr_success = +0.01013
-[pooled] split = participant | models = dilemma intercepts | effect, cbr_success 95% interval = [+0.00683, +0.01351]
-[pooled] split = participant | models = dilemma intercepts | effect, cbr_success, lowest dilemma = -0.00123
-[pooled] split = participant | models = dilemma intercepts | effect, cbr_success, highest dilemma = +0.02371
-[pooled] split = participant | models = dilemma intercepts | effect, rule_success = +0.00893
-[pooled] split = participant | models = dilemma intercepts | effect, rule_success 95% interval = [+0.00562, +0.01215]
-[pooled] split = participant | models = dilemma intercepts | effect, rule_success, lowest dilemma = -0.00875
-[pooled] split = participant | models = dilemma intercepts | effect, rule_success, highest dilemma = +0.02987
-[pooled] split = participant | models = dilemma intercepts | effect with feedback shuffled within participant = +0.00215
-[pooled] split = participant | models = dilemma intercepts | effect with feedback shuffled within participant 95% interval = [+0.00093, +0.00340]
-[pooled] split = participant and dilemma | models = plain | effect = +0.01986 nats/choice
-[pooled] split = participant and dilemma | models = plain | effect 95% interval = [+0.01775, +0.02201]
-[pooled] split = participant and dilemma | models = plain | sd across participants = 0.04395
-[pooled] split = participant and dilemma | models = plain | detectable effect at 80% power = 0.00473
+[pooled] split = participant | models = dilemma intercepts | effect on trial 3 = +0.00240
+[pooled] split = participant | models = dilemma intercepts | effect on trial 4 = +0.00310
+[pooled] split = participant | models = dilemma intercepts | effect on trial 5 = +0.00657
+[pooled] split = participant | models = dilemma intercepts | effect on trial 6 = +0.00982
+[pooled] split = participant | models = dilemma intercepts | effect on trial 7 = +0.01092
+[pooled] split = participant | models = dilemma intercepts | effect on trial 8 = +0.01086
+[pooled] split = participant | models = dilemma intercepts | effect on trial 9 = +0.01519
+[pooled] split = participant | models = dilemma intercepts | effect on trial 10 = +0.01620
+[pooled] split = participant | models = dilemma intercepts | effect on trial 11 = +0.01426
+[pooled] split = participant | models = dilemma intercepts | effect on trial 12 = +0.01750
+[pooled] split = participant | models = dilemma intercepts | effect on trial 13 = +0.01690
+[pooled] split = participant | models = dilemma intercepts | effect, cbr_success = +0.01010
+[pooled] split = participant | models = dilemma intercepts | effect, cbr_success 95% interval = [+0.00681, +0.01347]
+[pooled] split = participant | models = dilemma intercepts | effect, cbr_success, lowest dilemma = -0.00144
+[pooled] split = participant | models = dilemma intercepts | effect, cbr_success, highest dilemma = +0.02354
+[pooled] split = participant | models = dilemma intercepts | effect, rule_success = +0.00900
+[pooled] split = participant | models = dilemma intercepts | effect, rule_success 95% interval = [+0.00568, +0.01220]
+[pooled] split = participant | models = dilemma intercepts | effect, rule_success, lowest dilemma = -0.00881
+[pooled] split = participant | models = dilemma intercepts | effect, rule_success, highest dilemma = +0.02992
+[pooled] split = participant | models = dilemma intercepts | effect with feedback shuffled within participant = +0.00207
+[pooled] split = participant | models = dilemma intercepts | effect with feedback shuffled within participant 95% interval = [+0.00089, +0.00327]
+[pooled] split = participant and dilemma | models = plain | effect = +0.01981 nats/choice
+[pooled] split = participant and dilemma | models = plain | effect 95% interval = [+0.01771, +0.02194]
+[pooled] split = participant and dilemma | models = plain | sd across participants = 0.04368
+[pooled] split = participant and dilemma | models = plain | detectable effect at 80% power = 0.00470
 [pooled] split = participant and dilemma | models = plain | power for the observed effect = 1.000
 [pooled] split = participant and dilemma | models = plain | power for half the observed effect = 1.000
 [pooled] split = participant and dilemma | models = plain | effect on trial 1 = +0.01595
-[pooled] split = participant and dilemma | models = plain | effect on trials 2-7 = +0.01613
-[pooled] split = participant and dilemma | models = plain | effect on trials 2-7 95% interval = [+0.01415, +0.01811]
-[pooled] split = participant and dilemma | models = plain | effect on trials 8-13 = +0.02425
-[pooled] split = participant and dilemma | models = plain | effect on trials 8-13 95% interval = [+0.02042, +0.02815]
-[pooled] split = participant and dilemma | models = plain | effect on trial 2 = +0.01439
-[pooled] split = participant and dilemma | models = plain | effect on trial 3 = +0.01453
-[pooled] split = participant and dilemma | models = plain | effect on trial 4 = +0.01317
-[pooled] split = participant and dilemma | models = plain | effect on trial 5 = +0.01635
-[pooled] split = participant and dilemma | models = plain | effect on trial 6 = +0.01604
-[pooled] split = participant and dilemma | models = plain | effect on trial 7 = +0.02228
-[pooled] split = participant and dilemma | models = plain | effect on trial 8 = +0.02406
-[pooled] split = participant and dilemma | models = plain | effect on trial 9 = +0.02409
-[pooled] split = participant and dilemma | models = plain | effect on trial 10 = +0.02611
-[pooled] split = participant and dilemma | models = plain | effect on trial 11 = +0.01779
-[pooled] split = participant and dilemma | models = plain | effect on trial 12 = +0.02601
-[pooled] split = participant and dilemma | models = plain | effect on trial 13 = +0.02741
-[pooled] split = participant and dilemma | models = plain | effect, cbr_success = +0.01918
-[pooled] split = participant and dilemma | models = plain | effect, cbr_success 95% interval = [+0.01733, +0.02098]
-[pooled] split = participant and dilemma | models = plain | effect, cbr_success, lowest dilemma = -0.01756
-[pooled] split = participant and dilemma | models = plain | effect, cbr_success, highest dilemma = +0.07638
-[pooled] split = participant and dilemma | models = plain | effect, rule_success = +0.02053
-[pooled] split = participant and dilemma | models = plain | effect, rule_success 95% interval = [+0.01669, +0.02433]
-[pooled] split = participant and dilemma | models = plain | effect, rule_success, lowest dilemma = -0.08802
-[pooled] split = participant and dilemma | models = plain | effect, rule_success, highest dilemma = +0.13457
-[pooled] split = participant and dilemma | models = dilemma intercepts | effect = +0.00571 nats/choice
-[pooled] split = participant and dilemma | models = dilemma intercepts | effect 95% interval = [+0.00330, +0.00820]
-[pooled] split = participant and dilemma | models = dilemma intercepts | sd across participants = 0.05047
-[pooled] split = participant and dilemma | models = dilemma intercepts | detectable effect at 80% power = 0.00543
-[pooled] split = participant and dilemma | models = dilemma intercepts | power for the observed effect = 0.838
-[pooled] split = participant and dilemma | models = dilemma intercepts | power for half the observed effect = 0.313
-[pooled] split = participant and dilemma | models = dilemma intercepts | effect on trial 1 = -0.00061
-[pooled] split = participant and dilemma | models = dilemma intercepts | effect on trials 2-7 = +0.00285
-[pooled] split = participant and dilemma | models = dilemma intercepts | effect on trials 2-7 95% interval = [+0.00065, +0.00500]
-[pooled] split = participant and dilemma | models = dilemma intercepts | effect on trials 8-13 = +0.00962
-[pooled] split = participant and dilemma | models = dilemma intercepts | effect on trials 8-13 95% interval = [+0.00528, +0.01415]
-[pooled] split = participant and dilemma | models = dilemma intercepts | effect on trial 2 = -0.00098
-[pooled] split = participant and dilemma | models = dilemma intercepts | effect on trial 3 = +0.00256
-[pooled] split = participant and dilemma | models = dilemma intercepts | effect on trial 4 = +0.00010
-[pooled] split = participant and dilemma | models = dilemma intercepts | effect on trial 5 = +0.00429
-[pooled] split = participant and dilemma | models = dilemma intercepts | effect on trial 6 = +0.00486
-[pooled] split = participant and dilemma | models = dilemma intercepts | effect on trial 7 = +0.00627
-[pooled] split = participant and dilemma | models = dilemma intercepts | effect on trial 8 = +0.00599
-[pooled] split = participant and dilemma | models = dilemma intercepts | effect on trial 9 = +0.00907
-[pooled] split = participant and dilemma | models = dilemma intercepts | effect on trial 10 = +0.01365
-[pooled] split = participant and dilemma | models = dilemma intercepts | effect on trial 11 = +0.00773
-[pooled] split = participant and dilemma | models = dilemma intercepts | effect on trial 12 = +0.00836
-[pooled] split = participant and dilemma | models = dilemma intercepts | effect on trial 13 = +0.01294
-[pooled] split = participant and dilemma | models = dilemma intercepts | effect, cbr_success = +0.00487
-[pooled] split = participant and dilemma | models = dilemma intercepts | effect, cbr_success 95% interval = [+0.00140, +0.00844]
-[pooled] split = participant and dilemma | models = dilemma intercepts | effect, cbr_success, lowest dilemma = -0.10329
-[pooled] split = participant and dilemma | models = dilemma intercepts | effect, cbr_success, highest dilemma = +0.09414
-[pooled] split = participant and dilemma | models = dilemma intercepts | effect, rule_success = +0.00653
-[pooled] split = participant and dilemma | models = dilemma intercepts | effect, rule_success 95% interval = [+0.00313, +0.00986]
-[pooled] split = participant and dilemma | models = dilemma intercepts | effect, rule_success, lowest dilemma = -0.10032
-[pooled] split = participant and dilemma | models = dilemma intercepts | effect, rule_success, highest dilemma = +0.07745
+[pooled] split = participant and dilemma | models = plain | effect on trials 2-7 = +0.01615
+[pooled] split = participant and dilemma | models = plain | effect on trials 2-7 95% interval = [+0.01408, +0.01824]
+[pooled] split = participant and dilemma | models = plain | effect on trials 8-13 = +0.02410
+[pooled] split = participant and dilemma | models = plain | effect on trials 8-13 95% interval = [+0.02038, +0.02791]
+[pooled] split = participant and dilemma | models = plain | effect on trial 2 = +0.01435
+[pooled] split = participant and dilemma | models = plain | effect on trial 3 = +0.01473
+[pooled] split = participant and dilemma | models = plain | effect on trial 4 = +0.01316
+[pooled] split = participant and dilemma | models = plain | effect on trial 5 = +0.01638
+[pooled] split = participant and dilemma | models = plain | effect on trial 6 = +0.01611
+[pooled] split = participant and dilemma | models = plain | effect on trial 7 = +0.02220
+[pooled] split = participant and dilemma | models = plain | effect on trial 8 = +0.02393
+[pooled] split = participant and dilemma | models = plain | effect on trial 9 = +0.02403
+[pooled] split = participant and dilemma | models = plain | effect on trial 10 = +0.02565
+[pooled] split = participant and dilemma | models = plain | effect on trial 11 = +0.01796
+[pooled] split = participant and dilemma | models = plain | effect on trial 12 = +0.02598
+[pooled] split = participant and dilemma | models = plain | effect on trial 13 = +0.02708
+[pooled] split = participant and dilemma | models = plain | effect, cbr_success = +0.01901
+[pooled] split = participant and dilemma | models = plain | effect, cbr_success 95% interval = [+0.01720, +0.02077]
+[pooled] split = participant and dilemma | models = plain | effect, cbr_success, lowest dilemma = -0.01808
+[pooled] split = participant and dilemma | models = plain | effect, cbr_success, highest dilemma = +0.07710
+[pooled] split = participant and dilemma | models = plain | effect, rule_success = +0.02059
+[pooled] split = participant and dilemma | models = plain | effect, rule_success 95% interval = [+0.01677, +0.02437]
+[pooled] split = participant and dilemma | models = plain | effect, rule_success, lowest dilemma = -0.08931
+[pooled] split = participant and dilemma | models = plain | effect, rule_success, highest dilemma = +0.13545
+[pooled] split = participant and dilemma | models = dilemma intercepts | effect = +0.00572 nats/choice
+[pooled] split = participant and dilemma | models = dilemma intercepts | effect 95% interval = [+0.00333, +0.00820]
+[pooled] split = participant and dilemma | models = dilemma intercepts | sd across participants = 0.05022
+[pooled] split = participant and dilemma | models = dilemma intercepts | detectable effect at 80% power = 0.00540
+[pooled] split = participant and dilemma | models = dilemma intercepts | power for the observed effect = 0.843
+[pooled] split = participant and dilemma | models = dilemma intercepts | power for half the observed effect = 0.317
+[pooled] split = participant and dilemma | models = dilemma intercepts | effect on trial 1 = -0.00059
+[pooled] split = participant and dilemma | models = dilemma intercepts | effect on trials 2-7 = +0.00287
+[pooled] split = participant and dilemma | models = dilemma intercepts | effect on trials 2-7 95% interval = [+0.00059, +0.00510]
+[pooled] split = participant and dilemma | models = dilemma intercepts | effect on trials 8-13 = +0.00963
+[pooled] split = participant and dilemma | models = dilemma intercepts | effect on trials 8-13 95% interval = [+0.00535, +0.01409]
+[pooled] split = participant and dilemma | models = dilemma intercepts | effect on trial 2 = -0.00095
+[pooled] split = participant and dilemma | models = dilemma intercepts | effect on trial 3 = +0.00276
+[pooled] split = participant and dilemma | models = dilemma intercepts | effect on trial 4 = +0.00008
+[pooled] split = participant and dilemma | models = dilemma intercepts | effect on trial 5 = +0.00423
+[pooled] split = participant and dilemma | models = dilemma intercepts | effect on trial 6 = +0.00485
+[pooled] split = participant and dilemma | models = dilemma intercepts | effect on trial 7 = +0.00623
+[pooled] split = participant and dilemma | models = dilemma intercepts | effect on trial 8 = +0.00578
+[pooled] split = participant and dilemma | models = dilemma intercepts | effect on trial 9 = +0.00899
+[pooled] split = participant and dilemma | models = dilemma intercepts | effect on trial 10 = +0.01334
+[pooled] split = participant and dilemma | models = dilemma intercepts | effect on trial 11 = +0.00795
+[pooled] split = participant and dilemma | models = dilemma intercepts | effect on trial 12 = +0.00859
+[pooled] split = participant and dilemma | models = dilemma intercepts | effect on trial 13 = +0.01314
+[pooled] split = participant and dilemma | models = dilemma intercepts | effect, cbr_success = +0.00492
+[pooled] split = participant and dilemma | models = dilemma intercepts | effect, cbr_success 95% interval = [+0.00146, +0.00846]
+[pooled] split = participant and dilemma | models = dilemma intercepts | effect, cbr_success, lowest dilemma = -0.10350
+[pooled] split = participant and dilemma | models = dilemma intercepts | effect, cbr_success, highest dilemma = +0.09540
+[pooled] split = participant and dilemma | models = dilemma intercepts | effect, rule_success = +0.00651
+[pooled] split = participant and dilemma | models = dilemma intercepts | effect, rule_success 95% interval = [+0.00315, +0.00982]
+[pooled] split = participant and dilemma | models = dilemma intercepts | effect, rule_success, lowest dilemma = -0.10074
+[pooled] split = participant and dilemma | models = dilemma intercepts | effect, rule_success, highest dilemma = +0.07761
+
 ```

@@ -5,6 +5,7 @@ import pytest
 
 from tests.synthetic import DILEMMAS, simulate
 from zoon.pilot.models import (
+    TEMPERATURE_BOUNDS,
     Parameters,
     Sequences,
     fit_constant,
@@ -136,3 +137,16 @@ def test_every_choice_gets_a_probability(dilemma_intercepts: bool) -> None:
         assert ((chance > 0) & (chance < 1)).all()
         assert (log_likelihood(fit, data) >= np.log(1e-3)).all()
         assert (log_likelihood(fit, data) <= np.log(1 - 1e-3)).all()
+
+
+def test_fit_does_not_depend_on_where_it_starts() -> None:
+    """With weak learning the likelihood is flat along a ridge where learning rate and
+    temperature trade off. The prior on the temperature pins the fit to one point on it; this
+    protects the penalty term in `fit_learning`, without which the two fits below differ."""
+    data = simulate(600, learning_rate=0.004, temperature=18.0, seed=11)
+    targets = np.ones_like(data.choice, dtype=bool)
+    low = fit_learning(data, targets, DILEMMAS, dilemma_intercepts=False, start=(0.01, 15.0))
+    high = fit_learning(data, targets, DILEMMAS, dilemma_intercepts=False, start=(0.6, 0.3))
+    assert low.temperature == pytest.approx(high.temperature, rel=1e-3)
+    assert low.learning_rate == pytest.approx(high.learning_rate, rel=1e-3)
+    assert low.temperature < TEMPERATURE_BOUNDS[1] - 1.0

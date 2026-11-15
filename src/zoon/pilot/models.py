@@ -34,7 +34,8 @@ fitting targets, as a logit; the learning model adds the average shift of its fi
 
 Differences from the paper. The authors fit each participant separately, with priors, and
 compare models by marginal likelihood. Here each model has one set of parameters shared by
-all participants, fitted by maximum likelihood, because the quantity of interest is the
+all participants, fitted by maximum likelihood with the paper's prior on the temperature
+kept as a penalty, because the quantity of interest is the
 prediction of people the model has not seen. Pooling is a simplification: it ignores
 differences between people in learning rate and temperature.
 """
@@ -53,7 +54,9 @@ Bools = NDArray[np.bool_]
 
 PROBABILITY_FLOOR = 1e-3
 LEARNING_RATE_BOUNDS = (0.0, 1.0)
-TEMPERATURE_BOUNDS = (0.0, 20.0)
+TEMPERATURE_BOUNDS = (1e-6, 20.0)
+# The paper's prior on the temperature: `lognormal_lpdf(tau | 0, 1.4)` in model_free.stan.
+TEMPERATURE_PRIOR_SCALE = 1.4
 
 
 @dataclass(frozen=True)
@@ -143,9 +146,19 @@ def fit_constant(
 
 
 def fit_learning(
-    data: Sequences, targets: Bools, dilemmas: int, dilemma_intercepts: bool
+    data: Sequences,
+    targets: Bools,
+    dilemmas: int,
+    dilemma_intercepts: bool,
+    start: tuple[float, float] | None = None,
 ) -> Parameters:
-    """Fit the learning model to the trials marked in `targets` by maximum likelihood.
+    """Fit the learning model to the trials marked in `targets`.
+
+    The fit maximises the likelihood times the paper's prior on the temperature. Over 13
+    trials the values move so little that learning rate and temperature trade off along a
+    flat ridge, and without the prior an optimiser stops at a different point on it on each
+    machine. `start` sets the starting learning rate and temperature; it exists so that a
+    test can check the result does not depend on it.
 
     Trials outside `targets` add nothing to the likelihood, and the model still learns from
     their feedback, because the participant saw it.
@@ -178,19 +191,26 @@ def fit_learning(
         gradient[1] = -(residual * gap).sum()
         for position, d in enumerate(free):
             gradient[2 + position] = -residual[data.dilemma == d].sum()
+        # Minus the log of the lognormal prior density of the temperature, up to a constant.
+        log_temperature = math.log(temperature)
+        penalty = log_temperature + log_temperature**2 / (2 * TEMPERATURE_PRIOR_SCALE**2)
+        gradient[1] += (1 + log_temperature / TEMPERATURE_PRIOR_SCALE**2) / temperature
+        negative_log_likelihood = -float(log_expit(sign * logits)[targets].sum())
         # Per choice, so that the stopping tolerances mean the same thing at any sample size.
-        return -float(log_expit(sign * logits)[targets].sum()) / count, gradient / count
+        return (negative_log_likelihood + penalty) / count, gradient / count
 
     starts = [
         np.concatenate([[learning_rate, temperature], start_intercepts])
         for learning_rate in (0.05, 0.2, 0.5, 0.9)
         for temperature in (0.5, 2.0, 6.0)
     ]
-    start = min(starts, key=lambda x: loss(x)[0])
+    if start is not None:
+        starts = [np.concatenate([list(start), start_intercepts])]
+    first = min(starts, key=lambda x: loss(x)[0])
     bounds = [LEARNING_RATE_BOUNDS, TEMPERATURE_BOUNDS] + [(None, None)] * len(free)
     best = minimize(
         loss,
-        start,
+        first,
         jac=True,
         method="L-BFGS-B",
         bounds=bounds,
