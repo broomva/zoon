@@ -1,0 +1,29 @@
+{
+  "id": "Vet",
+  "set": "task",
+  "source": {
+    "authors": "Maier, Cheung and Lieder",
+    "title": "dilemmas and outcomes.pdf",
+    "url": "https://osf.io/download/sgf5y/",
+    "materials_url": "https://osf.io/4up5z/",
+    "locator": "Veterinarian",
+    "license": "CC BY 4.0",
+    "license_url": "https://creativecommons.org/licenses/by/4.0/",
+    "changes": "De-identified and reworded; question in yes/no form."
+  },
+  "suggested_action": "quit the animal-research job",
+  "kept": [
+    "You are a specialist veterinarian who became a vet to heal animals; your expertise achieves more than others’ work.",
+    "You directly infect laboratory animals with highly contagious deadly diseases every day, causing suffering.",
+    "Quitting reduces laboratory deaths but reduces findings, delays medicines and leads to many preventable animal deaths.",
+    "Continuing causes suffering but probably saves even more animals in the future; those laboratory animals and other animals remain distinct.",
+    "No personal material benefit or number of animals is specified; the conflict with your professional motive remains.",
+    "The suggested action is to quit the job."
+  ],
+  "removed": [
+    "European"
+  ],
+  "rewrite": "You are a veterinarian experimenting on highly contagious germs in animals. Each day, you cause animals suffering by infecting them with deadly diseases. You know the research yields important findings that can, over time, save many other animals. Your specialist expertise also lets you achieve more than other veterinarians. Yet you entered veterinary medicine to heal animals, and are considering leaving the job. If you quit, fewer laboratory animals will die, but less will be learned about animal diseases. Medicines for sick animals will consequently take longer to develop, leading to many preventable deaths. If you keep infecting animals for medical research, you will continue causing suffering, but your work will probably save even more animals’ lives in the future. Do you quit your job?",
+  "reversed_suggested_action": "continue the animal-research job",
+  "reversed": "You are a veterinarian experimenting on highly contagious germs in animals. Each day, you cause animals suffering by infecting them with deadly diseases. You know the research yields important findings that can, over time, save many other animals. Your specialist expertise also lets you achieve more than other veterinarians. Yet you entered veterinary medicine to heal animals, and are considering leaving the job. If you quit, fewer laboratory animals will die, but less will be learned about animal diseases. Medicines for sick animals will consequently take longer to develop, leading to many preventable deaths. If you keep infecting animals for medical research, you will continue causing suffering, but your work will probably save even more animals’ lives in the future. Do you continue your job?"
+}

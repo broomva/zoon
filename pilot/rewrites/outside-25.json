@@ -1,0 +1,31 @@
+{
+  "id": "Rugby Cannibalism",
+  "set": "outside",
+  "source": {
+    "authors": "Körner and Deutsch",
+    "title": "Deontology and Utilitarianism in Real Life: A Set of Moral Dilemmas Based on Historic Events",
+    "url": "https://doi.org/10.1177/01461672221103058",
+    "materials_url": "https://osf.io/download/ephu6/",
+    "locator": "English Versions, 25) Rugby cannibalism",
+    "license": "CC BY 4.0",
+    "license_url": "https://creativecommons.org/licenses/by/4.0/",
+    "changes": "De-identified and reworded; question in yes/no form."
+  },
+  "suggested_action": "eat the remains of dead teammates",
+  "kept": [
+    "You are a team member and crash survivor; fifteen of forty die initially and nineteen are alive after ten days.",
+    "The inaccessible mountain site is at thirteen thousand feet/four thousand metres and minus twenty Fahrenheit/minus thirty Celsius.",
+    "You cannot communicate, but can receive radio news that the search has ended; food is gone.",
+    "You and survivors would eat already dead teammates, violating dignity and the peace of the dead rather than killing anyone for food.",
+    "Eating prolongs survival and improves rescue chances; refusing means starvation soon. You personally benefit; those whose remains are eaten are already dead.",
+    "The suggested action is to eat dead teammates’ remains."
+  ],
+  "removed": [
+    "rugby",
+    "Montevideo",
+    "Santiago de Chile",
+    "1972"
+  ],
+  "rewrite": "You belong to a sports team travelling by plane when it crashes in an inaccessible mountain region. Fifteen of the 40 people aboard die in the crash. You cannot communicate with anyone, though you have a radio receiver. You are at an altitude of thirteen thousand feet, about four thousand metres, in temperatures of minus twenty degrees Fahrenheit, about minus thirty Celsius. Ten days later, just 19 of you remain alive. Your food is gone, and the radio reports that the search for your plane has ended. You and the others consider eating the bodies of dead teammates, violating their dignity and the peace of the dead. Eating the bodies would let the survivors live longer and improve their chances of rescue. Refusing would mean you soon starve to death. Do you eat the remains of your dead teammates?",
+  "notes": "The named route, year and sport are removed; a sports team remains. Counts, altitude, temperature and the end of the search are preserved because they describe survival constraints, but make recognition particularly likely. Numbers that would look like years are spelled out without changing their values."
+}

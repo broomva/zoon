@@ -1,0 +1,31 @@
+{
+  "id": "Doodlebugs",
+  "set": "outside",
+  "source": {
+    "authors": "Körner and Deutsch",
+    "title": "Deontology and Utilitarianism in Real Life: A Set of Moral Dilemmas Based on Historic Events",
+    "url": "https://doi.org/10.1177/01461672221103058",
+    "materials_url": "https://osf.io/download/ephu6/",
+    "locator": "English Versions, 4) Doodle bugs",
+    "license": "CC BY 4.0",
+    "license_url": "https://creativecommons.org/licenses/by/4.0/",
+    "changes": "De-identified and reworded; question in yes/no form."
+  },
+  "suggested_action": "spread false information about where missiles hit",
+  "kept": [
+    "You are prime minister in wartime; enemy missiles target a city’s centre and vital military installations.",
+    "Misses currently hit poorer, lower-density residential districts to the south, with fewer casualties and no important military installations.",
+    "The enemy has approximate impact information; false reports through spies about northern hits would move strikes farther south.",
+    "Without deception aim probably improves; with deception missiles probably continue killing poorer southern residents.",
+    "You decide about misinformation; enemy forces fire the missiles. Your personal benefit is unspecified, as is the overlap of the affected populations.",
+    "The suggested action is to spread false information."
+  ],
+  "removed": [
+    "British",
+    "World War II",
+    "Germans",
+    "London"
+  ],
+  "rewrite": "You are prime minister during a war. The enemy has started firing long-range missiles at a major city in your country. Most miss the centre and land in southern neighbourhoods without important military installations. These are mainly residential areas inhabited by poorer people. Their lower population density means fewer casualties than strikes on the centre. The enemy knows approximately, but not precisely, where the missiles land. Through spies, you could spread false reports suggesting they land north of the centre. The enemy would then fail to improve its aim, sending most missiles still farther south. Without false reports, the enemy will probably improve its aim and hit vital military installations in the centre. With false reports, the missiles will probably continue killing many poorer people in the southern neighbourhoods. Do you spread wrong information?",
+  "notes": "Countries, the war’s name and the city are removed. North/south geometry, class differences and military targets remain because they explain how deception reallocates risk; together they may still identify the incident."
+}

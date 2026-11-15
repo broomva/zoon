@@ -1,0 +1,28 @@
+{
+  "id": "Rescue Torture",
+  "set": "outside",
+  "source": {
+    "authors": "Körner and Deutsch",
+    "title": "Deontology and Utilitarianism in Real Life: A Set of Moral Dilemmas Based on Historic Events",
+    "url": "https://doi.org/10.1177/01461672221103058",
+    "materials_url": "https://osf.io/download/ephu6/",
+    "locator": "English Versions, 23) Rescue torture",
+    "license": "CC BY 4.0",
+    "license_url": "https://creativecommons.org/licenses/by/4.0/",
+    "changes": "De-identified and reworded; question in yes/no form."
+  },
+  "suggested_action": "torture the kidnapping suspect",
+  "kept": [
+    "You are police chief; the victim is a banker’s son and the arrested suspect collected ransom and confessed to kidnapping.",
+    "The suspect withholds the location after more than two days; you worry the boy may soon die of thirst.",
+    "Threats or physical violence would be illegal torture; it most likely yields the location.",
+    "Without torture he might stay silent for more days and the child could die, not certainly will die.",
+    "You are considering the coercion directly; the harmed suspect and potentially saved boy are distinct, with no personal benefit stated.",
+    "The suggested action is to torture the suspect."
+  ],
+  "removed": [
+    "Rescue torture"
+  ],
+  "rewrite": "You are police chief investigating the abduction of a banker’s son. You have arrested a suspect who collected the ransom. He has admitted kidnapping the boy but will not reveal where the boy is held. He has been in custody for more than two days, and you fear that the child may soon die of thirst. You consider threats or physical violence to force him to disclose the location. Torturing the suspect would break the law but would most likely make him reveal the hiding place. Keeping within the law by not torturing him might mean he stays silent for several more days, which could cause the boy’s death. Do you torture the suspect?",
+  "notes": "The English vignette already omits names, places and dates; only its heading is withheld. The banker’s son, ransom collection and two-day custody remain because status and urgency could matter, although they may identify the case."
+}

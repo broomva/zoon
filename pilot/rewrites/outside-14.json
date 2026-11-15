@@ -1,0 +1,28 @@
+{
+  "id": "Septuplets",
+  "set": "outside",
+  "source": {
+    "authors": "Körner and Deutsch",
+    "title": "Deontology and Utilitarianism in Real Life: A Set of Moral Dilemmas Based on Historic Events",
+    "url": "https://doi.org/10.1177/01461672221103058",
+    "materials_url": "https://osf.io/download/ephu6/",
+    "locator": "English Versions, 14) Septuplets",
+    "license": "CC BY 4.0",
+    "license_url": "https://creativecommons.org/licenses/by/4.0/",
+    "changes": "De-identified and reworded; question in yes/no form."
+  },
+  "suggested_action": "abort three of the seven fetuses",
+  "kept": [
+    "You and your partner face a pregnancy with seven babies; doctors recommend aborting three to help the other four.",
+    "The initial risk of death or severe disability for all or some is extremely high; the comparison says high risk for all or most if none are aborted.",
+    "Abortion increases chances of survival and health for the remaining four, without guaranteeing survival.",
+    "You authorise abortion rather than being assigned the clinician’s role; no separate maternal health or financial benefit is added.",
+    "The three sacrificed fetuses belong to the seven threatened by the pregnancy.",
+    "The suggested action is to abort three fetuses."
+  ],
+  "removed": [
+    "USA",
+    "Septuplets"
+  ],
+  "rewrite": "You and your partner learn that you are pregnant with seven babies at the same time. There is an extremely high risk that some or all of these children will die or be born with severe disabilities. Doctors therefore advise aborting some fetuses to improve the others’ chances of surviving. They recommend aborting three. Those remaining would have a much better chance of being born healthy. If you abort three fetuses, you improve the prospects of survival and health for the other four. If you abort none, there is a high risk that all or most will die or have severe disabilities. Do you abort three of the fetuses?"
+}

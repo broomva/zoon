@@ -1,0 +1,31 @@
+{
+  "id": "Mass Rape",
+  "set": "outside",
+  "source": {
+    "authors": "Körner and Deutsch",
+    "title": "Deontology and Utilitarianism in Real Life: A Set of Moral Dilemmas Based on Historic Events",
+    "url": "https://doi.org/10.1177/01461672221103058",
+    "materials_url": "https://osf.io/download/ephu6/",
+    "locator": "English Versions, 37) Mass rape",
+    "license": "CC BY 4.0",
+    "license_url": "https://creativecommons.org/licenses/by/4.0/",
+    "changes": "De-identified and reworded; question in yes/no form."
+  },
+  "suggested_action": "release all eight men",
+  "kept": [
+    "You are a judge dealing with eight drunk men and a seventeen-year-old waitress raped at a fair; she was found injured and unconscious.",
+    "One man did not participate and called police; at least one is known to be innocent, while many others, probably all, committed rape.",
+    "Individual guilt cannot apparently be determined: all eight are silent after questioning, recollections are vague and physical evidence unusable.",
+    "Keeping all in investigative custody wrongfully jails the innocent; dropping charges releases several rapists.",
+    "You order custody or release; you did not commit the assault. No personal benefit is specified; the innocent detainee and offenders are distinct.",
+    "The suggested action is to release all eight men."
+  ],
+  "removed": [
+    "Germany",
+    "1990s"
+  ],
+  "rewrite": "You are a judge. At a public festival, a group of eight drunk men raped a seventeen-year-old waitress. One man did not participate and phoned the police. Officers found her injured and unconscious. The responsible group is known, but investigation has not established which individuals are guilty. You know at least one is innocent, while many others, probably all, committed rape. You have just finished questioning them. All eight stay silent, the victim’s memory is vague, and evidence from her body cannot be used. There seems to be no way to determine individual guilt or innocence. Keeping everyone in investigative custody would wrongfully jail an innocent man. Dropping the charges would release several rapists. Do you release all eight men?",
+  "reversed_suggested_action": "keep all eight men in investigative custody",
+  "reversed": "You are a judge. At a public festival, a group of eight drunk men raped a seventeen-year-old waitress. One man did not participate and phoned the police. Officers found her injured and unconscious. The responsible group is known, but investigation has not established which individuals are guilty. You know at least one is innocent, while many others, probably all, committed rape. You have just finished questioning them. All eight stay silent, the victim’s memory is vague, and evidence from her body cannot be used. There seems to be no way to determine individual guilt or innocence. Keeping everyone in investigative custody would wrongfully jail an innocent man. Dropping the charges would release several rapists. Do you keep all eight men in investigative custody?",
+  "notes": "Place and period are removed. The source says at least one is innocent yet describes many others as “probably all” guilty; that unresolved wording is retained without silently assigning guilt. The age and eight-person group remain possible recognition cues."
+}

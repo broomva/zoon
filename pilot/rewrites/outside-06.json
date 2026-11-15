@@ -1,0 +1,31 @@
+{
+  "id": "Euthanasia (in Ghetto)",
+  "set": "outside",
+  "source": {
+    "authors": "Körner and Deutsch",
+    "title": "Deontology and Utilitarianism in Real Life: A Set of Moral Dilemmas Based on Historic Events",
+    "url": "https://doi.org/10.1177/01461672221103058",
+    "materials_url": "https://osf.io/download/ephu6/",
+    "locator": "English Versions, 6) Euthanasia (Ghetto)",
+    "license": "CC BY 4.0",
+    "license_url": "https://creativecommons.org/licenses/by/4.0/",
+    "changes": "De-identified and reworded; question in yes/no form."
+  },
+  "suggested_action": "give the children and infants a lethal morphine dose",
+  "kept": [
+    "You are the ward’s physician and would personally administer the lethal morphine to infants and children before bedtime.",
+    "The hospital is in a ghetto under occupation; all patients are being deported.",
+    "You feel sure the children will be killed because they cannot do hard labour; their suffering is described as probable.",
+    "The alternative is to leave them at the occupiers’ mercy; no escape or recovery is added.",
+    "Those killed are the same children whose probable suffering is prevented; no personal benefit is stated.",
+    "The suggested action is to administer morphine, understood in context as a lethal dose."
+  ],
+  "removed": [
+    "1942",
+    "Jewish",
+    "Warsaw",
+    "Nazis"
+  ],
+  "rewrite": "You are a doctor responsible for the infants’ and children’s ward in a hospital inside an ethnic ghetto under military occupation. The occupying forces begin emptying the hospital and deporting its patients. You feel sure that every child in your ward will be deported and eventually killed because the children cannot perform hard labour. You consider giving them a fatal dose of morphine before bedtime to spare them deportation. Killing the children with morphine would prevent their probable suffering. If you do not kill them, you leave them at the mercy of the occupying forces. Do you give morphine to the children and infants?",
+  "notes": "The named ghetto, ethnicity, year and occupying regime become a generic occupied ethnic ghetto. Deportation and forced-labour exclusion remain, but removing the specific persecutors and persecuted group loses historical context that could affect judgment."
+}

@@ -1,0 +1,32 @@
+{
+  "id": "911",
+  "set": "outside",
+  "source": {
+    "authors": "Körner and Deutsch",
+    "title": "Deontology and Utilitarianism in Real Life: A Set of Moral Dilemmas Based on Historic Events",
+    "url": "https://doi.org/10.1177/01461672221103058",
+    "materials_url": "https://osf.io/download/ephu6/",
+    "locator": "English Versions, 8) 911",
+    "license": "CC BY 4.0",
+    "license_url": "https://creativecommons.org/licenses/by/4.0/",
+    "changes": "De-identified and reworded; question in yes/no form."
+  },
+  "suggested_action": "resist the hijackers",
+  "kept": [
+    "You are a passenger, not a pilot; four terrorists claim to have a bomb.",
+    "Phone calls reveal two other hijacked planes struck a building complex; you infer, rather than know, a similar plan for your aircraft.",
+    "Non-resistance might lead to a crash into a building that kills all passengers and many others.",
+    "Resistance probably prompts killings or detonation, but could divert the fatal crash to an uninhabited area and spare people on the ground.",
+    "You intervene directly but the exact resistance method is unspecified; you die along with the other passengers in the stated crash alternatives, with no personal survival gain.",
+    "The suggested action is to resist the terrorists."
+  ],
+  "removed": [
+    "911",
+    "New Jersey",
+    "San Francisco",
+    "New York",
+    "World Trade Center"
+  ],
+  "rewrite": "You are a passenger on a domestic flight when four terrorists seize the aircraft and say they have a bomb. Some passengers phone relatives or friends and learn that two other aircraft were hijacked and flown into a major building complex in another city. You think your plane’s hijackers also intend to crash into a building. If you do not resist, they might hit another building, killing everyone aboard and many additional people. If you resist, they will probably start killing passengers or set off their bomb. You could, however, cause the aircraft to crash in an uninhabited area. Everyone aboard would still die, but the additional people would be spared. Do you resist the terrorists?",
+  "notes": "Routes, cities and the named building are generic. The four hijackers, two prior aircraft and passenger resistance are retained because they establish evidence, agency and risk; this structure is especially likely to identify the event."
+}

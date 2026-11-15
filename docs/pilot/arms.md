@@ -93,6 +93,8 @@ against the task's text for what must be kept and what must go, read by the main
 committed before any call to the judge. The same is done for the 25 outside dilemmas used to
 check the judge, because recall would inflate that check too.
 
+The [draft rewrites and their validation](rewrites.md) are awaiting these checks and reading.
+
 This changes what is read. Participants read the realistic versions, and the original study
 found that how realistic a dilemma seemed went with how people judged it. Whether a judge
 predicts better or worse from a rewrite than from what participants read is not known.

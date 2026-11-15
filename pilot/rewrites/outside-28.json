@@ -1,0 +1,27 @@
+{
+  "id": "Organ Market",
+  "set": "outside",
+  "source": {
+    "authors": "Körner and Deutsch",
+    "title": "Deontology and Utilitarianism in Real Life: A Set of Moral Dilemmas Based on Historic Events",
+    "url": "https://doi.org/10.1177/01461672221103058",
+    "materials_url": "https://osf.io/download/ephu6/",
+    "locator": "English Versions, 28) Organ market",
+    "license": "CC BY 4.0",
+    "license_url": "https://creativecommons.org/licenses/by/4.0/",
+    "changes": "De-identified and reworded; question in yes/no form."
+  },
+  "suggested_action": "buy a kidney on the black market",
+  "kept": [
+    "You are the patient, after four years of dialysis; no family match exists and a minor heart attack makes an official transplant virtually impossible.",
+    "People from poor countries sell to wealthy buyers through an organised but illegal market that exploits poverty.",
+    "Medical risks are low; donors can live with one kidney but have restrictions and more fragile health.",
+    "Without buying you die in a few years; with buying both you and donor probably live well for decades.",
+    "You personally gain survival by purchasing; clinicians perform removal, and the donor bears health costs rather than being the recipient.",
+    "The suggested action is to buy a black-market kidney."
+  ],
+  "removed": [
+    "Israel"
+  ],
+  "rewrite": "You have been dependent on dialysis for the past four years because your kidneys have failed. You cannot receive a kidney from anyone in your family because none of them is a suitable organ donor. Many patients die on the official waiting list before receiving one. A minor heart attack has moved you still farther down that list, making a transplant through it virtually impossible. You consider the black market, where poor people in poorer countries sell kidneys to wealthy buyers. Medical risks are low. A donor can live with one kidney but will face medical limitations and more fragile health. This well-organised market is illegal because it pressures people in poverty to endanger their health. If you do not buy a kidney, you will die in a few years. If you buy one, you and the donor will probably both live well for decades. You would, however, be exploiting the donor’s poverty. Do you buy a kidney from the black market?"
+}

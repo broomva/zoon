@@ -1,0 +1,30 @@
+{
+  "id": "Stillbirths",
+  "set": "outside",
+  "source": {
+    "authors": "Körner and Deutsch",
+    "title": "Deontology and Utilitarianism in Real Life: A Set of Moral Dilemmas Based on Historic Events",
+    "url": "https://doi.org/10.1177/01461672221103058",
+    "materials_url": "https://osf.io/download/ephu6/",
+    "locator": "English Versions, 11) Still births",
+    "license": "CC BY 4.0",
+    "license_url": "https://creativecommons.org/licenses/by/4.0/",
+    "changes": "De-identified and reworded; question in yes/no form."
+  },
+  "suggested_action": "poison the babies before birth",
+  "kept": [
+    "You and four fellow inmates are nurses in a concentration camp’s women’s ward, helping pregnant prisoners.",
+    "Guards are ordered to kill mother and liveborn baby; after stillbirth mothers are usually not killed.",
+    "You would directly inject poison into babies shortly before birth; this most likely saves the mothers.",
+    "Live delivery leads to both deaths at guards’ hands; the babies otherwise die as well, and the mothers are the saved people.",
+    "You remain a prisoner exposed to the setting, without a stated individual benefit from the decision.",
+    "The suggested action is to poison the babies."
+  ],
+  "removed": [
+    "1944",
+    "Auschwitz-Birkenau",
+    "SS"
+  ],
+  "rewrite": "You and four other prisoners work as nurses caring for patients in the women’s hospital ward of a concentration camp. You help pregnant prisoners give birth. The guards have orders to kill both mother and baby whenever a baby is born alive. Mothers whose babies are stillborn are usually spared. You therefore consider injecting the babies with poison just before birth, killing them to save their mothers. If you kill the babies before birth, their mothers will most likely survive. If you deliver the babies alive, the guards will kill both the babies and their mothers. Do you poison the babies?",
+  "notes": "The named camp, year and guards’ organisation are removed. Concentration-camp imprisonment and the guards’ orders remain essential to the constrained choice, but can still cue the historical persecution."
+}

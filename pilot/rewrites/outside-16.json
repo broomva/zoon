@@ -1,0 +1,32 @@
+{
+  "id": "Atom Bomb",
+  "set": "outside",
+  "source": {
+    "authors": "Körner and Deutsch",
+    "title": "Deontology and Utilitarianism in Real Life: A Set of Moral Dilemmas Based on Historic Events",
+    "url": "https://doi.org/10.1177/01461672221103058",
+    "materials_url": "https://osf.io/download/ephu6/",
+    "locator": "English Versions, 16) Atom bomb",
+    "license": "CC BY 4.0",
+    "license_url": "https://creativecommons.org/licenses/by/4.0/",
+    "changes": "De-identified and reworded; question in yes/no form."
+  },
+  "suggested_action": "initiate construction of an atomic bomb",
+  "kept": [
+    "You are a nuclear physicist who has lived in the country for some years, offering technical help and asking its president to order construction.",
+    "The enemy project is rumoured; deterrence is your assumption, and preventing use is a possibility.",
+    "The proposed weapon is an atomic bomb, characterised as the deadliest weapon of mass destruction in history.",
+    "You help initiate and develop a weapon, rather than directly use it; no specific casualty count or personal survival benefit is asserted.",
+    "The identities and overlap of future victims and beneficiaries are not specified.",
+    "The suggested action is to initiate construction of the atomic bomb."
+  ],
+  "removed": [
+    "USA",
+    "1939",
+    "Nazi",
+    "Germany",
+    "America"
+  ],
+  "rewrite": "You are a physicist studying nuclear energy and have lived in your current country for several years. Rumours suggest that a hostile dictatorship is building the first atomic bomb. You assume that regime would not dare use its bomb if it knew your country of residence also had atomic bombs. You consider asking that country’s president to order construction of such a weapon and promising to help develop it. By initiating the bomb’s construction, you could deter the hostile regime from using its own. You would also be helping construct the deadliest weapon of mass destruction in history. Do you initiate construction of the atomic bomb?",
+  "notes": "The named regimes, countries and year become a hostile dictatorship and a country of residence. The resident physicist, first-bomb rumour and deterrence argument remain because they define the choice, but strongly suggest the historical case."
+}

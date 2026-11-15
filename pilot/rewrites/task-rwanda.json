@@ -1,0 +1,32 @@
+{
+  "id": "Rwanda",
+  "set": "task",
+  "source": {
+    "authors": "Maier, Cheung and Lieder",
+    "title": "dilemmas and outcomes.pdf",
+    "url": "https://osf.io/download/sgf5y/",
+    "materials_url": "https://osf.io/4up5z/",
+    "locator": "Rwanda",
+    "license": "CC BY 4.0",
+    "license_url": "https://creativecommons.org/licenses/by/4.0/",
+    "changes": "De-identified and reworded; question in yes/no form."
+  },
+  "suggested_action": "protect the employee from the armed crowd",
+  "kept": [
+    "You lead an aid project; employees and one employee’s family are under your care.",
+    "Nationwide ethnic attacks are ongoing; an arriving employee reports the killing of his whole family and another employee for their ethnicity.",
+    "The armed crowd demands this arriving employee and threatens all members of the targeted ethnicity inside, as in the task version.",
+    "Protection probably leads to an attack and many deaths; handing him over means his death and safety for the others.",
+    "You protect or hand over; the crowd does the killing. The employee is among those threatened in the building; your own ethnicity and exposure are not specified.",
+    "The suggested action is to protect the employee."
+  ],
+  "removed": [
+    "Rwanda",
+    "Hutu",
+    "Tutsi"
+  ],
+  "rewrite": "You lead a development aid project in a country where members of one ethnic group are attacking another ethnic group throughout the country. The family of an employee from the targeted group is hiding at your agency’s centre. Another employee arrives, reporting that he has just seen an armed group kill his whole family and another of your employees solely because they belong to the targeted group. Soon an armed crowd gathers outside. Its leader threatens to attack the building and kill everyone of the targeted ethnicity inside unless you hand over the employee who has just arrived. If you protect him, the crowd will probably attack the centre and kill many people. If you allow the crowd to take him, he will be killed, but the other people under your care will be safe. Do you protect your employee?",
+  "reversed_suggested_action": "hand the employee over to the armed crowd",
+  "reversed": "You lead a development aid project in a country where members of one ethnic group are attacking another ethnic group throughout the country. The family of an employee from the targeted group is hiding at your agency’s centre. Another employee arrives, reporting that he has just seen an armed group kill his whole family and another of your employees solely because they belong to the targeted group. Soon an armed crowd gathers outside. Its leader threatens to attack the building and kill everyone of the targeted ethnicity inside unless you hand over the employee who has just arrived. If you protect him, the crowd will probably attack the centre and kill many people. If you allow the crowd to take him, he will be killed, but the other people under your care will be safe. Do you hand over your employee?",
+  "notes": "Named ethnic groups become an attacking group and a targeted group. Their historical relationship is lost. The task threatens only the targeted ethnicity inside, not everyone inside; the rewrite does not infer your ethnicity or change that narrower threat."
+}
