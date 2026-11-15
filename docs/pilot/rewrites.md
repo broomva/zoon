@@ -42,6 +42,35 @@ are fixed and committed for judge calls. The mechanical checks below do not repl
 steps. In particular, they do not determine semantic equivalence, whether two questions
 are true opposites, or whether an omitted cue matters morally.
 
+## What an independent check found
+
+A checker other than the drafter compared every one of the 38 rewrites and all 17 reversed
+versions with its English source. It found one change of the decider’s role and six smaller
+differences, all corrected here. It also judged that many rewrites would still be
+recognisable to a well-read reader. The rewrites reduce the cues that name a case and do
+not make the cases unrecognisable. The retained details that give cases away include:
+
+- `outside-01`: joined girls, one sustaining the other, with separation killing the weaker baby.
+- `outside-03`: four stranded crew and killing the incapacitated youngest member for food.
+- `outside-04`: false strike reports redirecting weapons toward poorer, less populated areas.
+- `outside-06`: a doctor poisoning children in an occupied ghetto before deportation.
+- `outside-07`: a doctor testing immunity by successive infections in an employee’s child.
+- `outside-08`: hijacked aircraft, prior crashes into buildings and passenger resistance.
+- `outside-11`: a camp nurse poisoning newborns so their mothers may survive.
+- `outside-14`: seven fetuses, three abortions and four remaining fetuses.
+- `outside-16`: an energy physicist asking a president to build a deterrent before a dictatorship does.
+- `outside-19`: 150,000 rescued, 3,000 dead and traffickers relying on rescue at sea.
+- `outside-23`: threats of torture to find a kidnapped child feared to be dying of thirst.
+- `outside-25`: a team stranded after a crash, an abandoned search and eating dead teammates.
+- `outside-30`: growth suppression and removal of uterus and breast tissue to ease lifelong care.
+- `outside-31`: selecting a sibling embryo to supply umbilical-cord stem cells.
+- `outside-33`: religious leaders’ silence to protect co-religionists of persecuted heritage.
+- `outside-34`: indigenous removal despite constitutional rights and a favourable court ruling.
+- `outside-36`: a right-wing demonstration against Islamist extremism and prior attacks on immigrants and police.
+- `task-endow`: a child murderer’s proposed foundation bearing his name over the victim family’s objection.
+- `task-raf`: one public-figure hostage, 11 demanded prisoners, five earlier releases and four repeat attackers.
+- `task-ransom`: ten kidnapped citizens, a woman already dead and ransom financing future terrorism.
+
 ## Rules applied
 
 Keep the moral choice the same. Preserve who does what to whom, numbers of people on each
@@ -63,6 +92,10 @@ people on the competing sides cannot change. People counts used as evidence abou
 killing remain in RAF as well. Where a detail is morally necessary, retain it and explain
 why below, even if it makes the case recognisable.
 
+A label that carries a rule or moral weight in the dilemma is kept unless the label itself
+names the case. This keeps the terrorist wording in the two hostage dilemmas and the
+right-wing and Islamist wording in the demonstration dilemma.
+
 Exact sums that only indicate scale become a substantial or large sum, while the stated
 consequence of spending or losing that money stays. If a sum’s size itself sets a choice,
 it must stay, rounded without changing the comparison. Here, the sources already state the
@@ -77,8 +110,8 @@ fact. Counts use whitespace-separated words, including the final question.
 
 Use the task’s adapted version for its 13 dilemmas, including its role changes, additional
 consequences and Endow’s approval question. [The mapping](lean.md#the-mapping) explains those
-adaptations. Operations now consistently describes **a type of operation**: both the lung
-references and the inherited single “knee surgeries” slip become the same general operation.
+adaptations. Operations now consistently describes **a type of major operation**: both the lung
+references and the inherited single “knee surgeries” slip become the same general major operation.
 The 50/48 annual reimbursement rule, two unnecessary operations, two patients and deaths
 sooner or later remain. No surgical complication or risk absent from the vignette is added.
 
@@ -154,7 +187,7 @@ count list entries, rather than all distinct facts.
 
 | ID | Set | Source words | Rewrite words | Reversed words | Kept | Removed | Generalised |
 |---|---|---:|---:|---:|---:|---:|---:|
-| Conjoined Twins | outside | 167 | 124 | — | 6 | 1 | 2 |
+| Conjoined Twins | outside | 167 | 128 | — | 6 | 1 | 2 |
 | Cannibalism on Lifeboat | outside | 168 | 131 | — | 6 | 3 | 2 |
 | Doodlebugs | outside | 173 | 140 | — | 6 | 4 | 4 |
 | Plague Spread | outside | 160 | 124 | — | 6 | 3 | 1 |
@@ -165,7 +198,7 @@ count list entries, rather than all distinct facts.
 | Organ Law | outside | 227 | 177 | 177 | 6 | 2 | 2 |
 | Stillbirths | outside | 133 | 102 | — | 6 | 3 | 1 |
 | Septuplets | outside | 141 | 108 | — | 6 | 2 | 0 |
-| Atom Bomb | outside | 132 | 112 | — | 6 | 5 | 2 |
+| Atom Bomb | outside | 132 | 113 | — | 6 | 5 | 2 |
 | Mare Nostrum | outside | 206 | 169 | 169 | 6 | 5 | 2 |
 | Aid for Syria | outside | 174 | 136 | 138 | 6 | 3 | 1 |
 | Rescue Torture | outside | 132 | 113 | — | 6 | 1 | 1 |
@@ -177,15 +210,15 @@ count list entries, rather than all distinct facts.
 | Lion Hunt | outside | 173 | 145 | — | 6 | 1 | 2 |
 | Bishops | outside | 152 | 120 | 121 | 6 | 8 | 1 |
 | Trail of Tears | outside | 163 | 127 | 127 | 6 | 8 | 1 |
-| Hogesa (Hooligan Demo) | outside | 91 | 71 | 71 | 6 | 3 | 2 |
+| Hogesa (Hooligan Demo) | outside | 91 | 71 | 71 | 6 | 2 | 1 |
 | Mass Rape | outside | 160 | 124 | 127 | 6 | 2 | 2 |
 | Endow | task | 120 | 102 | 102 | 6 | 1 | 1 |
 | Ladder | task | 199 | 161 | — | 6 | 4 | 1 |
 | Lifeboat | task | 227 | 170 | — | 6 | 1 | 1 |
 | Medicine | task | 163 | 129 | 131 | 6 | 1 | 3 |
-| Operations | task | 206 | 173 | — | 6 | 1 | 2 |
-| RAF | task | 113 | 98 | 100 | 6 | 3 | 4 |
-| Ransom | task | 139 | 114 | 116 | 6 | 2 | 5 |
+| Operations | task | 206 | 174 | — | 6 | 1 | 2 |
+| RAF | task | 113 | 104 | 106 | 6 | 3 | 2 |
+| Ransom | task | 139 | 114 | 116 | 6 | 2 | 3 |
 | RobinHood | task | 173 | 137 | — | 6 | 2 | 0 |
 | Rwanda | task | 148 | 139 | 140 | 6 | 3 | 1 |
 | Suicide | task | 171 | 141 | 137 | 6 | 2 | 3 |
@@ -217,23 +250,19 @@ The phrases on the left are short source details, not excerpts of complete vigne
 
 ### Operations
 
-- `lung surgeries` → `a type of operation` — the organ treated does not set unnecessary surgery versus access to emergency care.
+- `lung surgeries` → `a type of major operation` — the organ treated does not set unnecessary surgery versus access to emergency care.
 - `knee surgeries` → `operations of this type` — this inconsistent organ reference concerns the same reimbursement threshold.
 
 ### RAF
 
-- `far-left terrorist group` → `armed group` — political colour and label do not change hostage-taking or lethal attacks.
+- `far-left terrorist group` → `terrorist group` — political colour is incidental; the terrorist label carries the rule against giving in to terrorists.
 - `President of the Federation of the German Employers’ Association` → `prominent public figure` — the exact office does not change the hostage’s life at stake.
-- `former terrorists` → `imprisoned members` — the same prisoners are released without an additional political label.
-- `terrorist attacks` → `attacks` — future lethal conduct remains explicit without the group label.
 
 ### Ransom
 
 - `Sahara Desert` → `location omitted` — the terrain does not change the failed rescue or lethal threat.
-- `group of terrorists` → `an armed group` — kidnapping, weapons and future killing retain the conduct at stake.
 - `half a year` → `months` — prolonged failed rescue and the one prior death remain.
 - `several million euros` → `a large ransom` — the stated weapons funding and likely future deaths define the cost.
-- `future terrorism` → `future attacks` — weapons funding and subsequent killing remain the consequence.
 
 ### RobinHood
 
@@ -291,15 +320,15 @@ how a dilemma is judged; the concerns below are unresolved without human review 
 - **Lion Hunt**: Deliberately retained: killing threatened animals and selling their furs, insufficient alternatives and sufficient proceeds to protect the remaining population; these define animal harm, overlap and the conservation benefit. Generalising the species may change judgments linked to attachment to lions.
 - **Bishops**: Deliberately retained: co-religionists of the persecuted heritage, the silent agreement and the moral duty to speak; these determine group overlap and the risk imposed by fulfilling that duty. The broader religious office may change perceived responsibility.
 - **Trail of Tears**: Deliberately retained: indigenous identity, traditional territory, constitutional rights, favourable court ruling and an unwinnable war if resistance continues; these set the violated rights, belonging and certain versus uncertain harms.
-- **Hogesa (Hooligan Demo)**: Deliberately retained: opposition to religious extremism, repeated attacks on immigrants and police, and inalienable speech and assembly rights; these set the aim, threatened victims and rights conflict. Removing political affiliation may change perceptions of the group despite retaining its conduct.
+- **Hogesa (Hooligan Demo)**: Deliberately retained: the right-wing group’s opposition to Islamist extremism, repeated attacks on immigrants and police, and inalienable speech and assembly rights; these set the aim, threatened victims and rights conflict. The right-wing and Islamist labels are kept because they carry moral weight in weighing the group’s speech and its record of violence; neither label names the case.
 - **Mass Rape**: Deliberately retained: eight men, at least one innocent, many others “probably all” guilty, unusable evidence and silence; these determine wrongful custody versus releasing rapists. The source’s unresolved guilt wording is retained. Broader age wording may change perceived vulnerability.
 - **Endow**: Deliberately retained: the offender-named foundation, child kidnapping and murder, unclear remorse versus reputation repair, and the victim family’s objection; these set disrespect of the victim versus help to other victims. The task’s approval question remains. Broad donation wording may change perceived benefit size.
 - **Ladder**: Deliberately retained: your position already on deck, the unresponsive blocking man, fear or cold, jostling and probable death from your direct push; these determine agency, absent self-rescue benefit and the alternative drownings.
 - **Lifeboat**: Deliberately retained: 41 occupants, roughly ten adults to sacrifice, freezing death, the full second boat and your command role there; these fix group sizes, certainty of harm, lack of self-benefit and indirect agency. Most likely sinking within days and a good chance of rescue remain.
 - **Medicine**: Deliberately retained: regular dosing, certain death without medicine, probably death within a few years, reduced care elsewhere and the independent estimate of likely more deaths; these define the one-versus-more resource choice. Broader cost, age and disease wording may change perceived urgency or benefit size.
-- **Operations**: Deliberately retained: annual 50/48 reimbursement threshold, two patients, rural emergency access, possible non-reimbursement and deaths sooner or later; these define the institutional constraint, bodily harm and downstream deaths. The inherited “knee surgeries” slip amid lung surgery is corrected to one general type of operation throughout. Broad operation wording may change perceived surgical severity; no particular complication or risk was stated.
-- **RAF**: Deliberately retained: one hostage, 11 demanded prisoners, five previously released and four subsequent attackers; the first two set the exchange and the latter two quantify the evidence for future killing. Several innocent victims and likely future attacks remain. No moral inference depends on the terrorist label. Broader hostage status may change judgments about public responsibility.
-- **Ransom**: Deliberately retained: ten hostages, one prior death, probably more than ten future lives saved by refusal, weapons purchases and increased future kidnapping; these define the people at stake and causal trade-off. The source’s ten-hostage/one-prior-death ambiguity is retained. No moral inference depends on the terrorist label. Broader ransom size and duration may change perceived urgency or cost.
+- **Operations**: Deliberately retained: annual 50/48 reimbursement threshold, two patients, rural emergency access, possible non-reimbursement and deaths sooner or later; these define the institutional constraint, bodily harm and downstream deaths. The inherited “knee surgeries” slip amid lung surgery is corrected to one general type of major operation throughout. The operations remain major; no particular complication or risk was stated.
+- **RAF**: Deliberately retained: one hostage, 11 demanded prisoners, five previously released and four subsequent attackers; the first two set the exchange and the latter two quantify the evidence for future killing. Several innocent victims and likely future terrorist attacks remain. The terrorist label is kept because it carries the rule against giving in to terrorists at stake. Broader hostage status may change judgments about public responsibility.
+- **Ransom**: Deliberately retained: ten hostages, one prior death, probably more than ten future lives saved by refusal, weapons purchases and increased future kidnapping; these define the people at stake and causal trade-off. The source’s ten-hostage/one-prior-death ambiguity is retained. The terrorist label is kept because it carries the rule against giving in to terrorists at stake. Broader ransom size and duration may change perceived urgency or cost.
 - **RobinHood**: No further generalisation: the bank role, temporary undetectable transfer, credit rating, wealthy depositors, indebted families and betrayed trust define the fraud and its beneficiaries; no incidental identifying detail remains. The paper codes opposite framing “No”, so no reversal is included despite the task’s different code.
 - **Rwanda**: Deliberately retained: ethnic persecution, one demanded employee, the family and employees under your care, and the threat specifically to the targeted ethnicity inside; these determine responsibility, group overlap and risk. Protection probably causes an attack; handover means his death and the others’ safety. Your ethnicity remains unspecified. The aid setting remains because it explains the duty of care.
 - **Suicide**: Deliberately retained: six-month eligibility, terminal illness, voluntary choice and a doctor’s fatal overdose; these define eligibility, consent and agency. Many others’ improved treatment remains the benefit. Broader medication and savings wording may change perceived medical realism or benefit size.

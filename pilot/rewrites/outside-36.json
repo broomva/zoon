@@ -13,7 +13,7 @@
   },
   "suggested_action": "allow the demonstration",
   "kept": [
-    "You decide as a judge about a political group’s proposed demonstration against religious extremism.",
+    "You decide as a judge about a right-wing group’s proposed demonstration against Islamist extremism.",
     "Freedom of speech and assembly are stated to be inalienable basic rights.",
     "The same group’s prior demonstrations repeatedly involved violence against immigrants and police.",
     "A ban denies those rights; permission risks harm rather than guaranteeing violence.",
@@ -22,23 +22,17 @@
   ],
   "removed": [
     "Germany",
-    "Islamist",
     "Hogesa"
   ],
-  "rewrite": "You are a judge working at a court. A political group wants to organise a public demonstration against religious extremism. Free speech and freedom of assembly are inalienable basic rights. Yet the group’s earlier demonstrations have repeatedly involved violent attacks on immigrants and police. Prohibiting the demonstration would deny the group’s rights to assembly and speech. Allowing it carries a risk that people will be harmed. Do you allow the demonstration?",
+  "rewrite": "You are a judge working at a court. A right-wing group wants to organise a public demonstration against Islamist extremism. Free speech and freedom of assembly are inalienable basic rights. Yet the group’s earlier demonstrations have repeatedly involved violent attacks on immigrants and police. Prohibiting the demonstration would deny the group’s rights to assembly and speech. Allowing it carries a risk that people will be harmed. Do you allow the demonstration?",
   "reversed_suggested_action": "prohibit the demonstration",
-  "reversed": "You are a judge working at a court. A political group wants to organise a public demonstration against religious extremism. Free speech and freedom of assembly are inalienable basic rights. Yet the group’s earlier demonstrations have repeatedly involved violent attacks on immigrants and police. Prohibiting the demonstration would deny the group’s rights to assembly and speech. Allowing it carries a risk that people will be harmed. Do you prohibit the demonstration?",
-  "notes": "Deliberately retained: opposition to religious extremism, repeated attacks on immigrants and police, and inalienable speech and assembly rights; these set the aim, threatened victims and rights conflict. Removing political affiliation may change perceptions of the group despite retaining its conduct.",
+  "reversed": "You are a judge working at a court. A right-wing group wants to organise a public demonstration against Islamist extremism. Free speech and freedom of assembly are inalienable basic rights. Yet the group’s earlier demonstrations have repeatedly involved violent attacks on immigrants and police. Prohibiting the demonstration would deny the group’s rights to assembly and speech. Allowing it carries a risk that people will be harmed. Do you prohibit the demonstration?",
+  "notes": "Deliberately retained: the right-wing group’s opposition to Islamist extremism, repeated attacks on immigrants and police, and inalienable speech and assembly rights; these set the aim, threatened victims and rights conflict. The right-wing and Islamist labels are kept because they carry moral weight in weighing the group’s speech and its record of violence; neither label names the case.",
   "generalised": [
     {
       "from": "administrative court",
       "to": "court",
       "why": "judicial authority to permit assembly remains"
-    },
-    {
-      "from": "right-wing group",
-      "to": "political group",
-      "why": "the rights claim and history of attacks remain explicit"
     }
   ]
 }

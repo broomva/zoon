@@ -452,7 +452,7 @@ def test_operation_type_is_consistent() -> None:
     record = one(rewrites.load(), "Operations")
     text = str(record["rewrite"]).casefold()
     assert "lung" not in text and "knee" not in text
-    assert "a type of operation" in text
+    assert "a type of major operation" in text
     assert "knee surgeries" in str(record["generalised"])
     assert "slip" in str(record["notes"])
 

@@ -11,9 +11,9 @@
     "license_url": "https://creativecommons.org/licenses/by/4.0/",
     "changes": "De-identified and reworded; incidental details generalised; question in yes/no form."
   },
-  "suggested_action": "initiate construction of an weapon of mass destruction",
+  "suggested_action": "initiate construction of a weapon of mass destruction",
   "kept": [
-    "You are a weapons researcher who has lived in the country for some years, offering technical help and asking its president to order construction.",
+    "You are a physicist researching energy who has lived in the country for some years, offering technical help and asking its president to order construction.",
     "The enemy project is rumoured; deterrence is your assumption, and preventing use is a possibility.",
     "The proposed weapon is characterised as the deadliest weapon of mass destruction in history.",
     "You help initiate and develop a weapon, rather than directly use it; no specific casualty count or personal survival benefit is asserted.",
@@ -27,13 +27,13 @@
     "Germany",
     "America"
   ],
-  "rewrite": "You are a weapons researcher and have lived in your current country for several years. Rumours suggest that a hostile dictatorship is building the first example of a new weapon of mass destruction. You assume that regime would not dare use its weapon if it knew your country of residence also had such weapons. You consider asking that country’s president to order construction of such a weapon and promising to help develop it. By initiating the weapon’s construction, you could deter the hostile regime from using its own. You would also be helping construct the deadliest weapon of mass destruction in history. Do you initiate construction of the weapon of mass destruction?",
+  "rewrite": "You are a physicist researching energy and have lived in your current country for several years. Rumours suggest that a hostile dictatorship is building the first example of a new weapon of mass destruction. You assume that regime would not dare use its weapon if it knew your country of residence also had such weapons. You consider asking that country’s president to order construction of such a weapon and promising to help develop it. By initiating the weapon’s construction, you could deter the hostile regime from using its own. You would also be helping construct the deadliest weapon of mass destruction in history. Do you initiate construction of the weapon of mass destruction?",
   "notes": "Deliberately retained: rumoured first development, the researcher’s contribution, assumed deterrence and the deadliest weapon of mass destruction in history; these set agency, uncertainty and severity. Removing the nuclear mechanism may change perceived plausibility of deterrence.",
   "generalised": [
     {
       "from": "physicist researching nuclear energy",
-      "to": "weapons researcher",
-      "why": "technical expertise and contribution to weapon development remain"
+      "to": "physicist researching energy",
+      "why": "the nuclear specialism is generalised while the physicist’s energy-research role remains"
     },
     {
       "from": "atomic bomb",
