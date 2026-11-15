@@ -26,6 +26,8 @@ PERSONAL_COLUMNS = (
     "RecipientEmail.x",
     "RecipientLastName",
     "ExternalReference.y",
+    "ResponseId.x",
+    "strategy_open",
 )
 
 

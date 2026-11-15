@@ -57,7 +57,7 @@ CONDITIONS: tuple[str, str] = ("cbr_success", "rule_success")
 
 FORBIDDEN_COLUMN = re.compile(
     r"prolific|ipaddress|location|recipient|externalreference|participant\.id|submission\.id"
-    r"|email|name|age|sex|ethnic|country|national|language|open_",
+    r"|email|name|age|sex|ethnic|country|national|language|open_|_open|responseid",
     re.IGNORECASE,
 )
 

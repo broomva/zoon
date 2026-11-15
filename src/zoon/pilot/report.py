@@ -42,6 +42,8 @@ def _fitted(scope: str, data: Sequences) -> None:
         label = f"[{scope}] learning, {variant}"
         print(f"{label} | fitted learning rate = {fit.learning_rate:.4f}")
         print(f"{label} | fitted temperature = {fit.temperature:.4f}")
+        product = fit.learning_rate * fit.temperature
+        print(f"{label} | fitted learning rate x temperature = {product:.4f}")
         print(f"{label} | in-sample gain over constant = {gain:+.5f} nats/choice")
 
 

@@ -80,20 +80,27 @@ def test_fit_is_at_least_as_good_as_a_grid_search() -> None:
     assert total(fit.learning_rate, fit.temperature) >= grid - 1e-6
 
 
-def test_unseen_dilemma_takes_the_mean_intercept() -> None:
-    """A dilemma with no fitting target gets the mean of the fitted intercepts, for both
-    models, and the learning model still learns from that dilemma's feedback."""
-    lean = np.linspace(-1.0, 1.0, DILEMMAS)
+def test_unseen_dilemma_takes_the_pooled_share() -> None:
+    """A dilemma with no fitting target gets the share of choices over all fitting targets,
+    as a logit, and not the mean of the fitted logits, which overshoots when leans are
+    lopsided. The learning model adds the average shift of its fitted intercepts, and still
+    learns from that dilemma's feedback."""
+    lean = np.linspace(-0.5, 2.5, DILEMMAS)
     data = simulate(800, learning_rate=0.3, temperature=2.0, seed=4, intercept=lean)
     unseen = [2, 9]
     targets = ~np.isin(data.dilemma, unseen)
     seen = [d for d in range(DILEMMAS) if d not in unseen]
-    for fit in (
-        fit_constant(data, targets, DILEMMAS, dilemma_intercepts=True),
-        fit_learning(data, targets, DILEMMAS, dilemma_intercepts=True),
-    ):
-        assert fit.intercept[unseen] == pytest.approx(fit.intercept[seen].mean())
-        assert np.ptp(fit.intercept[seen]) > 1.0
+    share = float(data.choice[targets].mean())
+    pooled = np.log(share / (1 - share))
+
+    constant = fit_constant(data, targets, DILEMMAS, dilemma_intercepts=True)
+    assert constant.intercept[unseen] == pytest.approx(pooled)
+    assert np.ptp(constant.intercept[seen]) > 1.0
+    assert abs(constant.intercept[seen].mean() - pooled) > 0.05
+
+    learning = fit_learning(data, targets, DILEMMAS, dilemma_intercepts=True)
+    shift = float((learning.intercept[seen] - constant.intercept[seen]).mean())
+    assert learning.intercept[unseen] == pytest.approx(pooled + shift)
 
     fit = fit_learning(data, targets, DILEMMAS, dilemma_intercepts=True)
     forgotten = Sequences(data.choice, np.where(targets, data.feedback, 0.0), data.dilemma)

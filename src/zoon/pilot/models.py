@@ -29,7 +29,8 @@ with different parts fixed:
     learning                      intercept = 0; lr and tau fitted
     learning, dilemma intercepts  one intercept per dilemma; lr and tau fitted
 
-A dilemma with no trial among the fitting targets takes the mean of the fitted intercepts.
+A dilemma with no trial among the fitting targets takes the share of choices over all
+fitting targets, as a logit; the learning model adds the average shift of its fitted intercepts.
 
 Differences from the paper. The authors fit each participant separately, with priors, and
 compare models by marginal likelihood. Here each model has one set of parameters shared by
@@ -126,8 +127,11 @@ def _base_rate_logits(data: Sequences, targets: Bools, dilemmas: int, shared: bo
     if shared:
         return np.full(dilemmas, rate(targets))
     seen = [bool((targets & (data.dilemma == d)).any()) for d in range(dilemmas)]
-    fitted = [rate(targets & (data.dilemma == d)) if seen[d] else np.nan for d in range(dilemmas)]
-    return np.where(seen, fitted, np.nanmean(fitted))
+    # An unseen dilemma takes the share over all fitting targets. Averaging the fitted logits
+    # instead would overshoot, because the logit of a mean is not the mean of the logits.
+    pooled = rate(targets)
+    fitted = [rate(targets & (data.dilemma == d)) if seen[d] else pooled for d in range(dilemmas)]
+    return np.array(fitted)
 
 
 def fit_constant(
@@ -150,11 +154,18 @@ def fit_learning(
     free = np.flatnonzero(seen) if dilemma_intercepts else np.array([], dtype=np.int64)
     sign = np.where(data.choice == 1, 1.0, -1.0)
 
+    constant_intercepts = _base_rate_logits(data, targets, dilemmas, shared=False)
+    start_intercepts = constant_intercepts[free]
+    count = int(targets.sum())
+
     def unpack(x: Floats) -> tuple[Floats, float, float]:
         intercept = np.zeros(dilemmas)
         if dilemma_intercepts:
             intercept[free] = x[2:]
-            intercept[~seen] = x[2:].mean()
+            # An unseen dilemma starts from the constant model's value for it and moves by the
+            # average amount that fitting moved the seen dilemmas.
+            shift = float((x[2:] - start_intercepts).mean()) if len(free) else 0.0
+            intercept[~seen] = constant_intercepts[~seen] + shift
         return intercept, float(x[0]), float(x[1])
 
     def loss(x: Floats) -> tuple[float, Floats]:
@@ -167,9 +178,9 @@ def fit_learning(
         gradient[1] = -(residual * gap).sum()
         for position, d in enumerate(free):
             gradient[2 + position] = -residual[data.dilemma == d].sum()
-        return -float(log_expit(sign * logits)[targets].sum()), gradient
+        # Per choice, so that the stopping tolerances mean the same thing at any sample size.
+        return -float(log_expit(sign * logits)[targets].sum()) / count, gradient / count
 
-    start_intercepts = _base_rate_logits(data, targets, dilemmas, shared=False)[free]
     starts = [
         np.concatenate([[learning_rate, temperature], start_intercepts])
         for learning_rate in (0.05, 0.2, 0.5, 0.9)
@@ -177,6 +188,13 @@ def fit_learning(
     ]
     start = min(starts, key=lambda x: loss(x)[0])
     bounds = [LEARNING_RATE_BOUNDS, TEMPERATURE_BOUNDS] + [(None, None)] * len(free)
-    best = minimize(loss, start, jac=True, method="L-BFGS-B", bounds=bounds)
+    best = minimize(
+        loss,
+        start,
+        jac=True,
+        method="L-BFGS-B",
+        bounds=bounds,
+        options={"ftol": 1e-12, "gtol": 1e-8, "maxiter": 2000},
+    )
     intercept, learning_rate, temperature = unpack(best.x)
     return Parameters(intercept, learning_rate, temperature)
