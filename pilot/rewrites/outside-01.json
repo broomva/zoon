@@ -9,12 +9,12 @@
     "locator": "English Versions, 1) Conjoined Twins",
     "license": "CC BY 4.0",
     "license_url": "https://creativecommons.org/licenses/by/4.0/",
-    "changes": "De-identified and reworded; question in yes/no form."
+    "changes": "De-identified and reworded; incidental details generalised; question in yes/no form."
   },
   "suggested_action": "have your twins separated",
   "kept": [
-    "You are the twins’ parent with your partner; the two girls share organs, including a bladder.",
-    "The weaker girl has impaired brain, heart and lung function; the stronger girl’s separate organs are normal and currently support both.",
+    "You are the twins’ parent with your partner; the two girls share organs.",
+    "The weaker girl’s vital organs function poorly; the stronger girl’s separate organs are normal and currently support both.",
     "Growth will make this double strain unsustainable after a few months.",
     "Without surgery doctors say both soon die; surgery kills the weaker girl and gives the stronger a very good survival chance and a possibly largely unimpaired life.",
     "Doctors perform the operation you authorise; the children, rather than you, receive the stated survival benefit, and the sacrificed child is among the two otherwise threatened.",
@@ -23,6 +23,18 @@
   "removed": [
     "Conjoined Twins"
   ],
-  "rewrite": "You and your partner became parents a few weeks ago to two girls joined at birth. They share several organs, including a single bladder. The weaker baby has limited brain and heart activity and little functioning lung tissue. All the stronger baby’s separate organs developed normally. Doctors explain that the stronger girl’s organs currently sustain the weaker one, but after a few months of growth they will no longer bear the strain of supporting both. They propose separating the girls and assigning the shared organs to the stronger baby. According to the doctors, both girls will soon die without surgery. With surgery, the weaker baby will die during the procedure. The stronger baby has a very good chance of surviving and might live a largely unimpaired life. Do you let your twins be separated?",
-  "notes": "The English vignette already omits names, places and dates; its case heading is withheld. The shared bladder and unequal organ function remain because they explain the dependency, although they may identify the case."
+  "rewrite": "You and your partner became parents a few weeks ago to two girls joined at birth. They share some organs. The weaker baby has poorly functioning vital organs. All the stronger baby’s separate organs developed normally. Doctors explain that the stronger girl’s organs currently sustain the weaker one, but after a few months of growth they will no longer bear the strain of supporting both. They propose separating the girls and assigning the shared organs to the stronger baby. According to the doctors, both girls will soon die without surgery. With surgery, the weaker baby will die during the procedure. The stronger baby has a very good chance of surviving and might live a largely unimpaired life. Do you let your twins be separated?",
+  "notes": "Deliberately retained: two joined girls, one sustaining the other, and the shared-organ allocation; these determine the one-versus-two survival choice and victim-beneficiary overlap. Anatomical generalisation may change perceived medical realism.",
+  "generalised": [
+    {
+      "from": "only one bladder between them",
+      "to": "some organs",
+      "why": "the particular shared organ does not change the dependency"
+    },
+    {
+      "from": "reduced brain and heart activity and very little functioning lung tissue",
+      "to": "poorly functioning vital organs",
+      "why": "the exact pattern of impairment does not change who sustains whom"
+    }
+  ]
 }

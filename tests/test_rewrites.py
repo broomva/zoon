@@ -5,6 +5,7 @@ These fixtures contain no source transcripts or participant data and need no net
 
 import copy
 import json
+import re
 from pathlib import Path
 from typing import cast
 
@@ -54,7 +55,7 @@ def test_committed_rewrites() -> None:
 
 
 @pytest.mark.parametrize(
-    "key", ["id", "set", "source", "suggested_action", "kept", "removed", "rewrite"]
+    "key", ["id", "set", "source", "suggested_action", "kept", "removed", "generalised", "rewrite"]
 )
 def test_missing_required_field(records: list[rewrites.Record], key: str) -> None:
     del records[0][key]
@@ -139,12 +140,12 @@ def test_length_bounds(records: list[rewrites.Record], field: str, long: bool) -
         check(records)
 
 
-@pytest.mark.parametrize("size,valid", [(74, False), (75, True), (125, True), (126, False)])
+@pytest.mark.parametrize("size,valid", [(69, False), (70, True), (130, True), (131, False)])
 def test_exact_length_boundaries(records: list[rewrites.Record], size: int, valid: bool) -> None:
     record = one(records, "Ladder")
     counts = rewrites.load_counts()
     counts["Ladder"] = 100
-    record["rewrite"] = "You " + "word " * (size - 4) + "Do you act?"
+    record["rewrite"] = "You see a man. " + "word " * (size - 7) + "Do you act?"
     if valid:
         rewrites.validate(records, counts)
     else:
@@ -273,6 +274,8 @@ def test_documented_inventory_and_notes_match_files() -> None:
         name = str(record["id"])
         text = str(record["rewrite"])
         kept, removed = record["kept"], record["removed"]
+        generalised = record["generalised"]
+        assert isinstance(generalised, list)
         assert isinstance(kept, list) and isinstance(removed, list)
         reversed_words = (
             rewrites.word_count(str(record["reversed"])) if "reversed" in record else "—"
@@ -280,8 +283,183 @@ def test_documented_inventory_and_notes_match_files() -> None:
         row = (
             f"| {name} | {record['set']} | {counts[name]} | {rewrites.word_count(text)} | "
             f"{reversed_words} | {len(cast(list[object], kept))} | "
-            f"{len(cast(list[object], removed))} |"
+            f"{len(cast(list[object], removed))} | {len(cast(list[object], generalised))} |"
         )
         assert row in inventory
         if "notes" in record:
             assert f"- **{name}**: {record['notes']}" in note
+
+
+@pytest.mark.parametrize("value", [None, "none", {}, 3])
+def test_generalised_is_a_list(records: list[rewrites.Record], value: object) -> None:
+    records[0]["generalised"] = value
+    with pytest.raises(ValueError, match="generalised must be a list"):
+        check(records)
+
+
+@pytest.mark.parametrize("key", ["from", "to", "why"])
+@pytest.mark.parametrize("value", [None, "", "  ", 3])
+def test_generalisation_fields(records: list[rewrites.Record], key: str, value: object) -> None:
+    records[0]["generalised"] = [{"from": "old", "to": "new", "why": "incidental", key: value}]
+    with pytest.raises(ValueError, match=f"{key} must be a non-empty string"):
+        check(records)
+
+
+@pytest.mark.parametrize("value", [None, "phrase", []])
+def test_generalisation_is_an_object(records: list[rewrites.Record], value: object) -> None:
+    records[0]["generalised"] = [value]
+    with pytest.raises(ValueError, match="JSON object"):
+        check(records)
+
+
+@pytest.mark.parametrize("notes", [None, "Already anonymous.", "No further generalisation:"])
+def test_empty_generalised_needs_explanation(
+    records: list[rewrites.Record], notes: str | None
+) -> None:
+    record = one(records, "Vet")
+    if notes is None:
+        del record["notes"]
+    else:
+        record["notes"] = notes
+    with pytest.raises(ValueError, match=r"notes|empty generalised"):
+        check(records)
+
+
+@pytest.mark.parametrize("field", ["rewrite", "reversed"])
+@pytest.mark.parametrize("variant", ["ordinary", "case", "unicode", "whitespace"])
+def test_generalised_phrase_cannot_return(
+    records: list[rewrites.Record], field: str, variant: str
+) -> None:
+    record = one(records, "Suicide")
+    phrase = "139 million dollars"
+    if variant == "case":
+        phrase = phrase.upper()
+    elif variant == "unicode":
+        phrase = "".join(chr(ord(c) + 0xFEE0) if c.isascii() and c.isalnum() else c for c in phrase)
+    elif variant == "whitespace":
+        phrase = phrase.replace(" ", "\n  ")
+    record[field] = str(record[field]).replace("a large sum", phrase)
+    with pytest.raises(ValueError, match="generalised source phrase"):
+        check(records)
+
+
+@pytest.mark.parametrize("field", ["rewrite", "reversed"])
+@pytest.mark.parametrize("year", ["1987", "\uff11\uff19\uff18\uff17"])
+def test_year_guard_independent_of_generalised_phrases(
+    records: list[rewrites.Record], field: str, year: str
+) -> None:
+    record = one(records, "Suicide")
+    record[field] = str(record[field]).replace("You are", year + ": You are", 1)
+    with pytest.raises(ValueError, match="four-digit"):
+        check(records)
+
+
+def test_people_count_table_coverage(records: list[rewrites.Record]) -> None:
+    table = rewrites.load_people_counts()
+    assert set(table) == set(rewrites.expected())
+    assert len(table) == 38
+    rewrites.validate(records, rewrites.load_counts(), table)
+
+
+@pytest.mark.parametrize("change", ["missing", "extra"])
+def test_people_count_coverage_is_checked(records: list[rewrites.Record], change: str) -> None:
+    table = rewrites.load_people_counts()
+    if change == "missing":
+        del table["Ladder"]
+    else:
+        table["unexpected"] = table["Ladder"]
+    with pytest.raises(ValueError, match="people count IDs"):
+        rewrites.validate(records, rewrites.load_counts(), table)
+
+
+@pytest.mark.parametrize("value", [None, {}, "none", 3])
+def test_people_counts_are_a_list(records: list[rewrites.Record], value: object) -> None:
+    table = rewrites.load_people_counts()
+    entry = cast(rewrites.Record, table["Lifeboat"])
+    entry["counts"] = value
+    with pytest.raises(ValueError, match="people counts must be a list"):
+        rewrites.validate(records, rewrites.load_counts(), table)
+
+
+@pytest.mark.parametrize("value", [None, 0, -1, True, 2.5, "two"])
+def test_people_count_values(records: list[rewrites.Record], value: object) -> None:
+    table = rewrites.load_people_counts()
+    entry = cast(rewrites.Record, table["Lifeboat"])
+    counts = cast(list[rewrites.Record], entry["counts"])
+    counts[0]["people"] = value
+    with pytest.raises(ValueError, match="people count must be"):
+        rewrites.validate(records, rewrites.load_counts(), table)
+
+
+@pytest.mark.parametrize("key", ["side", "mentions", "unspecified"])
+def test_people_count_evidence_required(records: list[rewrites.Record], key: str) -> None:
+    table = rewrites.load_people_counts()
+    entry = cast(rewrites.Record, table["Lifeboat"])
+    target = entry if key == "unspecified" else cast(list[rewrites.Record], entry["counts"])[0]
+    del target[key]
+    with pytest.raises(ValueError, match=key):
+        rewrites.validate(records, rewrites.load_counts(), table)
+
+
+# Each recorded side is corrupted separately in each applicable version. This also covers
+# singular people, grouped digits, written numbers, lower bounds and source magnitudes.
+COUNT_CASES = [
+    (name, index, field)
+    for name, raw in rewrites.load_people_counts().items()
+    for index, _ in enumerate(cast(list[object], cast(rewrites.Record, raw)["counts"]))
+    for field in (("rewrite", "reversed") if rewrites.expected()[name][1] else ("rewrite",))
+]
+
+
+@pytest.mark.parametrize("name,index,field", COUNT_CASES)
+def test_each_recorded_people_count_must_appear(
+    records: list[rewrites.Record], name: str, index: int, field: str
+) -> None:
+    table = rewrites.load_people_counts()
+    counts = cast(list[rewrites.Record], cast(rewrites.Record, table[name])["counts"])
+    mentions = cast(list[str], counts[index]["mentions"])
+    record = one(records, name)
+    text = str(record[field])
+    for mention in mentions:
+        text = re.sub(re.escape(mention), "unrecorded group", text, flags=re.IGNORECASE)
+    record[field] = text
+    with pytest.raises(ValueError, match="missing a recorded people count"):
+        check(records)
+
+
+def test_people_count_mentions_use_word_boundaries(records: list[rewrites.Record]) -> None:
+    record = one(records, "Rugby Cannibalism")
+    record["rewrite"] = str(record["rewrite"]).replace("40 people", "140 people")
+    with pytest.raises(ValueError, match="missing a recorded people count"):
+        check(records)
+
+
+def test_people_count_mentions_normalise_unicode(records: list[rewrites.Record]) -> None:
+    record = one(records, "Lifeboat")
+    record["rewrite"] = str(record["rewrite"]).replace("41 people", "\uff14\uff11 PEOPLE")
+    check(records)
+
+
+def test_task_generalisations_are_documented_in_full() -> None:
+    note = (rewrites.REPO / "docs" / "pilot" / "rewrites.md").read_text()
+    for record in rewrites.load():
+        if record["set"] == "task":
+            for item in cast(list[rewrites.Record], record["generalised"]):
+                assert f"`{item['from']}` → `{item['to']}` — {item['why']}." in note
+
+
+def test_operation_type_is_consistent() -> None:
+    record = one(rewrites.load(), "Operations")
+    text = str(record["rewrite"]).casefold()
+    assert "lung" not in text and "knee" not in text
+    assert "a type of operation" in text
+    assert "knee surgeries" in str(record["generalised"])
+    assert "slip" in str(record["notes"])
+
+
+def test_people_mentions_must_express_table_number(records: list[rewrites.Record]) -> None:
+    table = rewrites.load_people_counts()
+    counts = cast(list[rewrites.Record], cast(rewrites.Record, table["Lifeboat"])["counts"])
+    counts[0]["people"] = 42
+    with pytest.raises(ValueError, match="express their recorded number"):
+        rewrites.validate(records, rewrites.load_counts(), table)

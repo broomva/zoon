@@ -1,0 +1,538 @@
+{
+  "Conjoined Twins": {
+    "counts": [
+      {
+        "side": "girls who die without separation",
+        "people": 2,
+        "mentions": [
+          "two girls",
+          "both girls"
+        ]
+      },
+      {
+        "side": "girl killed by separation",
+        "people": 1,
+        "mentions": [
+          "the weaker baby"
+        ]
+      },
+      {
+        "side": "girl who might survive separation",
+        "people": 1,
+        "mentions": [
+          "the stronger baby",
+          "the stronger girl"
+        ]
+      }
+    ],
+    "unspecified": "No further people counts are given."
+  },
+  "Cannibalism on Lifeboat": {
+    "counts": [
+      {
+        "side": "crew threatened without killing",
+        "people": 4,
+        "mentions": [
+          "four members",
+          "four of you"
+        ]
+      },
+      {
+        "side": "boy to be killed",
+        "people": 1,
+        "mentions": [
+          "adolescent boy",
+          "the boy"
+        ]
+      },
+      {
+        "side": "crew surviving longer after killing",
+        "people": 3,
+        "mentions": [
+          "remaining three"
+        ]
+      }
+    ],
+    "unspecified": "The source gives four crew and the rest after killing the boy; three is implied by that subtraction, not a separately stated group."
+  },
+  "Doodlebugs": {
+    "counts": [],
+    "unspecified": "No numerical people counts: poorer residential population versus city-centre population and military targets."
+  },
+  "Plague Spread": {
+    "counts": [
+      {
+        "side": "village population exposed to isolation",
+        "people": 800,
+        "mentions": [
+          "800 people"
+        ]
+      }
+    ],
+    "unspecified": "Deaths within the village and in neighbouring villages are not numbered."
+  },
+  "Euthanasia (in Ghetto)": {
+    "counts": [],
+    "unspecified": "No numerical people counts: infants and children killed to prevent their probable suffering."
+  },
+  "Immunization (Smallpox)": {
+    "counts": [
+      {
+        "side": "child exposed to the experiment",
+        "people": 1,
+        "mentions": [
+          "his young son",
+          "the boy"
+        ]
+      }
+    ],
+    "unspecified": "Future people who might be saved are not numbered."
+  },
+  "911": {
+    "counts": [],
+    "unspecified": "Passenger and ground-population totals are unspecified; attacker counts and numbers of prior aircraft are incidental and generalised."
+  },
+  "Coma (Mother)": {
+    "counts": [
+      {
+        "side": "mother suffocated",
+        "people": 1,
+        "mentions": [
+          "your mother"
+        ]
+      }
+    ],
+    "unspecified": "The benefiting relatives are not numbered."
+  },
+  "Organ Law": {
+    "counts": [],
+    "unspecified": "No numerical people counts: rare recoverable donors versus many more transplant recipients; trial-site counts are not people counts."
+  },
+  "Stillbirths": {
+    "counts": [],
+    "unspecified": "No numerical counts for mothers and babies: each live birth leads to both deaths; the count of fellow nurses is incidental."
+  },
+  "Septuplets": {
+    "counts": [
+      {
+        "side": "fetuses at risk without abortion",
+        "people": 7,
+        "mentions": [
+          "seven babies"
+        ]
+      },
+      {
+        "side": "fetuses aborted",
+        "people": 3,
+        "mentions": [
+          "aborting three",
+          "abort three"
+        ]
+      },
+      {
+        "side": "fetuses with improved survival prospects",
+        "people": 4,
+        "mentions": [
+          "other four"
+        ]
+      }
+    ],
+    "unspecified": "No further people counts are given."
+  },
+  "Atom Bomb": {
+    "counts": [],
+    "unspecified": "No numerical people counts: possible future weapon casualties and people protected by deterrence are unspecified."
+  },
+  "Mare Nostrum": {
+    "counts": [
+      {
+        "side": "refugees already rescued",
+        "people": 150000,
+        "mentions": [
+          "saved 150,000"
+        ]
+      },
+      {
+        "side": "refugees already dead this year",
+        "people": 3000,
+        "mentions": [
+          "3,000 people"
+        ]
+      },
+      {
+        "side": "future refugees dying if rescue continues",
+        "people": "thousands",
+        "mentions": [
+          "thousands of refugees"
+        ]
+      }
+    ],
+    "unspecified": "Future deaths are described as thousands, without a precise count."
+  },
+  "Aid for Syria": {
+    "counts": [
+      {
+        "side": "people losing aid on refusal",
+        "people": "millions",
+        "mentions": [
+          "millions will no longer receive aid"
+        ]
+      }
+    ],
+    "unspecified": "People helped and millions losing aid are not given precise numerical totals."
+  },
+  "Rescue Torture": {
+    "counts": [
+      {
+        "side": "child who might be saved",
+        "people": 1,
+        "mentions": [
+          "a child",
+          "the child"
+        ]
+      },
+      {
+        "side": "suspect tortured",
+        "people": 1,
+        "mentions": [
+          "a suspect",
+          "the suspect"
+        ]
+      }
+    ],
+    "unspecified": "No further people counts are given."
+  },
+  "War Torture": {
+    "counts": [
+      {
+        "side": "lives probably saved",
+        "people": "thousands",
+        "mentions": [
+          "thousands of lives"
+        ]
+      }
+    ],
+    "unspecified": "Prisoner numbers and the thousands of potentially saved lives are not specified precisely."
+  },
+  "Rugby Cannibalism": {
+    "counts": [
+      {
+        "side": "people aboard initially",
+        "people": 40,
+        "mentions": [
+          "40 people"
+        ]
+      },
+      {
+        "side": "people killed in the initial crash",
+        "people": 15,
+        "mentions": [
+          "fifteen"
+        ]
+      },
+      {
+        "side": "survivors when the choice is made",
+        "people": 19,
+        "mentions": [
+          "19 of you"
+        ]
+      }
+    ],
+    "unspecified": "No total count of dead teammates eaten is specified; no later deaths are inferred by subtraction."
+  },
+  "Organ Market": {
+    "counts": [
+      {
+        "side": "recipient benefiting from purchase",
+        "people": 1,
+        "mentions": [
+          "you will die",
+          "you and the donor"
+        ]
+      },
+      {
+        "side": "donor bearing health restrictions",
+        "people": 1,
+        "mentions": [
+          "a donor",
+          "the donor"
+        ]
+      }
+    ],
+    "unspecified": "No further numerical people counts; the one remaining kidney is an organ count."
+  },
+  "Ashley Treatment": {
+    "counts": [
+      {
+        "side": "girl harmed by treatment and benefiting from home care",
+        "people": 1,
+        "mentions": [
+          "a young girl",
+          "the girl"
+        ]
+      }
+    ],
+    "unspecified": "The consulted parents are not given a numerical count beyond the plural."
+  },
+  "Test Tube Sibling": {
+    "counts": [
+      {
+        "side": "sick child who may be saved",
+        "people": 1,
+        "mentions": [
+          "a boy",
+          "the sick child"
+        ]
+      },
+      {
+        "side": "child created as a donor",
+        "people": 1,
+        "mentions": [
+          "another child",
+          "a baby"
+        ]
+      }
+    ],
+    "unspecified": "The source gives a sick boy and another baby, not an aggregate number of possible future donors."
+  },
+  "Lion Hunt": {
+    "counts": [],
+    "unspecified": "No people counts: a few endangered animals are killed to protect the remaining population; animal totals are unspecified."
+  },
+  "Bishops": {
+    "counts": [],
+    "unspecified": "No numerical people counts: co-religionists of the targeted heritage versus others being deported."
+  },
+  "Trail of Tears": {
+    "counts": [],
+    "unspecified": "No numerical people counts: the indigenous people lose territory or many die in an unwinnable war."
+  },
+  "Hogesa (Hooligan Demo)": {
+    "counts": [],
+    "unspecified": "No numerical people counts: demonstrators exercising rights versus people at risk of violence."
+  },
+  "Mass Rape": {
+    "counts": [
+      {
+        "side": "men who would all be detained or released",
+        "people": 8,
+        "mentions": [
+          "eight drunk men",
+          "all eight"
+        ]
+      },
+      {
+        "side": "known innocent detainee (at least one)",
+        "people": 1,
+        "mentions": [
+          "at least one",
+          "one man"
+        ]
+      },
+      {
+        "side": "girl assaulted",
+        "people": 1,
+        "mentions": [
+          "an adolescent girl",
+          "the victim"
+        ]
+      }
+    ],
+    "unspecified": "The source retains its unresolved description of many others, probably all, as guilty; no exact guilty count is inferred."
+  },
+  "Endow": {
+    "counts": [
+      {
+        "side": "original murdered victim",
+        "people": 1,
+        "mentions": [
+          "his victim"
+        ]
+      }
+    ],
+    "unspecified": "The original victim is singular; the family and prospective young beneficiaries are not numbered."
+  },
+  "Ladder": {
+    "counts": [
+      {
+        "side": "man directly pushed",
+        "people": 1,
+        "mentions": [
+          "a man",
+          "the man"
+        ]
+      }
+    ],
+    "unspecified": "The people who would drown behind the man are not numbered."
+  },
+  "Lifeboat": {
+    "counts": [
+      {
+        "side": "occupants threatened if nobody is thrown out",
+        "people": 41,
+        "mentions": [
+          "41 people"
+        ]
+      },
+      {
+        "side": "adults to be thrown out (approximately)",
+        "people": 10,
+        "mentions": [
+          "roughly ten adults",
+          "10 people"
+        ]
+      }
+    ],
+    "unspecified": "Roughly ten is the source’s estimate; no exact count for the remaining survivors is inferred."
+  },
+  "Medicine": {
+    "counts": [
+      {
+        "side": "boy denied treatment or saved by funding",
+        "people": 1,
+        "mentions": [
+          "a young boy",
+          "the boy"
+        ]
+      }
+    ],
+    "unspecified": "Other patients are not numbered; their likely deaths exceed the boy’s one death."
+  },
+  "Operations": {
+    "counts": [
+      {
+        "side": "patients undergoing unnecessary operations",
+        "people": 2,
+        "mentions": [
+          "two patients"
+        ]
+      }
+    ],
+    "unspecified": "50 and 48 count operations already required or performed, not people on either side; eventual regional deaths are not numbered."
+  },
+  "RAF": {
+    "counts": [
+      {
+        "side": "hostage killed on refusal",
+        "people": 1,
+        "mentions": [
+          "a prominent public figure",
+          "the hostage"
+        ]
+      },
+      {
+        "side": "prisoners whose release is demanded",
+        "people": 11,
+        "mentions": [
+          "11 imprisoned members"
+        ]
+      },
+      {
+        "side": "members released in the earlier kidnapping",
+        "people": 5,
+        "mentions": [
+          "release of 5 members"
+        ]
+      },
+      {
+        "side": "released members who attacked again",
+        "people": 4,
+        "mentions": [
+          "4 have since"
+        ]
+      }
+    ],
+    "unspecified": "The future and past innocent victims are described as several, without precise totals."
+  },
+  "Ransom": {
+    "counts": [
+      {
+        "side": "hostages threatened on refusal",
+        "people": 10,
+        "mentions": [
+          "10 hostages",
+          "10 citizens"
+        ]
+      },
+      {
+        "side": "woman already dead",
+        "people": 1,
+        "mentions": [
+          "one woman"
+        ]
+      },
+      {
+        "side": "future lives probably saved (more than ten)",
+        "people": 10,
+        "mentions": [
+          "more than 10 lives"
+        ]
+      }
+    ],
+    "unspecified": "The source says ten hostages and one prior death; this ambiguity is retained without reducing the ten. More than ten future lives is a lower bound, not an exact total."
+  },
+  "RobinHood": {
+    "counts": [
+      {
+        "side": "customer whose family faces ruin",
+        "people": 1,
+        "mentions": [
+          "one customer"
+        ]
+      }
+    ],
+    "unspecified": "The customer’s family, other indebted customers and wealthy customers are not numbered."
+  },
+  "Rwanda": {
+    "counts": [
+      {
+        "side": "employee demanded by the crowd",
+        "people": 1,
+        "mentions": [
+          "the employee who has just arrived",
+          "protect your employee"
+        ]
+      },
+      {
+        "side": "other employee already killed",
+        "people": 1,
+        "mentions": [
+          "another of your employees"
+        ]
+      }
+    ],
+    "unspecified": "The hidden family, the slain family and the threatened crowd inside have no numerical totals."
+  },
+  "Suicide": {
+    "counts": [],
+    "unspecified": "No numerical people counts: willing terminally ill patients versus many other patients; six months is an eligibility criterion, not a people count."
+  },
+  "Tax": {
+    "counts": [],
+    "unspecified": "No numerical people counts: wealthy tax evaders and the public; transaction counts are not people counts."
+  },
+  "Tyran": {
+    "counts": [
+      {
+        "side": "ruler to be killed",
+        "people": 1,
+        "mentions": [
+          "the ruler",
+          "kill him"
+        ]
+      },
+      {
+        "side": "earlier victims of the ruler",
+        "people": "thousands",
+        "mentions": [
+          "thousands of people"
+        ]
+      }
+    ],
+    "unspecified": "Thousands of earlier victims and future people affected are not specified precisely; collaborator counts are incidental."
+  },
+  "Vet": {
+    "counts": [],
+    "unspecified": "No people on either side: laboratory animals versus future animals; no numerical animal counts are given."
+  }
+}

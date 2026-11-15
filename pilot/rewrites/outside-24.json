@@ -9,11 +9,11 @@
     "locator": "English Versions, 24) War torture",
     "license": "CC BY 4.0",
     "license_url": "https://creativecommons.org/licenses/by/4.0/",
-    "changes": "De-identified and reworded; question in yes/no form."
+    "changes": "De-identified and reworded; incidental details generalised; question in yes/no form."
   },
   "suggested_action": "systematically torture all the prisoners",
   "kept": [
-    "You head a prisoner-interrogation institution during invasion of another country and bombing of your country’s cities; superiors demand quick results by any means.",
+    "You direct prisoner interrogations during invasion of another country and bombing of your country’s cities; superiors demand quick results by any means.",
     "Some prisoners might have information saving thousands; most probably have no relevant information.",
     "The proposed policy systematically tortures all prisoners and clearly violates an international convention protecting non-fighters and prisoners.",
     "Torture probably saves thousands of lives; refusal might lose crucial life-saving information.",
@@ -28,6 +28,13 @@
     "France",
     "Geneva Convention"
   ],
-  "rewrite": "You head an institution interrogating enemy prisoners of war. Some might hold information that could save thousands of lives, but most probably know nothing relevant. The war is at a critical stage for your country: enemy forces are heavily invading another country and their air force has begun bombing your cities. Your superiors demand rapid results by any means. You consider systematically torturing every prisoner to obtain war information. This would plainly violate the international convention requiring your country to protect people no longer fighting, including prisoners of war. If you systematically torture all prisoners, you will probably save thousands of lives. If you do not, you might miss crucial information that could save lives. Do you torture the inmates?",
-  "notes": "Nationalities, year and the convention’s name are removed. Its binding protection of prisoners is retained, but readers lose the named treaty and wartime context, which could affect how they interpret the prohibition."
+  "rewrite": "You direct interrogations of enemy prisoners of war. Some might hold information that could save thousands of lives, but most probably know nothing relevant. The war is at a critical stage for your country: enemy forces are heavily invading another country and their air force has begun bombing your cities. Your superiors demand rapid results by any means. You consider systematically torturing every prisoner to obtain war information. This would plainly violate the international convention requiring your country to protect people no longer fighting, including prisoners of war. If you systematically torture all prisoners, you will probably save thousands of lives. If you do not, you might miss crucial information that could save lives. Do you torture the inmates?",
+  "notes": "Deliberately retained: wartime urgency, most prisoners probably lacking information, systematic torture of all prisoners, binding prisoner protections and probably thousands saved; these determine severity, duty and uncertainty.",
+  "generalised": [
+    {
+      "from": "head of a British institution",
+      "to": "direct interrogations of enemy prisoners of war",
+      "why": "command responsibility and authority over torture remain"
+    }
+  ]
 }

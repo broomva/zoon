@@ -9,12 +9,12 @@
     "locator": "English Versions, 34) Trail of Tears",
     "license": "CC BY 4.0",
     "license_url": "https://creativecommons.org/licenses/by/4.0/",
-    "changes": "De-identified and reworded; question in yes/no form."
+    "changes": "De-identified and reworded; incidental details generalised; question in yes/no form."
   },
   "suggested_action": "continue resisting forced relocation",
   "kept": [
     "You are an indigenous leader subject to a legislative relocation order; constitutional rights and a highest-court ruling support your opposition.",
-    "Settlers and the president will reject refusal; war with national forces is inevitable without moving and cannot be won.",
+    "Settlers and the national leader will reject refusal; war with national forces is inevitable without moving and cannot be won.",
     "Advocating relocation has a high chance of avoiding bloodshed but permanently gives up traditional territory.",
     "Continued resistance means war and many deaths; you advocate rather than personally conduct forced relocation or killing.",
     "You belong to the threatened people and may share the risks; that people both loses land and can avoid deaths by moving.",
@@ -30,8 +30,15 @@
     "white",
     "west"
   ],
-  "rewrite": "You are one of an indigenous people’s leaders. The national legislature has ordered the relocation of all indigenous peoples in your region to another part of the country. You have resisted because forced removal violates rights that the constitution guarantees to citizens and indigenous peoples. The highest court has already ruled in your favour. Yet settlers and the president will not accept your refusal to move. Unless you move, war with national armed forces is inevitable, and you have no chance of winning. If you advocate voluntary relocation, there is a high chance your people can move without bloodshed, but you irrevocably surrender their traditional territory. If you keep opposing removal, war will follow and many of your people will die. Do you continue resisting relocation?",
+  "rewrite": "You are one of an indigenous people’s leaders. The national legislature has ordered the relocation of all indigenous peoples in your region to another part of the country. You have resisted because forced removal violates rights that the constitution guarantees to citizens and indigenous peoples. The highest court has already ruled in your favour. Yet settlers and the national leader will not accept your refusal to move. Unless you move, war with national armed forces is inevitable, and you have no chance of winning. If you advocate voluntary relocation, there is a high chance your people can move without bloodshed, but you irrevocably surrender their traditional territory. If you keep opposing removal, war will follow and many of your people will die. Do you continue resisting relocation?",
   "reversed_suggested_action": "advocate voluntary relocation",
-  "reversed": "You are one of an indigenous people’s leaders. The national legislature has ordered the relocation of all indigenous peoples in your region to another part of the country. You have resisted because forced removal violates rights that the constitution guarantees to citizens and indigenous peoples. The highest court has already ruled in your favour. Yet settlers and the president will not accept your refusal to move. Unless you move, war with national armed forces is inevitable, and you have no chance of winning. If you advocate voluntary relocation, there is a high chance your people can move without bloodshed, but you irrevocably surrender their traditional territory. If you keep opposing removal, war will follow and many of your people will die. Do you advocate voluntary relocation?",
-  "notes": "Named people, settler race, country, year and direction become an indigenous people, settlers and relocation within a country. Constitutional protection and the favourable court ruling remain. Removing specific political identities and geography loses relevant historical context."
+  "reversed": "You are one of an indigenous people’s leaders. The national legislature has ordered the relocation of all indigenous peoples in your region to another part of the country. You have resisted because forced removal violates rights that the constitution guarantees to citizens and indigenous peoples. The highest court has already ruled in your favour. Yet settlers and the national leader will not accept your refusal to move. Unless you move, war with national armed forces is inevitable, and you have no chance of winning. If you advocate voluntary relocation, there is a high chance your people can move without bloodshed, but you irrevocably surrender their traditional territory. If you keep opposing removal, war will follow and many of your people will die. Do you advocate voluntary relocation?",
+  "notes": "Deliberately retained: indigenous identity, traditional territory, constitutional rights, favourable court ruling and an unwinnable war if resistance continues; these set the violated rights, belonging and certain versus uncertain harms.",
+  "generalised": [
+    {
+      "from": "US President",
+      "to": "national leader",
+      "why": "political power backing forced removal remains"
+    }
+  ]
 }

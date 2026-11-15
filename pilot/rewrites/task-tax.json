@@ -9,13 +9,13 @@
     "locator": "Tax fraud detection",
     "license": "CC BY 4.0",
     "license_url": "https://creativecommons.org/licenses/by/4.0/",
-    "changes": "De-identified and reworded; question in yes/no form."
+    "changes": "De-identified and reworded; incidental details generalised; question in yes/no form."
   },
   "suggested_action": "buy the illegally obtained tax data",
   "kept": [
-    "You decide as a state finance minister in a federal system about buying data from hackers.",
+    "You decide as a public official responsible for tax revenue about buying data from hackers.",
     "The hackers illegally accessed foreign bank servers used by wealthy citizens for tax evasion.",
-    "The data is probably reliable and covers up to 50,000 transactions; prosecutions would yield millions in fines and additional taxes.",
+    "The data is probably reliable and covers tens of thousands of transactions; prosecutions would yield millions in fines and additional taxes.",
     "Buying rewards theft and might promote future cybercrime; refusal loses the additional revenue.",
     "Benefits are to state finances, with no individual gain stated; whether harmed and benefited groups overlap is not settled by the vignette. You buy stolen data, rather than carry out the hacking.",
     "The suggested action is to buy the data."
@@ -23,8 +23,25 @@
   "removed": [
     "German federal state"
   ],
-  "rewrite": "You are finance minister of a state within a federal country. You must decide whether to buy illegally obtained information about tax evaders. Hackers offer you data they compiled by illegally accessing several foreign banks’ servers. Wealthy citizens of your country use those banks to move money abroad and evade taxes. The data is probably reliable and covers up to 50,000 transactions. Buying it means using illegally obtained information and rewarding data theft, which might encourage future cybercrime. It would also let you prosecute tax evaders, whose fines would total millions. If you refuse to buy it, you will forgo millions of euros in additional tax payments and fines. Do you buy the data?",
+  "rewrite": "You are a public official responsible for tax revenue. You must decide whether to buy illegally obtained information about tax evaders. Hackers offer you data they compiled by illegally accessing several foreign banks’ servers. Wealthy citizens of your country use those banks to move money abroad and evade taxes. The data is probably reliable and covers tens of thousands of transactions. Buying it means using illegally obtained information and rewarding data theft, which might encourage future cybercrime. It would also let you prosecute tax evaders, whose fines would total millions. If you refuse to buy it, you will forgo large sums in additional tax payments and fines. Do you buy the data?",
   "reversed_suggested_action": "refuse to buy the illegally obtained data",
-  "reversed": "You are finance minister of a state within a federal country. You must decide whether to buy illegally obtained information about tax evaders. Hackers offer you data they compiled by illegally accessing several foreign banks’ servers. Wealthy citizens of your country use those banks to move money abroad and evade taxes. The data is probably reliable and covers up to 50,000 transactions. Buying it means using illegally obtained information and rewarding data theft, which might encourage future cybercrime. It would also let you prosecute tax evaders, whose fines would total millions. If you refuse to buy it, you will forgo millions of euros in additional tax payments and fines. Do you refuse to buy the data?",
-  "notes": "The paper calls opposite framing “somewhat” reasonable, although the task’s table says “No”; a reversal is included under the paper-based rule. The task’s added possibility of encouraging future cybercrime is retained."
+  "reversed": "You are a public official responsible for tax revenue. You must decide whether to buy illegally obtained information about tax evaders. Hackers offer you data they compiled by illegally accessing several foreign banks’ servers. Wealthy citizens of your country use those banks to move money abroad and evade taxes. The data is probably reliable and covers tens of thousands of transactions. Buying it means using illegally obtained information and rewarding data theft, which might encourage future cybercrime. It would also let you prosecute tax evaders, whose fines would total millions. If you refuse to buy it, you will forgo large sums in additional tax payments and fines. Do you refuse to buy the data?",
+  "notes": "Deliberately retained: illegal hacking, probable reliability, rewarding theft, possible future cybercrime and large tax receipts and fines; these set the evidence, uncertainty and cost-benefit choice. The original paper’s “Somewhat” reversal code governs despite the task’s “No”.",
+  "generalised": [
+    {
+      "from": "state minister of finance of a German federal state",
+      "to": "public official responsible for tax revenue",
+      "why": "authority over buying evidence and public revenue remains"
+    },
+    {
+      "from": "up to 50,000 transactions",
+      "to": "tens of thousands of transactions",
+      "why": "these are transaction counts rather than numbers of people at stake"
+    },
+    {
+      "from": "millions of euros",
+      "to": "large sums",
+      "why": "the lost public revenue remains substantial without a currency cue"
+    }
+  ]
 }

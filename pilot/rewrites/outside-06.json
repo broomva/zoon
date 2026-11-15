@@ -9,16 +9,16 @@
     "locator": "English Versions, 6) Euthanasia (Ghetto)",
     "license": "CC BY 4.0",
     "license_url": "https://creativecommons.org/licenses/by/4.0/",
-    "changes": "De-identified and reworded; question in yes/no form."
+    "changes": "De-identified and reworded; incidental details generalised; question in yes/no form."
   },
-  "suggested_action": "give the children and infants a lethal morphine dose",
+  "suggested_action": "give the children and infants a lethal a pain-relieving drug dose",
   "kept": [
-    "You are the ward’s physician and would personally administer the lethal morphine to infants and children before bedtime.",
+    "You are the ward’s physician and would personally administer a lethal pain-relieving drug to infants and children to spare them deportation.",
     "The hospital is in a ghetto under occupation; all patients are being deported.",
     "You feel sure the children will be killed because they cannot do hard labour; their suffering is described as probable.",
     "The alternative is to leave them at the occupiers’ mercy; no escape or recovery is added.",
     "Those killed are the same children whose probable suffering is prevented; no personal benefit is stated.",
-    "The suggested action is to administer morphine, understood in context as a lethal dose."
+    "The suggested action is to administer the drug, understood in context as a lethal dose."
   ],
   "removed": [
     "1942",
@@ -26,6 +26,18 @@
     "Warsaw",
     "Nazis"
   ],
-  "rewrite": "You are a doctor responsible for the infants’ and children’s ward in a hospital inside an ethnic ghetto under military occupation. The occupying forces begin emptying the hospital and deporting its patients. You feel sure that every child in your ward will be deported and eventually killed because the children cannot perform hard labour. You consider giving them a fatal dose of morphine before bedtime to spare them deportation. Killing the children with morphine would prevent their probable suffering. If you do not kill them, you leave them at the mercy of the occupying forces. Do you give morphine to the children and infants?",
-  "notes": "The named ghetto, ethnicity, year and occupying regime become a generic occupied ethnic ghetto. Deportation and forced-labour exclusion remain, but removing the specific persecutors and persecuted group loses historical context that could affect judgment."
+  "rewrite": "You are a doctor responsible for the infants’ and children’s ward in a hospital inside an ethnic ghetto under military occupation. The occupying forces begin emptying the hospital and deporting its patients. You feel sure that every child in your ward will be deported and eventually killed because the children cannot perform hard labour. You consider giving them a fatal dose of a pain-relieving drug to spare them deportation. Killing the children with a pain-relieving drug would prevent their probable suffering. If you do not kill them, you leave them at the mercy of the occupying forces. Do you give a pain-relieving drug to the children and infants?",
+  "notes": "Deliberately retained: occupied ethnic ghetto, deportation and exclusion from hard labour; these explain why you feel sure the children will eventually be killed. The physician’s direct lethal act and the children’s probable suffering remain. Generalising the drug may change assumptions about sedation.",
+  "generalised": [
+    {
+      "from": "morphine",
+      "to": "a pain-relieving drug",
+      "why": "a fatal overdose and probable suffering remain the harms"
+    },
+    {
+      "from": "before bedtime",
+      "to": "time of day omitted",
+      "why": "the time of day does not determine the threatened harm"
+    }
+  ]
 }

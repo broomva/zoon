@@ -17,7 +17,8 @@ from zoon.pilot.outside import originals, published
 
 DIRECTORY = REPO / "pilot" / "rewrites"
 COUNTS = REPO / "pilot" / "source-word-counts.json"
-REQUIRED = ("id", "set", "source", "suggested_action", "kept", "removed", "rewrite")
+PEOPLE_COUNTS = REPO / "pilot" / "people-counts.json"
+REQUIRED = ("id", "set", "source", "suggested_action", "kept", "removed", "generalised", "rewrite")
 SOURCE_FIELDS = (
     "authors",
     "title",
@@ -103,8 +104,96 @@ def load_counts(path: Path = COUNTS) -> Record:
     return _record(value)
 
 
+def load_people_counts(path: Path = PEOPLE_COUNTS) -> Record:
+    """Read source people counts and the stimulus phrases expressing each side.
+
+    Unnumbered sides are described separately; absence of a number never means zero.
+    Mentions locate a count in context, including singular people and lower bounds.
+    They do not prove semantic equivalence to the source.
+    """
+    return _record(json.loads(path.read_text(encoding="utf-8")))
+
+
 def _normal(text: str) -> str:
-    return unicodedata.normalize("NFKC", text).casefold()
+    return " ".join(unicodedata.normalize("NFKC", text).casefold().split())
+
+
+def _generalisations(record: Record) -> list[Record]:
+    value = record["generalised"]
+    if not isinstance(value, list):
+        raise ValueError("generalised must be a list")
+    result = [_record(item) for item in cast(list[object], value)]
+    for item in result:
+        for key in ("from", "to", "why"):
+            _text(item, key)
+    if not result:
+        notes = _text(record, "notes")
+        prefix = "No further generalisation:"
+        if not notes.startswith(prefix) or not notes.removeprefix(prefix).strip():
+            raise ValueError(
+                "empty generalised needs notes explaining why nothing can be generalised"
+            )
+    return result
+
+
+def _people_mentions(value: object) -> list[list[str]]:
+    table = _record(value)
+    _text(table, "unspecified")
+    counts = table.get("counts")
+    if not isinstance(counts, list):
+        raise ValueError("people counts must be a list")
+    mentions: list[list[str]] = []
+    for value in cast(list[object], counts):
+        entry = _record(value)
+        _text(entry, "side")
+        people = entry.get("people")
+        if not (
+            (type(people) is int and people > 0)
+            or (isinstance(people, str) and people in {"thousands", "millions"})
+        ):
+            raise ValueError("people count must be a positive integer or a source magnitude")
+        phrases = _items(entry, "mentions")
+        if people != 1:
+            forms = [str(people)]
+            if isinstance(people, int):
+                forms.append(f"{people:,}")
+                words = [
+                    "zero",
+                    "one",
+                    "two",
+                    "three",
+                    "four",
+                    "five",
+                    "six",
+                    "seven",
+                    "eight",
+                    "nine",
+                    "ten",
+                    "eleven",
+                    "twelve",
+                    "thirteen",
+                    "fourteen",
+                    "fifteen",
+                    "sixteen",
+                    "seventeen",
+                    "eighteen",
+                    "nineteen",
+                ]
+                if people < len(words):
+                    forms.append(words[people])
+                if people == 2:
+                    forms.append("both")
+            if any(not _contains_mention(phrase, forms) for phrase in phrases):
+                raise ValueError("people count mentions must express their recorded number")
+        mentions.append(phrases)
+    return mentions
+
+
+def _contains_mention(text: str, mentions: Sequence[str]) -> bool:
+    return any(
+        re.search(r"(?<!\w)" + re.escape(_normal(mention)) + r"(?!\w)", _normal(text))
+        for mention in mentions
+    )
 
 
 def _question(text: str) -> tuple[str, str]:
@@ -119,11 +208,19 @@ def _question(text: str) -> tuple[str, str]:
     return body, separator + question
 
 
-def validate(records: Sequence[Record], counts: Mapping[str, object]) -> None:
+def validate(
+    records: Sequence[Record],
+    counts: Mapping[str, object],
+    people_counts: Mapping[str, object] | None = None,
+) -> None:
     """Raise on any invalid draft; this does not confer human approval or freeze stimuli."""
     contract = expected()
     if set(counts) != set(contract):
         raise ValueError("source count IDs must match the task and outside IDs exactly")
+    people_counts = load_people_counts() if people_counts is None else people_counts
+    if set(people_counts) != set(contract):
+        raise ValueError("people count IDs must match the task and outside IDs exactly")
+    people = {name: _people_mentions(value) for name, value in people_counts.items()}
     seen: set[str] = set()
     for record in records:
         missing = set(REQUIRED) - record.keys()
@@ -146,6 +243,7 @@ def validate(records: Sequence[Record], counts: Mapping[str, object]) -> None:
         _text(record, "suggested_action")
         _items(record, "kept")
         removed = _items(record, "removed")
+        generalised = _generalisations(record)
         if "notes" in record:
             _text(record, "notes")
         for key in ("reversed", "reversed_suggested_action"):
@@ -161,10 +259,14 @@ def validate(records: Sequence[Record], counts: Mapping[str, object]) -> None:
             text = _text(record, key)
             if any(_normal(item) in _normal(text) for item in removed):
                 raise ValueError(f"{name}: {key} contains a removed string")
-            if YEAR.search(text):
+            if any(_normal(str(item["from"])) in _normal(text) for item in generalised):
+                raise ValueError(f"{name}: {key} contains a generalised source phrase")
+            if YEAR.search(_normal(text)):
                 raise ValueError(f"{name}: {key} contains a four-digit year-like number")
-            if not 3 * count <= 4 * word_count(text) <= 5 * count:
-                raise ValueError(f"{name}: {key} word count must be within 75-125% of source")
+            if not 7 * count <= 10 * word_count(text) <= 13 * count:
+                raise ValueError(f"{name}: {key} word count must be within 70-130% of source")
+            if any(not _contains_mention(text, mentions) for mentions in people[name]):
+                raise ValueError(f"{name}: {key} is missing a recorded people count")
             body, final = _question(text)
             if key == "reversed" and (body != rewrite_body or final == question):
                 raise ValueError(f"{name}: reversed must change only the final question")

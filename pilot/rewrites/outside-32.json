@@ -9,19 +9,32 @@
     "locator": "English Versions, 32) Lion hunt",
     "license": "CC BY 4.0",
     "license_url": "https://creativecommons.org/licenses/by/4.0/",
-    "changes": "De-identified and reworded; question in yes/no form."
+    "changes": "De-identified and reworded; incidental details generalised; question in yes/no form."
   },
-  "suggested_action": "kill some lions to finance conservation land",
+  "suggested_action": "kill some endangered animals to finance conservation land",
   "kept": [
-    "You work in conservation protecting endangered lions; research links their decline chiefly to agricultural expansion.",
+    "You work in conservation protecting endangered animals; research links their decline chiefly to agricultural expansion.",
     "You seek long-term habitat by buying conservation land; immense fundraising has failed.",
-    "Killing a few threatened lions and selling furs for 60,000 dollars each would raise sufficient funds, exceeding all tried or conceived alternatives.",
-    "Without killing you cannot buy adequate land; no number of lions or guarantee of population recovery is added.",
-    "You propose the killing; remaining lions benefit, while the sacrificed animals are part of the threatened population; no personal benefit is stated.",
-    "The suggested action is to kill some lions to fund land."
+    "Killing a few threatened animals and selling their furs for large sums would raise sufficient funds, exceeding all tried or conceived alternatives.",
+    "Without killing you cannot buy adequate land; no number of animals or guarantee of population recovery is added.",
+    "You propose the killing; remaining animals benefit, while the sacrificed animals are part of the threatened population; no personal benefit is stated.",
+    "The suggested action is to kill some endangered animals to fund land."
   ],
   "removed": [
     "International Union for Conservation of Nature in Tanzania"
   ],
-  "rewrite": "You work for a nature conservation agency and are responsible for protecting endangered species. One of the species you are particularly responsible for is the lion, whose population in the wild continues to decline steadily. Research identifies expanding farmland as the main cause. You want to buy land for a conservation area to provide long-term lion habitat. You have made immense efforts to raise the funds needed for that land purchase, but have not been able to obtain enough money to pay for it. You consider killing a few of the threatened lions and selling each fur for 60,000 dollars. This would provide enough money, far more than anything else you have tried or can think of. Killing some lions would fund land to protect the remaining lions. If you kill none, you cannot buy enough land. Do you kill some of the lions?"
+  "rewrite": "You work for a nature conservation agency and are responsible for protecting endangered species. You are particularly responsible for one endangered species whose population in the wild continues to decline steadily. Research identifies expanding farmland as the main cause. You want to buy land for a conservation area to provide long-term habitat for these animals. You have made immense efforts to raise the funds needed for that land purchase, but have not been able to obtain enough money to pay for it. You consider killing a few of the threatened animals and selling each fur for a large sum. This would provide enough money, far more than anything else you have tried or can think of. Killing some endangered animals would fund land to protect the remaining animals. If you kill none, you cannot buy enough land. Do you kill some of the endangered animals?",
+  "generalised": [
+    {
+      "from": "lions",
+      "to": "endangered animals",
+      "why": "species identity does not change killing some to protect the remainder"
+    },
+    {
+      "from": "60,000 dollars apiece",
+      "to": "a large sum",
+      "why": "sufficiency to buy land and superiority to alternatives remain explicit"
+    }
+  ],
+  "notes": "Deliberately retained: killing threatened animals and selling their furs, insufficient alternatives and sufficient proceeds to protect the remaining population; these define animal harm, overlap and the conservation benefit. Generalising the species may change judgments linked to attachment to lions."
 }

@@ -9,23 +9,50 @@
     "locator": "Sahara Ransom",
     "license": "CC BY 4.0",
     "license_url": "https://creativecommons.org/licenses/by/4.0/",
-    "changes": "De-identified and reworded; question in yes/no form."
+    "changes": "De-identified and reworded; incidental details generalised; question in yes/no form."
   },
   "suggested_action": "pay the ransom for the ten hostages",
   "kept": [
-    "You decide as head of state about ten citizens held by terrorists in a desert.",
-    "The ransom is several million euros; other rescue measures failed; half a year has passed and one woman has died.",
+    "You decide as head of state about ten citizens held hostage by an armed group.",
+    "The ransom is large; other rescue measures failed; months have passed and one woman has died.",
     "Past cases show ransom funds weapons and further killings; payment increases the likelihood of future tourist kidnappings.",
     "Payment can save the hostages; refusal means ten deaths but probably saves more than ten future lives by preventing financing.",
-    "No benefit to you is specified; the hostages and future victims are distinct. You pay or refuse; terrorists do the killing.",
+    "No benefit to you is specified; the hostages and future victims are distinct. You pay or refuse; an armed group do the killing.",
     "The suggested action is to pay the ransom."
   ],
   "removed": [
     "German",
     "Sahara Desert"
   ],
-  "rewrite": "You are head of state, and terrorists have taken 10 citizens of your country hostage in a desert. You must decide whether to pay several million euros for their release. Attempts to free them by other means have failed. The ordeal has lasted half a year, and one woman has died. Earlier cases show that terrorists use ransom money to buy weapons and kill even more people. Paying also makes future tourists more likely to be kidnapped. If you pay, you can save the hostages. If you refuse, the 10 hostages will be killed. Refusal will, however, prevent the financing of future terrorism, which will probably save more than 10 lives. Do you pay the ransom?",
+  "rewrite": "You are head of state, and an armed group has taken 10 citizens of your country hostage. You must decide whether to pay a large ransom for their release. Attempts to free them by other means have failed. The ordeal has lasted months, and one woman has died. Earlier cases show that armed groups use ransom money to buy weapons and kill even more people. Paying also makes future tourists more likely to be kidnapped. If you pay, you can save the hostages. If you refuse, the 10 hostages will be killed. Refusal will, however, prevent the financing of future attacks, which will probably save more than 10 lives. Do you pay the ransom?",
   "reversed_suggested_action": "refuse to pay the ransom",
-  "reversed": "You are head of state, and terrorists have taken 10 citizens of your country hostage in a desert. You must decide whether to pay several million euros for their release. Attempts to free them by other means have failed. The ordeal has lasted half a year, and one woman has died. Earlier cases show that terrorists use ransom money to buy weapons and kill even more people. Paying also makes future tourists more likely to be kidnapped. If you pay, you can save the hostages. If you refuse, the 10 hostages will be killed. Refusal will, however, prevent the financing of future terrorism, which will probably save more than 10 lives. Do you refuse to pay the ransom?",
-  "notes": "The named desert becomes a desert of unspecified location. The task says ten hostages and also one prior death; this possible counting ambiguity is preserved rather than resolved."
+  "reversed": "You are head of state, and an armed group has taken 10 citizens of your country hostage. You must decide whether to pay a large ransom for their release. Attempts to free them by other means have failed. The ordeal has lasted months, and one woman has died. Earlier cases show that armed groups use ransom money to buy weapons and kill even more people. Paying also makes future tourists more likely to be kidnapped. If you pay, you can save the hostages. If you refuse, the 10 hostages will be killed. Refusal will, however, prevent the financing of future attacks, which will probably save more than 10 lives. Do you refuse to pay the ransom?",
+  "notes": "Deliberately retained: ten hostages, one prior death, probably more than ten future lives saved by refusal, weapons purchases and increased future kidnapping; these define the people at stake and causal trade-off. The source’s ten-hostage/one-prior-death ambiguity is retained. No moral inference depends on the terrorist label. Broader ransom size and duration may change perceived urgency or cost.",
+  "generalised": [
+    {
+      "from": "Sahara Desert",
+      "to": "location omitted",
+      "why": "the terrain does not change the failed rescue or lethal threat"
+    },
+    {
+      "from": "group of terrorists",
+      "to": "an armed group",
+      "why": "kidnapping, weapons and future killing retain the conduct at stake"
+    },
+    {
+      "from": "half a year",
+      "to": "months",
+      "why": "prolonged failed rescue and the one prior death remain"
+    },
+    {
+      "from": "several million euros",
+      "to": "a large ransom",
+      "why": "the stated weapons funding and likely future deaths define the cost"
+    },
+    {
+      "from": "future terrorism",
+      "to": "future attacks",
+      "why": "weapons funding and subsequent killing remain the consequence"
+    }
+  ]
 }

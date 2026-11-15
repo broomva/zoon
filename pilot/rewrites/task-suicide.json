@@ -9,13 +9,13 @@
     "locator": "Assisted Suicide State",
     "license": "CC BY 4.0",
     "license_url": "https://creativecommons.org/licenses/by/4.0/",
-    "changes": "De-identified and reworded; question in yes/no form."
+    "changes": "De-identified and reworded; incidental details generalised; question in yes/no form."
   },
   "suggested_action": "legalise medically assisted suicide",
   "kept": [
     "You vote as a legislator; doctors, not you, would administer fatal overdoses to willing terminally ill patients.",
     "The eligibility limit is a life expectancy of six months or less, and the patients choose whether to use it.",
-    "An ageing population drives increasing costs; recent studies indicate strong cost reductions, with estimated savings of 139 million dollars for other treatment.",
+    "An ageing population drives increasing costs; recent studies indicate strong cost reductions, with estimated large savings for other treatment.",
     "Many other patients would receive better care, quality of life and life expectancy; the alternative requires continued saving.",
     "No individual benefit to you is specified; the patients killed and other patients helped remain distinct.",
     "The suggested action is to change the law to legalise medically assisted suicide."
@@ -24,8 +24,25 @@
     "Canadian Senate",
     "Canada"
   ],
-  "rewrite": "You are a member of your country’s upper legislative chamber and must vote on a new law. Health care spending is rising steadily, mainly as older people make up a growing share of the population. Recent studies indicate that legalising medically assisted suicide would substantially reduce medical spending. The proposal would let terminally ill patients with a life expectancy of 6 months or less choose to be killed by a doctor using an overdose of tranquillisers. Experts estimate savings of 139 million dollars, which could pay for other medical treatments. If you permit medically assisted suicide, many more people will receive better treatment, improving their quality of life and life expectancy. However, you would make a form of killing legal. If you do not permit it, the health care system must continue saving money wherever possible. Do you change the law and make medically assisted suicide legal?",
+  "rewrite": "You are a legislator and must vote on a new law. Health care spending is rising steadily, mainly as older people make up a growing share of the population. Recent studies indicate that legalising medically assisted suicide would substantially reduce medical spending. The proposal would let terminally ill patients with a life expectancy of 6 months or less choose to be killed by a doctor using an overdose of medication. Experts estimate savings of a large sum, which could pay for other medical treatments. If you permit medically assisted suicide, many more people will receive better treatment, improving their quality of life and life expectancy. However, you would make a form of killing legal. If you do not permit it, the health care system must continue saving money wherever possible. Do you change the law and make medically assisted suicide legal?",
   "reversed_suggested_action": "keep medically assisted suicide illegal",
-  "reversed": "You are a member of your country’s upper legislative chamber and must vote on a new law. Health care spending is rising steadily, mainly as older people make up a growing share of the population. Recent studies indicate that legalising medically assisted suicide would substantially reduce medical spending. The proposal would let terminally ill patients with a life expectancy of 6 months or less choose to be killed by a doctor using an overdose of tranquillisers. Experts estimate savings of 139 million dollars, which could pay for other medical treatments. If you permit medically assisted suicide, many more people will receive better treatment, improving their quality of life and life expectancy. However, you would make a form of killing legal. If you do not permit it, the health care system must continue saving money wherever possible. Do you keep medically assisted suicide illegal?",
-  "notes": "The national legislature becomes a generic upper chamber. The six-month criterion and 139 million dollar estimate are retained as substantive eligibility and resource facts, although the combination may identify the proposal."
+  "reversed": "You are a legislator and must vote on a new law. Health care spending is rising steadily, mainly as older people make up a growing share of the population. Recent studies indicate that legalising medically assisted suicide would substantially reduce medical spending. The proposal would let terminally ill patients with a life expectancy of 6 months or less choose to be killed by a doctor using an overdose of medication. Experts estimate savings of a large sum, which could pay for other medical treatments. If you permit medically assisted suicide, many more people will receive better treatment, improving their quality of life and life expectancy. However, you would make a form of killing legal. If you do not permit it, the health care system must continue saving money wherever possible. Do you keep medically assisted suicide illegal?",
+  "notes": "Deliberately retained: six-month eligibility, terminal illness, voluntary choice and a doctor’s fatal overdose; these define eligibility, consent and agency. Many others’ improved treatment remains the benefit. Broader medication and savings wording may change perceived medical realism or benefit size.",
+  "generalised": [
+    {
+      "from": "Canadian Senate",
+      "to": "legislator",
+      "why": "law-making authority remains without a specific chamber"
+    },
+    {
+      "from": "tranquillizers",
+      "to": "medication",
+      "why": "a doctor’s fatal overdose remains the direct harm"
+    },
+    {
+      "from": "139 million dollars",
+      "to": "a large sum",
+      "why": "the stated improvement of treatment for many others defines the benefit"
+    }
+  ]
 }

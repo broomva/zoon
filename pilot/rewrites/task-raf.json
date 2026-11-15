@@ -9,24 +9,46 @@
     "locator": "RAF",
     "license": "CC BY 4.0",
     "license_url": "https://creativecommons.org/licenses/by/4.0/",
-    "changes": "De-identified and reworded; question in yes/no form."
+    "changes": "De-identified and reworded; incidental details generalised; question in yes/no form."
   },
   "suggested_action": "release the eleven imprisoned group members",
   "kept": [
-    "You are head of state; a far-left terrorist group holds the leader of a national employers’ association.",
+    "You are head of state; an armed group holds a prominent public figure.",
     "The demand concerns 11 prisoners; a past kidnapping freed five, four of whom later killed several innocent people in attacks.",
     "Refusal means the hostage will be killed; release will likely lead to attacks killing several people.",
     "The interval remains a few years; no personal benefit is specified; the hostage and future victims are distinct.",
     "You authorise release; terrorists, rather than you, carry out the threatened killings.",
-    "The suggested action is to release the imprisoned terrorists."
+    "The suggested action is to release the eleven imprisoned group members."
   ],
   "removed": [
     "German",
     "1977",
     "Federation of the German Employers’ Association"
   ],
-  "rewrite": "You are your country’s head of state. A far-left terrorist group has kidnapped the leader of a national employers’ association. They demand the release of 11 imprisoned members in exchange for his life. A few years earlier, another kidnapping enabled the same group to secure the release of 5 members. Of those released, 4 have since carried out further terrorist attacks that killed several innocent people. If you accept the group’s demands, the 11 imprisoned terrorists will be freed and will likely carry out further attacks killing several people. If you refuse, the hostage will be killed. Do you release the former terrorists?",
-  "reversed_suggested_action": "refuse to release the imprisoned terrorists",
-  "reversed": "You are your country’s head of state. A far-left terrorist group has kidnapped the leader of a national employers’ association. They demand the release of 11 imprisoned members in exchange for his life. A few years earlier, another kidnapping enabled the same group to secure the release of 5 members. Of those released, 4 have since carried out further terrorist attacks that killed several innocent people. If you accept the group’s demands, the 11 imprisoned terrorists will be freed and will likely carry out further attacks killing several people. If you refuse, the hostage will be killed. Do you refuse to release the former terrorists?",
-  "notes": "The national setting and association’s formal name are replaced with generic equivalents. The source’s far-left affiliation and the hostage’s employers’ association role remain because political identity and social status could matter; they may also cue recognition."
+  "rewrite": "You are your country’s head of state. An armed group has kidnapped a prominent public figure. They demand the release of 11 imprisoned members in exchange for his life. A few years earlier, another kidnapping enabled the same group to secure the release of 5 members. Of those released, 4 have since carried out further attacks that killed several innocent people. If you accept the group’s demands, the 11 imprisoned members will be freed and will likely carry out further attacks killing several people. If you refuse, the hostage will be killed. Do you release the imprisoned members?",
+  "reversed_suggested_action": "refuse to release the imprisoned members",
+  "reversed": "You are your country’s head of state. An armed group has kidnapped a prominent public figure. They demand the release of 11 imprisoned members in exchange for his life. A few years earlier, another kidnapping enabled the same group to secure the release of 5 members. Of those released, 4 have since carried out further attacks that killed several innocent people. If you accept the group’s demands, the 11 imprisoned members will be freed and will likely carry out further attacks killing several people. If you refuse, the hostage will be killed. Do you refuse to release the imprisoned members?",
+  "notes": "Deliberately retained: one hostage, 11 demanded prisoners, five previously released and four subsequent attackers; the first two set the exchange and the latter two quantify the evidence for future killing. Several innocent victims and likely future attacks remain. No moral inference depends on the terrorist label. Broader hostage status may change judgments about public responsibility.",
+  "generalised": [
+    {
+      "from": "far-left terrorist group",
+      "to": "armed group",
+      "why": "political colour and label do not change hostage-taking or lethal attacks"
+    },
+    {
+      "from": "President of the Federation of the German Employers’ Association",
+      "to": "prominent public figure",
+      "why": "the exact office does not change the hostage’s life at stake"
+    },
+    {
+      "from": "former terrorists",
+      "to": "imprisoned members",
+      "why": "the same prisoners are released without an additional political label"
+    },
+    {
+      "from": "terrorist attacks",
+      "to": "attacks",
+      "why": "future lethal conduct remains explicit without the group label"
+    }
+  ]
 }

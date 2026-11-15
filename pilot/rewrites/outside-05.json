@@ -9,11 +9,11 @@
     "locator": "English Versions, 5) Plague spread",
     "license": "CC BY 4.0",
     "license_url": "https://creativecommons.org/licenses/by/4.0/",
-    "changes": "De-identified and reworded; question in yes/no form."
+    "changes": "De-identified and reworded; incidental details generalised; question in yes/no form."
   },
   "suggested_action": "isolate your village",
   "kept": [
-    "You remain a parish priest entrusted with all major village decisions after the first deaths; the population is 800 and includes many children.",
+    "You remain a local religious leader entrusted with all major village decisions after the first deaths; the population is 800 and includes many children.",
     "The epidemic spreads by contagion; isolation increases local contact and infection risk but reduces the probability of wider spread.",
     "Without isolation villagers can try to escape with their families but will likely spread infection and cause many more deaths.",
     "You impose isolation rather than directly infect people; you are in the threatened village, with no separate personal gain specified.",
@@ -25,6 +25,13 @@
     "England",
     "plague"
   ],
-  "rewrite": "You are the parish priest in a village of 800 people when a contagious, deadly epidemic breaks out. After the first deaths, the villagers ask you to take charge of all important decisions. Knowing the disease spreads through contagion, you consider isolating the village to keep it from spreading to nearby villages. Isolation would, however, mean closer contact among your villagers, increasing infection risk for those in your care, including many children. If you isolate the village, you reduce the probability that the epidemic will spread more widely, but more villagers will die. If you do not, villagers can try to save themselves and their families. They will, however, likely carry the infection elsewhere, causing many more deaths. Do you isolate your village?",
-  "notes": "The named disease becomes a contagious, deadly epidemic. Its transmission mechanism and predicted consequences are retained, but disease-specific expectations could change. The priest’s role and 800 inhabitants remain despite their recognition risk."
+  "rewrite": "You are the local religious leader in a village of 800 people when a contagious, deadly epidemic breaks out. After the first deaths, the villagers ask you to take charge of all important decisions. Knowing the disease spreads through contagion, you consider isolating the village to keep it from spreading to nearby villages. Isolation would, however, mean closer contact among your villagers, increasing infection risk for those in your care, including many children. If you isolate the village, you reduce the probability that the epidemic will spread more widely, but more villagers will die. If you do not, villagers can try to save themselves and their families. They will, however, likely carry the infection elsewhere, causing many more deaths. Do you isolate your village?",
+  "notes": "Deliberately retained: 800 villagers, children, contagion and increased local contact under isolation; these set the exposed population and the mechanism of increased local deaths versus reduced spread. A broader religious role may change perceived pastoral duty.",
+  "generalised": [
+    {
+      "from": "parish priest",
+      "to": "local religious leader",
+      "why": "entrusted community authority and religious responsibility remain"
+    }
+  ]
 }

@@ -9,12 +9,12 @@
     "locator": "Real Lifeboat",
     "license": "CC BY 4.0",
     "license_url": "https://creativecommons.org/licenses/by/4.0/",
-    "changes": "De-identified and reworded; question in yes/no form."
+    "changes": "De-identified and reworded; incidental details generalised; question in yes/no form."
   },
   "suggested_action": "ask the other boat to throw ten people overboard",
   "kept": [
     "You are the captain and highest ranking officer, in a second lifeboat that is already full; the decision does not lighten your own boat.",
-    "The ship struck an iceberg; rain and large waves threaten the other boat, which carries 41 people.",
+    "The ship sank; rain and large waves threaten the other boat, which carries 41 people.",
     "Approximately ten adults would need to leave; the cold water would kill them by freezing.",
     "Without throwing anyone overboard the boat most likely sinks within days, killing all 41; throwing ten gives the remaining people a good chance of rescue.",
     "Those sacrificed are drawn from the endangered group; you give the order and other people would carry out the throwing.",
@@ -23,6 +23,13 @@
   "removed": [
     "1841"
   ],
-  "rewrite": "You are a ship’s captain. Your ship struck an iceberg and sank, but you, other crew members and passengers escaped in two lifeboats. Rain begins the following day. You navigate as others row and bail out water. Someone calls from the other lifeboat, and you say that it is overcrowded with 41 people. Large waves could sink their boat at any moment. As the highest ranking officer, you are asked what to do. You think roughly ten adults must leave their boat to substantially improve the others’ chances of survival. Your own boat is full and cannot take anyone else. Those ten would have to go overboard, into water so cold that they would freeze to death. If you tell them to throw nobody overboard, their boat will most likely sink sometime in the next few days and all 41 people will die. If you tell them to throw 10 people overboard, the others can keep rowing toward land with a good chance of rescue. Do you ask them to throw 10 people overboard?",
-  "notes": "The year is removed, but the iceberg, 41 occupants and ten proposed deaths are preserved because they describe the hazard and trade-off. Together they may still identify the incident. The task’s second-boat captain and timescale of days are retained."
+  "rewrite": "You are a ship’s captain. Your ship sank, but you, other crew members and passengers escaped in two lifeboats. Rain begins the following day. You navigate as others row and bail out water. Someone calls from the other lifeboat, and you say that it is overcrowded with 41 people. Large waves could sink their boat at any moment. As the highest ranking officer, you are asked what to do. You think roughly ten adults must leave their boat to substantially improve the others’ chances of survival. Your own boat is full and cannot take anyone else. Those ten would have to go overboard, into water so cold that they would freeze to death. If you tell them to throw nobody overboard, their boat will most likely sink sometime in the next few days and all 41 people will die. If you tell them to throw 10 people overboard, the others can keep rowing toward land with a good chance of rescue. Do you ask them to throw 10 people overboard?",
+  "notes": "Deliberately retained: 41 occupants, roughly ten adults to sacrifice, freezing death, the full second boat and your command role there; these fix group sizes, certainty of harm, lack of self-benefit and indirect agency. Most likely sinking within days and a good chance of rescue remain.",
+  "generalised": [
+    {
+      "from": "colliding with an iceberg",
+      "to": "sank",
+      "why": "the cause of sinking does not change the lifeboat choice"
+    }
+  ]
 }

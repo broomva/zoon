@@ -9,11 +9,11 @@
     "locator": "English Versions, 28) Organ market",
     "license": "CC BY 4.0",
     "license_url": "https://creativecommons.org/licenses/by/4.0/",
-    "changes": "De-identified and reworded; question in yes/no form."
+    "changes": "De-identified and reworded; incidental details generalised; question in yes/no form."
   },
   "suggested_action": "buy a kidney on the black market",
   "kept": [
-    "You are the patient, after four years of dialysis; no family match exists and a minor heart attack makes an official transplant virtually impossible.",
+    "You are the patient, after years of dialysis; no family match exists and a minor heart attack makes an official transplant virtually impossible.",
     "People from poor countries sell to wealthy buyers through an organised but illegal market that exploits poverty.",
     "Medical risks are low; donors can live with one kidney but have restrictions and more fragile health.",
     "Without buying you die in a few years; with buying both you and donor probably live well for decades.",
@@ -23,5 +23,13 @@
   "removed": [
     "Israel"
   ],
-  "rewrite": "You have been dependent on dialysis for the past four years because your kidneys have failed. You cannot receive a kidney from anyone in your family because none of them is a suitable organ donor. Many patients die on the official waiting list before receiving one. A minor heart attack has moved you still farther down that list, making a transplant through it virtually impossible. You consider the black market, where poor people in poorer countries sell kidneys to wealthy buyers. Medical risks are low. A donor can live with one kidney but will face medical limitations and more fragile health. This well-organised market is illegal because it pressures people in poverty to endanger their health. If you do not buy a kidney, you will die in a few years. If you buy one, you and the donor will probably both live well for decades. You would, however, be exploiting the donor’s poverty. Do you buy a kidney from the black market?"
+  "rewrite": "You have been dependent on dialysis for the past several years because your kidneys have failed. You cannot receive a kidney from anyone in your family because none of them is a suitable organ donor. Many patients die on the official waiting list before receiving one. A minor heart attack has moved you still farther down that list, making a transplant through it virtually impossible. You consider the black market, where poor people in poorer countries sell kidneys to wealthy buyers. Medical risks are low. A donor can live with one kidney but will face medical limitations and more fragile health. This well-organised market is illegal because it pressures people in poverty to endanger their health. If you do not buy a kidney, you will die in a few years. If you buy one, you and the donor will probably both live well for decades. You would, however, be exploiting the donor’s poverty. Do you buy a kidney from the black market?",
+  "generalised": [
+    {
+      "from": "four years",
+      "to": "several years",
+      "why": "chronic dependence remains without an exact duration"
+    }
+  ],
+  "notes": "Deliberately retained: kidney failure, dialysis, the minor heart attack’s effect on eligibility, one kidney left to the donor, low medical risk and probably decades of life for both; these set the medical alternatives, survival benefit and donor harm."
 }

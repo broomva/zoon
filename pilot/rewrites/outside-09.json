@@ -9,14 +9,14 @@
     "locator": "English Versions, 9) Coma (mother)",
     "license": "CC BY 4.0",
     "license_url": "https://creativecommons.org/licenses/by/4.0/",
-    "changes": "De-identified and reworded; question in yes/no form."
+    "changes": "De-identified and reworded; incidental details generalised; question in yes/no form."
   },
   "suggested_action": "suffocate your mother",
   "kept": [
-    "The person is your mother, permanently in a vegetative state for seven years, breathing and showing reflexes and eye movement without conscious perception or higher brain function.",
+    "The person is your mother, permanently in a vegetative state for years, breathing and showing reflexes and eye movement without conscious perception or higher brain function.",
     "There is no hope of improvement, but she could live a long time; continued life is probably many years.",
     "You and relatives suffer immensely and you regard her condition as undignified.",
-    "You would personally suffocate her with a towel, ending the family’s suffering by killing her.",
+    "You would personally suffocate her with a piece of cloth, ending the family’s suffering by killing her.",
     "Yourself and relatives benefit; your mother is not described as consciously suffering or requesting death.",
     "The suggested action is to suffocate your mother."
   ],
@@ -24,6 +24,18 @@
     "Coma (mother)",
     "riding accident"
   ],
-  "rewrite": "Your mother has been in a persistent vegetative state since an accident several years ago. Her brain damage is permanent. She breathes unaided and retains reflexes; during the day her eyes open and move, but she cannot consciously perceive anything. She has no remaining higher brain function and no prospect of improvement, though she could live like this for a long time. You and your relatives suffer immensely over her condition, which you see as taking away her dignity. After seven years, you consider using a towel to suffocate her. If you kill her by suffocation, you end your own and your relatives’ suffering. If you do not, she will continue in this condition, probably for many years. Do you suffocate your mother?",
-  "notes": "The riding accident becomes an unspecified accident; its resulting condition and seven-year duration remain. The accident’s kind might affect perceived realism, although the source gives no causal role for it in the decision."
+  "rewrite": "Your mother has been in a persistent vegetative state since an accident several years ago. Her brain damage is permanent. She breathes unaided and retains reflexes; during the day her eyes open and move, but she cannot consciously perceive anything. She has no remaining higher brain function and no prospect of improvement, though she could live like this for a long time. You and your relatives suffer immensely over her condition, which you see as taking away her dignity. After years, you consider using a piece of cloth to suffocate her. If you kill her by suffocation, you end your own and your relatives’ suffering. If you do not, she will continue in this condition, probably for many years. Do you suffocate your mother?",
+  "notes": "Deliberately retained: mother-child relationship, no conscious perception, permanent loss of higher function, no hope of improvement and direct suffocation; these distinguish relief of relatives’ suffering from relief of the mother’s own conscious suffering.",
+  "generalised": [
+    {
+      "from": "7 years",
+      "to": "After years",
+      "why": "permanence and no prospect of recovery already establish chronicity"
+    },
+    {
+      "from": "towel",
+      "to": "piece of cloth",
+      "why": "direct suffocation remains the method and fatal harm"
+    }
+  ]
 }

@@ -9,11 +9,11 @@
     "locator": "English Versions, 33) Bishop",
     "license": "CC BY 4.0",
     "license_url": "https://creativecommons.org/licenses/by/4.0/",
-    "changes": "De-identified and reworded; question in yes/no form."
+    "changes": "De-identified and reworded; incidental details generalised; question in yes/no form."
   },
   "suggested_action": "publicly condemn the deportations",
   "kept": [
-    "You are an archbishop under occupation, aware of great suffering from deportation but lacking details.",
+    "You are a senior religious leader under occupation, aware of great suffering from deportation but lacking details.",
     "A tacit agreement could protect people of the targeted heritage who share your religion, including members of your community.",
     "Silence leaves the others deported while that religious subgroup stays free; speaking risks the subgroup’s deportation and lives.",
     "Speaking fulfils the stated moral duty to draw attention to wrongful deportation; it is not claimed to stop it.",
@@ -30,8 +30,15 @@
     "Christians",
     "Jewish"
   ],
-  "rewrite": "You are an archbishop in a country under military occupation. The occupiers have begun deporting people of a particular heritage. You know they suffer greatly, though you lack details. You consider publicly condemning the deportations. A tacit agreement with the occupiers could, however, keep people of that heritage who follow your religion from being deported. Speaking out would risk deportation for those co-religionists, including people from your own community. If you remain silent, the other people of that heritage will keep being deported, but your co-religionists will remain free. If you condemn the deportations publicly, you risk all those co-religionists’ lives while fulfilling your moral duty to draw attention to wrongful deportations. Do you openly censure the deportations?",
+  "rewrite": "You are a senior religious leader in a country under military occupation. The occupiers have begun deporting people of a particular heritage. You know they suffer greatly, though you lack details. You consider publicly condemning the deportations. A tacit agreement with the occupiers could, however, keep people of that heritage who follow your religion from being deported. Speaking out would risk deportation for those co-religionists, including people from your own community. If you remain silent, the other people of that heritage will keep being deported, but your co-religionists will remain free. If you condemn the deportations publicly, you risk all those co-religionists’ lives while fulfilling your moral duty to draw attention to wrongful deportations. Do you openly censure the deportations?",
   "reversed_suggested_action": "remain silent about the deportations",
-  "reversed": "You are an archbishop in a country under military occupation. The occupiers have begun deporting people of a particular heritage. You know they suffer greatly, though you lack details. You consider publicly condemning the deportations. A tacit agreement with the occupiers could, however, keep people of that heritage who follow your religion from being deported. Speaking out would risk deportation for those co-religionists, including people from your own community. If you remain silent, the other people of that heritage will keep being deported, but your co-religionists will remain free. If you condemn the deportations publicly, you risk all those co-religionists’ lives while fulfilling your moral duty to draw attention to wrongful deportations. Do you remain silent about the deportations?",
-  "notes": "Named religions, ancestry, country, occupier and year become a religion and a persecuted heritage. The protected subgroup’s membership in both categories remains, but removing these particular identities and the archbishop’s denomination may change the perceived duty or agreement."
+  "reversed": "You are a senior religious leader in a country under military occupation. The occupiers have begun deporting people of a particular heritage. You know they suffer greatly, though you lack details. You consider publicly condemning the deportations. A tacit agreement with the occupiers could, however, keep people of that heritage who follow your religion from being deported. Speaking out would risk deportation for those co-religionists, including people from your own community. If you remain silent, the other people of that heritage will keep being deported, but your co-religionists will remain free. If you condemn the deportations publicly, you risk all those co-religionists’ lives while fulfilling your moral duty to draw attention to wrongful deportations. Do you remain silent about the deportations?",
+  "notes": "Deliberately retained: co-religionists of the persecuted heritage, the silent agreement and the moral duty to speak; these determine group overlap and the risk imposed by fulfilling that duty. The broader religious office may change perceived responsibility.",
+  "generalised": [
+    {
+      "from": "archbishop",
+      "to": "senior religious leader",
+      "why": "religious duty and responsibility for co-religionists remain"
+    }
+  ]
 }

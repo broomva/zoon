@@ -9,7 +9,7 @@
     "locator": "Rwanda",
     "license": "CC BY 4.0",
     "license_url": "https://creativecommons.org/licenses/by/4.0/",
-    "changes": "De-identified and reworded; question in yes/no form."
+    "changes": "De-identified and reworded; incidental details generalised; question in yes/no form."
   },
   "suggested_action": "protect the employee from the armed crowd",
   "kept": [
@@ -25,8 +25,15 @@
     "Hutu",
     "Tutsi"
   ],
-  "rewrite": "You lead a development aid project in a country where members of one ethnic group are attacking another ethnic group throughout the country. The family of an employee from the targeted group is hiding at your agency’s centre. Another employee arrives, reporting that he has just seen an armed group kill his whole family and another of your employees solely because they belong to the targeted group. Soon an armed crowd gathers outside. Its leader threatens to attack the building and kill everyone of the targeted ethnicity inside unless you hand over the employee who has just arrived. If you protect him, the crowd will probably attack the centre and kill many people. If you allow the crowd to take him, he will be killed, but the other people under your care will be safe. Do you protect your employee?",
+  "rewrite": "You lead an aid project in a country where members of one ethnic group are attacking another ethnic group throughout the country. The family of an employee from the targeted group is hiding at your agency’s centre. Another employee arrives, reporting that he has just seen an armed group kill his whole family and another of your employees solely because they belong to the targeted group. Soon an armed crowd gathers outside. Its leader threatens to attack the building and kill everyone of the targeted ethnicity inside unless you hand over the employee who has just arrived. If you protect him, the crowd will probably attack the centre and kill many people. If you allow the crowd to take him, he will be killed, but the other people under your care will be safe. Do you protect your employee?",
   "reversed_suggested_action": "hand the employee over to the armed crowd",
-  "reversed": "You lead a development aid project in a country where members of one ethnic group are attacking another ethnic group throughout the country. The family of an employee from the targeted group is hiding at your agency’s centre. Another employee arrives, reporting that he has just seen an armed group kill his whole family and another of your employees solely because they belong to the targeted group. Soon an armed crowd gathers outside. Its leader threatens to attack the building and kill everyone of the targeted ethnicity inside unless you hand over the employee who has just arrived. If you protect him, the crowd will probably attack the centre and kill many people. If you allow the crowd to take him, he will be killed, but the other people under your care will be safe. Do you hand over your employee?",
-  "notes": "Named ethnic groups become an attacking group and a targeted group. Their historical relationship is lost. The task threatens only the targeted ethnicity inside, not everyone inside; the rewrite does not infer your ethnicity or change that narrower threat."
+  "reversed": "You lead an aid project in a country where members of one ethnic group are attacking another ethnic group throughout the country. The family of an employee from the targeted group is hiding at your agency’s centre. Another employee arrives, reporting that he has just seen an armed group kill his whole family and another of your employees solely because they belong to the targeted group. Soon an armed crowd gathers outside. Its leader threatens to attack the building and kill everyone of the targeted ethnicity inside unless you hand over the employee who has just arrived. If you protect him, the crowd will probably attack the centre and kill many people. If you allow the crowd to take him, he will be killed, but the other people under your care will be safe. Do you hand over your employee?",
+  "notes": "Deliberately retained: ethnic persecution, one demanded employee, the family and employees under your care, and the threat specifically to the targeted ethnicity inside; these determine responsibility, group overlap and risk. Protection probably causes an attack; handover means his death and the others’ safety. Your ethnicity remains unspecified. The aid setting remains because it explains the duty of care.",
+  "generalised": [
+    {
+      "from": "development aid team",
+      "to": "aid project",
+      "why": "responsibility for employees and their families remains"
+    }
+  ]
 }
