@@ -50,28 +50,41 @@ that carries nothing), `coded` (the published descriptive codes through the same
 (human ratings of nearly the same text) and `known share` (the most any lean can do). Each is
 reported with learning as well.
 
-**Which result decides.** H1 is decided on `zoon-evaluative`, with the decision model as the
-judge. It passes if that arm beats `prompted`, `laws-only` and its own `no-state` arm by the
-pre-registered difference. Results for `zoon-strict`, and for both zoons with the second model
+**Two hypotheses, and which one decides.** The design's H1 was written for a judge that says
+what a situation means and sees no options. Only `zoon-strict` fits that wording. So the
+pre-registration names two hypotheses:
+
+- **H1-strict**: `zoon-strict` beats `prompted`, `laws-only` and its own `no-state` arm. This
+  is H1 as the design wrote it. `lean.md` gives reason to expect its reading to carry nothing.
+- **H1-evaluative**: the same for `zoon-evaluative`. Its judge rates the one action the
+  situation suggests, which the design's wording does not allow.
+
+The pilot's verdict, and with it the decision to build further, rests on H1-evaluative with
+the decision model as the judge. Results for H1-strict, and for both with the second model
 family, are reported beside it and cannot change the verdict. Both choices were made by the
-maintainer on 2026-11-15, and both amend the design.
+maintainer on 2026-11-15. A pass of H1-evaluative supports the amended boundary described
+below. It is not a pass of H1 as first written, and is not to be reported as one.
 
 ## What the judge is asked
 
 In both zoons the judge sees the text of one dilemma and nothing else. It never sees a
 participant, a history, an outcome or another dilemma. It is never asked what people choose.
 
-**Evaluative.** One question, modelled on the one the original study put to people: how
-appropriate is it to take the suggested action in order to achieve the goal? The declared
-answers are the seven points of that study's scale [me]. `m(d)` is the expected value of the
-judge's answer, standardised over the 13 dilemmas.
+**Evaluative.** One question: how appropriate is it to take the suggested action? The
+wording and the seven labelled answers are those of the original paper's US study, which is
+the sample the `norm` lean uses. The paper's two studies worded the question and its end
+points differently, so the pre-registration quotes the US wording from the paper and uses no
+other. `m(d)` is the expected value of the judge's answer, standardised over the 13 dilemmas.
+Standardising uses no data from this task, and `alpha` and `beta` absorb it.
 
 **Strict.** The descriptive questions the original study coded for each dilemma: the context,
 whether it involves killing, whether those harmed are among those who benefit, whether the
 person deciding benefits, and whether the opposite framing is reasonable [me]. The judge's
 answers go through a penalised linear map to a predicted appropriateness. The map is fitted on
 the 25 dilemmas of the original study that are not among the 13, using the judge's own
-answers for those dilemmas, with the penalty chosen within those 25.
+answers for those dilemmas. The penalty is chosen within those 25, and "no map at all" is one
+of the choices. With the published codes the data chose no map. If the judge's answers lead
+to the same choice, that confirms `lean.md`; it is not a finding about the judge.
 
 ### What this does to the design's rule
 
@@ -100,10 +113,14 @@ task. They allow the judge to be checked against people with no data from this t
   human rating. The 20 trolley-style dilemmas rated in the same study are reported separately.
 - **Strict.** Agreement between the judge's answers and the published codes, per question,
   over the 25 and over the 13.
-- **Stop rule.** If the evaluative judge's correlation with human ratings on the 25 is below
-  a threshold fixed in the pre-registration, the pilot stops before any held-out data is
-  read. That outcome is reported as "the judge could not be calibrated". It is not a result
-  about H1.
+- **Stop rule.** One wording of the evaluative question is fixed before any call to the
+  judge. If the lower end of a confidence interval for its correlation with human ratings on
+  the 25 is below a threshold, the pilot stops before any held-out data is read. The
+  interval's level and the threshold are fixed in the pre-registration, also before any call.
+  With 25 dilemmas the interval is wide: its standard error is about 0.21 on the scale
+  usually used for correlations. Stopping is reported as "the judge could not be calibrated".
+  It is not a result about either hypothesis. The rule uses outside data only, so passing it
+  does not make a false positive on the 13 more likely.
 
 The judge reads this task's own texts for the 13. Several were changed from the originals, and
 one suggests the opposite action; `lean.md` tables the changes.
@@ -111,16 +128,18 @@ one suggests the opposite action; `lean.md` tables the changes.
 ## What a pass would and would not show
 
 On these 13 dilemmas, human ratings of nearly the same text exist, and a lean built from them
-(`norm`) gains +0.08044 nats per choice over no lean. No model's reading should be expected to
-beat that. So:
+(`norm`) gains +0.08044 nats per choice over no lean, or +0.08346 when both sides also learn.
+`norm` is a reference and not a ceiling: it rates the original texts, and a reader of the
+adapted texts could do better where the adaptation changed the dilemma. The ceiling is
+`known share`, at +0.11342. So:
 
 - Beating `laws-only` shows that reading the dilemma adds to the laws. It does not show that a
   model reads better than people.
 - The size of the reading is reported as a share of what `norm` achieves and of what
   `known share` achieves.
 - Beating `no-state` shows that state adds to the reading.
-- Beating `prompted` shows that keeping the state in code did better than putting everything
-  in one prompt.
+- Beating `prompted` shows that the whole package did better than one prompt: state kept in
+  code, and parameters fitted on training participants. It does not single out the state.
 
 ## Power of these comparisons
 
@@ -129,11 +148,12 @@ From `lean.md`, with all four experiments pooled and 680 held-out participants:
 | Comparison | Power | Power at half the effect | Depends on |
 |---|---|---|---|
 | A zoon against its `no-state` arm | 0.997 | 0.646 | Little. With a lean that carries nothing it is 0.993 and 0.602 |
-| A zoon against `laws-only` | 1.000 | 1.000 | The lean being about as good as `norm`. The smallest detectable reading effect is 0.01339. With a lean like `coded` there is nothing to detect: 0.173 |
+| A zoon against `laws-only` | 1.000 | 1.000 | The lean being about as good as `norm`. The smallest detectable effect is 0.01369. With a lean like `coded` there is nothing to detect: 0.173 |
 | A zoon against `prompted` | Unknown | Unknown | How well the model predicts when asked directly. Not measurable without model calls |
 
-These are for a learning model with a lean taken from human material. They are not the power
-of the pilot: the judge's reading will be worse than `norm` by an unknown amount.
+These are for a learning model with a lean taken from human material, and each is the power
+to detect a difference from zero, not from the pre-registered smallest difference. They are
+not the power of the pilot: the judge's reading will differ from `norm` by an unknown amount.
 
 ## What is fitted, and on what
 
@@ -159,6 +179,7 @@ this participant gives. Then, in this order:
 3. Convert it to the probability of the cost-benefit option: unchanged where the suggested
    action is the cost-benefit option, and one minus it where it is the rule option.
 4. Recalibrate: `logit = a · logit(p) + c`.
+5. Clamp the result again.
 
 The two fitted numbers are there because a model's probabilities can be too extreme; the
 first test call to the decision model returned exactly 1 and 0 [me]. Without them the arm
@@ -166,8 +187,32 @@ could lose for that reason alone. The prompt also holds a fixed set of complete 
 participants from the training set. The prompt text, and the number and choice of examples,
 are written once, reviewed, and fixed in the pre-registration.
 
-This arm sees everything a zoon uses, in one prompt. If it wins, the architecture added
-nothing on this task.
+This arm is given the same facts about the dilemma and the participant as a zoon. It does
+not have what a zoon gets from fitting on all training participants; it has its examples and
+its two fitted numbers. If it wins, the architecture added nothing on this task.
+
+## Recall, and what voids the result
+
+The original dilemmas and their human ratings are published. The three dilemmas that carry
+most of what `norm` gains were changed only on the surface when they were adapted. A judge
+that has memorised the published table could therefore return those ratings without reading
+anything, and the result would look like a success. Comparing its ratings of the adapted and
+original texts would not catch this, and neither would asking it for the published means.
+
+Two controls can catch it, and a failure of either voids the verdict:
+
+- **Fresh paraphrases.** Each of the 13 dilemmas is rewritten with new wording, names and
+  surface details and the same facts. The paraphrases are written and committed before any
+  call to the judge. The lean computed from the paraphrases must do about as well as the lean
+  computed from the task's texts, within a bound fixed in the pre-registration.
+- **Reversal.** One of the task's dilemmas suggests the opposite action to its original.
+  For that dilemma, and for versions of others rewritten to suggest the opposite action where
+  the original paper says that framing is reasonable, the judge's rating has to move the
+  right way.
+
+What recall would look like: a lean almost exactly as good as `norm`, the reversed dilemma
+rated as its original, and the same loss `norm` shows on the dilemma whose adaptation changed
+it most (-0.11100).
 
 ## What this pilot does not exercise
 
@@ -185,7 +230,8 @@ outcomes.
 - The exclusion of the one held-out participant whose record was seen during development.
 - That the interval over dilemmas is reported beside the interval over participants. With 13
   dilemmas the second says the effect is real for these dilemmas and little about others.
-- How paraphrases of the judge questions are used.
+- The paraphrases and reversed versions of the dilemmas, and the bound for the recall
+  controls.
 
 ## Models and cost
 
@@ -199,7 +245,7 @@ a run:
 
 | Part | Calls, per family | Basis |
 |---|---|---|
-| Judge | A few hundred | 38 dilemmas, up to six questions, three wordings |
+| Judge | A few hundred | 38 dilemmas, plus paraphrased and reversed versions of the 13; up to six questions each |
 | `prompted` | About 12,700 | 680 held-out and 300 training participants, 13 trials each |
 
 The dilemma materials run to 6,184 words for 13 dilemmas with four outcome texts each [me], so
@@ -213,10 +259,7 @@ prints the cost before any live run, and stops at the cap.
   held-out data is used.
 - **Thirteen dilemmas.** Three of them carry most of what `norm` gains, and one adapted text
   costs it -0.11100. A result here is a result about these dilemmas.
-- **The judge may recall the study.** The original dilemmas and their ratings are published.
-  A model that has seen them may reproduce the ratings and not judge the text. The check is
-  to compare its ratings on the adapted texts with its ratings on the originals, and to ask
-  it for the published means directly.
+- **The judge may recall the study.** See the next section.
 - **The `prompted` arm depends on prompt design.** A poor prompt would hand a zoon the win.
 - **`alpha` and `beta` are fitted on eleven dilemmas** in each fold.
 
