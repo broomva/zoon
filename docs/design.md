@@ -420,7 +420,7 @@ log.
 |---|---|---|---|---|
 | D1 | Python. Decided 2026-11-15 | One-way | Pilot | High. A rewrite of everything except the log schema |
 | D2 | Models hold no state, see no options, return no action | One-way | Pilot | High. It is the project's identity |
-| D3 | Licence: Apache-2.0 | One-way once others contribute | First public commit | High. Relicensing needs every contributor's consent |
+| D3 | Licence: Apache-2.0. Decided 2026-11-15 | One-way once others contribute | First public commit | High. Relicensing needs every contributor's consent |
 | D4 | Event-sourced kernel, integer time, millisecond batches | One-way | M1; provisional until then | High. Every law and world is written against it |
 | D5 | Log schema and the numeric contract | One-way | M1; provisional until then | High. Every transcript and recorded result depends on them; the schema is versioned to allow migration |
 | D6 | Go public at the pre-registration commit. Decided 2026-11-15 | One-way from that commit | Before the held-out data is read | Cannot be undone |
@@ -564,15 +564,16 @@ started only on the maintainer's explicit decision.
 
 1. **Language.** Decided 2026-11-15: Python.
 2. **When to go public.** Decided 2026-11-15: at the pre-registration commit.
-3. **The H1 task.** Next step: list the Psych-101 experiments and Confidence Database
-   datasets, and choose before any pilot code is written. If none needs both state and
-   language, report that and test H1′.
+3. **The H1 task.** Decided 2026-11-15: H1 is pre-registered on the moral-learning task of
+   Maier, Cheung and Lieder, with all four experiments pooled and with dilemmas held out as
+   well as participants. The survey and the power calculation behind this are in
+   `docs/pilot/task-selection.md` and `docs/pilot/power.md`.
 4. **The appraisal vocabulary and an anchor for it.** Next step: draw the first vocabulary
    from published appraisal dimensions and search for human ratings with an explicit licence.
    If none is found by P0, appraisal stays a `convention`.
-5. **Licences.** This repository has none yet; Apache-2.0 is proposed (D3). `broomva/skills`,
-   which holds the audit, is public and GitHub detects no licence. Next step: the maintainer
-   sets both before the first public commit, or the audit is not vendored.
+5. **Licences.** This repository is Apache-2.0, decided 2026-11-15. `broomva/skills`, which
+   holds the audit, is public and GitHub detects no licence. Next step: the maintainer sets
+   one there, or the audit is not vendored.
 6. **Provider terms for transcripts.** Next step: read the terms of each provider used before
    any transcript is committed.
 7. **Datasets without a licence.** choices13k, the Murre and Dros forgetting data, the Iowa
