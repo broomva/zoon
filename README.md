@@ -10,12 +10,13 @@ state.
 
 ## Status
 
-Nothing is built yet. This repository holds the design and the preparation for a pilot.
+No part of zoon is built yet. This repository holds the design and the preparation for a
+pilot, including the code for a power calculation.
 
 | What | State |
 |---|---|
 | Design | Draft, in [docs/design.md](docs/design.md). Reviewed by models, not yet by people outside the project |
-| Pilot (hypothesis H1) | Not started. Its protocol will be fixed in a pre-registration before any held-out data is read |
+| Pilot (hypothesis H1) | Preparation only: notes on prior work and the choice of task, and a power calculation on training participants, in [docs/pilot](docs/pilot). Its protocol will be fixed in a pre-registration before any held-out data is read |
 | Kernel and social simulation | Not started, and not started at all if the pilot fails |
 | Licence | Not chosen. Apache-2.0 is proposed |
 

@@ -1,0 +1,42 @@
+[project]
+name = "zoon"
+version = "0.0.0"
+description = "Social dynamics from simulated individuals, with every claim checked or labelled"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "numpy>=2.0",
+    "pandas>=2.2",
+    "scipy>=1.14",
+]
+
+[dependency-groups]
+dev = [
+    "pandas-stubs>=3.1.0.261029",
+    "pyright>=1.1.390",
+    "pytest>=8.3",
+    "ruff>=0.8",
+    "scipy-stubs>=1.18.1.1",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/zoon"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM", "RUF"]
+
+[tool.pyright]
+include = ["src", "tests"]
+typeCheckingMode = "strict"
+pythonVersion = "3.12"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
