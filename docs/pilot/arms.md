@@ -215,9 +215,10 @@ order:
 
 The two fitted numbers are there because a model's probabilities can be too extreme; the
 first test call to the decision model returned exactly 1 and 0 [me]. Without them the arm
-could lose for that reason alone. The prompt also holds a fixed set of complete example
-participants from the training set. The prompt text, and the number and choice of examples,
-are written once, reviewed, and fixed in the pre-registration.
+could lose for that reason alone. The prompt also holds examples from the training set. Each
+example is one training participant's answer on one dilemma, with that participant's history
+before it. The prompt text, and the number and choice of examples, are written once,
+reviewed, and fixed in the pre-registration.
 
 This arm is given the texts participants read, where a zoon's judge gets rewrites, and the
 same facts about the participant. It does not have what a zoon gets from fitting on all training participants; it
@@ -286,12 +287,14 @@ a run:
 | Part | Calls, per family | Basis |
 |---|---|---|
 | Judge | A few hundred | Rewrites of 38 dilemmas, plus reversed versions; up to six questions each |
-| `prompted` | About 25,000 | 680 held-out participants, and a subsample of 300 training participants to fit its two numbers; 13 trials each; each trial once for each of the two rotations in which its dilemma is held out |
+| `prompted` | About 60,600 | Evaluation: 680 held-out participants, 13 trials, each once for each of the two rotations in which its dilemma is held out, which is 17,680. Fitting its two numbers: 300 training participants, the 11 dilemmas not held out, in each of 13 rotations with that rotation's examples, which is 42,900 |
 
 The dilemma materials run to 6,184 words for 13 dilemmas with four outcome texts each [me], so
-a prompt with half a participant's history is a few thousand tokens. At the listed prices
-this is a small fraction of the cap for both families. The runner counts real tokens and
-prints the cost before any live run, and stops at the cap.
+one trial's text is a few hundred tokens. The cost of the `prompted` arm depends mostly on how
+many examples each prompt holds. With prompts of a few thousand tokens it fits under the cap
+for both families at the listed prices; with long prompts it may not, and the number of
+examples is then reduced before anything is run. The runner counts real tokens and prints the
+cost before any live run, and stops at the cap.
 
 ## Risks
 
