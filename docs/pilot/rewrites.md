@@ -179,7 +179,7 @@ count list entries, rather than all distinct facts.
 | Trail of Tears | outside | 163 | 127 | 127 | 6 | 8 | 1 |
 | Hogesa (Hooligan Demo) | outside | 91 | 71 | 71 | 6 | 3 | 2 |
 | Mass Rape | outside | 160 | 124 | 127 | 6 | 2 | 2 |
-| Endow | task | 120 | 98 | 98 | 6 | 1 | 1 |
+| Endow | task | 120 | 102 | 102 | 6 | 1 | 1 |
 | Ladder | task | 199 | 161 | — | 6 | 4 | 1 |
 | Lifeboat | task | 227 | 170 | — | 6 | 1 | 1 |
 | Medicine | task | 163 | 129 | 131 | 6 | 1 | 3 |
@@ -199,7 +199,7 @@ The phrases on the left are short source details, not excerpts of complete vigne
 
 ### Endow
 
-- `25,000 euros` → `a substantial donation` — the exact amount only signals the scale of help.
+- `25,000 euros` → `a sum in the tens of thousands` — the exact amount only signals the scale of help.
 
 ### Ladder
 
