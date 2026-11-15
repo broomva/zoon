@@ -6,6 +6,7 @@ These fixtures contain no source transcripts or participant data and need no net
 import copy
 import json
 import re
+from collections.abc import Callable
 from pathlib import Path
 from typing import cast
 
@@ -215,12 +216,70 @@ def test_reversal_changes_only_question(records: list[rewrites.Record], change: 
         check(records)
 
 
-@pytest.mark.parametrize("field", ["rewrite", "reversed"])
-def test_final_question(records: list[rewrites.Record], field: str) -> None:
-    record = one(records, "Suicide")
-    record[field] = str(record[field]).replace("Do you ", "Would it be appropriate to ")
-    with pytest.raises(ValueError, match="yes/no question"):
+QUESTION_ERROR = "must end with one Do you yes/no question"
+
+
+def _no_do_you(text: str) -> str:
+    return text.replace("Do you ", "Would it be appropriate to ")
+
+
+def _no_question_mark(text: str) -> str:
+    return text.removesuffix("?")
+
+
+def _second_question(text: str) -> str:
+    return text.replace(". ", "? ", 1)
+
+
+def _no_vignette(text: str) -> str:
+    return text[text.rindex("Do you ") :]
+
+
+@pytest.mark.parametrize("damage", [_no_do_you, _no_question_mark, _second_question, _no_vignette])
+def test_final_question(records: list[rewrites.Record], damage: Callable[[str], str]) -> None:
+    """Protects each clause of `_question`. Uses a dilemma with no reversed version, so that
+    the comparison between the two versions cannot raise in its place."""
+    record = one(records, "Ladder")
+    assert "reversed" not in record
+    record["rewrite"] = damage(str(record["rewrite"]))
+    with pytest.raises(ValueError, match=QUESTION_ERROR):
         check(records)
+
+
+def test_removed_phrase_is_found_when_hyphenated(records: list[rewrites.Record]) -> None:
+    """Protects the punctuation folding in `_normal`."""
+    record = one(records, "Ladder")
+    phrase = str(cast(list[rewrites.Record], record["generalised"])[0]["from"])
+    assert " " in phrase
+    record["rewrite"] = str(record["rewrite"]).replace(
+        "You are", phrase.replace(" ", "-").upper() + ". You are", 1
+    )
+    with pytest.raises(ValueError):
+        check(records)
+
+
+def test_five_digit_number_is_not_a_year(records: list[rewrites.Record]) -> None:
+    """Protects the digit boundaries of `YEAR`."""
+    record = one(records, "Ladder")
+    record["rewrite"] = str(record["rewrite"]).replace("You are", "Among 10000 people, you are", 1)
+    check(records)
+
+
+def test_people_count_is_not_matched_inside_a_longer_number(
+    records: list[rewrites.Record],
+) -> None:
+    """Protects the trailing boundary in `_contains_mention`."""
+    record = one(records, "Rugby Cannibalism")
+    record["rewrite"] = str(record["rewrite"]).replace("40 people", "400 people")
+    with pytest.raises(ValueError, match="missing a recorded people count"):
+        check(records)
+
+
+def test_the_set_of_rewrites_is_fixed() -> None:
+    """Protects the committed digest: editing any text a judge can be shown fails here until
+    `pilot/rewrites.sha256` is updated in the same change."""
+    committed = (rewrites.REPO / "pilot" / "rewrites.sha256").read_text().strip()
+    assert rewrites.digest(rewrites.load()) == committed
 
 
 @pytest.mark.parametrize("value", [0, -1, 3.5, True, "100"])
@@ -446,6 +505,20 @@ def test_task_generalisations_are_documented_in_full() -> None:
         if record["set"] == "task":
             for item in cast(list[rewrites.Record], record["generalised"]):
                 assert f"`{item['from']}` → `{item['to']}` — {item['why']}." in note
+
+
+def test_documented_task_generalisations_all_exist() -> None:
+    """The other direction: every generalisation the note lists for a task dilemma is in a
+    file. Protects against a line left in the note after a rewrite is changed back."""
+    note = (rewrites.REPO / "docs" / "pilot" / "rewrites.md").read_text()
+    listed = set(re.findall(r"^- (`.+?` → `.+?` — .+\.)$", note, flags=re.MULTILINE))
+    in_files = {
+        f"`{item['from']}` → `{item['to']}` — {item['why']}."
+        for record in rewrites.load()
+        if record["set"] == "task"
+        for item in cast(list[rewrites.Record], record["generalised"])
+    }
+    assert listed == in_files
 
 
 def test_operation_type_is_consistent() -> None:

@@ -1,7 +1,9 @@
-# Draft de-identified dilemmas for the pilot judge
+# De-identified dilemmas for the pilot judge
 
-These are **drafts**, awaiting the author’s comparison against the source texts and the
-maintainer’s reading. They are not fixed stimuli and have not been sent to either judge.
+These texts were fixed on 2026-11-15, with the maintainer's go-ahead, after the two checks
+described under "What an independent check found". They have not been sent to either judge.
+A digest of every text a judge can be shown is committed in `pilot/rewrites.sha256`, and a
+test fails if any of them changes without the digest being updated in the same change.
 The 38 JSON files in [`pilot/rewrites/`](../../pilot/rewrites/) cover the task’s 13 dilemmas
 and the 25 other factual dilemmas in Körner and Deutsch’s set. They implement the rewrite
 proposal in [the arms note](arms.md#what-the-judge-is-asked).
@@ -36,11 +38,11 @@ English section of the original study’s `factualDilemmas-texts-appendix.pdf` f
 were used temporarily and are not committed. No outcome text was used to draft a rewrite.
 No participant data or language-model API was used in preparing these files.
 
-The author must compare each draft, including each list of preserved, removed and generalised facts,
-with its specified source. The maintainer must then read each version before the stimuli
-are fixed and committed for judge calls. The mechanical checks below do not replace those
-steps. In particular, they do not determine semantic equivalence, whether two questions
-are true opposites, or whether an omitted cue matters morally.
+The author compared the 13 task rewrites with what participants read, and a separate checker
+compared all 38 with their sources; the next section gives what that found. The maintainer
+was given the texts to read before they were fixed. The mechanical checks below do not
+replace those steps. In particular, they do not determine semantic equivalence, whether two
+questions are true opposites, or whether an omitted cue matters morally.
 
 ## What an independent check found
 

@@ -5,6 +5,7 @@ question, exclude headings and outcomes, and count whitespace-separated words. M
 checks cannot establish that a rewrite preserves the moral trade-off or prevents recognition.
 """
 
+import hashlib
 import json
 import re
 import unicodedata
@@ -115,7 +116,10 @@ def load_people_counts(path: Path = PEOPLE_COUNTS) -> Record:
 
 
 def _normal(text: str) -> str:
-    return " ".join(unicodedata.normalize("NFKC", text).casefold().split())
+    """Fold case, width and spacing, and read hyphens, dashes and apostrophes as spaces, so
+    that a removed phrase is still found when it is hyphenated or broken across lines."""
+    folded = unicodedata.normalize("NFKC", text).casefold()
+    return " ".join(re.sub(r"[-\u2010-\u2015'\u2019]", " ", folded).split())
 
 
 def _generalisations(record: Record) -> list[Record]:
@@ -206,6 +210,20 @@ def _question(text: str) -> tuple[str, str]:
     ):
         raise ValueError("rewrite must end with one Do you yes/no question")
     return body, separator + question
+
+
+def digest(records: Sequence[Record]) -> str:
+    """Hash every text a judge can be shown: each dilemma's id, rewrite and reversed version.
+
+    The committed digest fixes the set. A change to any of those texts fails the test that
+    compares the two, until the digest is deliberately updated in the same change.
+    """
+    shown = sorted(
+        (str(record["id"]), str(record["rewrite"]), str(record.get("reversed", "")))
+        for record in records
+    )
+    encoded = json.dumps(shown, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
 
 
 def validate(
