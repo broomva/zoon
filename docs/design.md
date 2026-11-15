@@ -7,9 +7,10 @@ built from published equations. Language models only answer narrow questions abo
 situation means. This document decides what zoon claims, how it would be built, and which
 experiment has to succeed before most of it is built at all.
 
-Status: draft design, 2026-11-15. Nothing is built yet. The design went through four passes of
-independent adversarial review by models from three vendors; it has not been reviewed by people
-outside the project.
+Status: accepted by the maintainer on 2026-11-15 as the basis for the pilot. The pilot section
+is binding; the kernel section stays provisional until the pilot passes. The design went
+through four passes of independent adversarial review by models from three vendors; it has not
+been reviewed by people outside the project. No part of zoon is built yet.
 Reversal cost: high for three decisions the pilot commits to, which are one-way doors: the
 language, the model boundary and the licence. Publishing becomes a one-way door at the first
 public commit. The kernel and the log schema are provisional until the pilot passes. The rest
@@ -536,10 +537,12 @@ Rejected because it cannot separate what emerged from what the model recalled. K
   the action features. Counting those parameters exposes it and does not stop it.
 - **Decision timing is anchored only for two options at the scale of seconds.** Everything
   else about timing is a convention.
-- **Live runs cost money, with no estimate yet.** A seed sweep of a model-in-loop run needs
-  one live run per seed, for two families, and again when a model changes. Each live gate
-  declares a cap on calls and spend, and the report prints calls, tokens and spend. An
-  estimate is produced before the pilot runs.
+- **Live runs cost money.** The pilot's live calls have a hard cap of 150 US dollars, set on
+  2026-11-15, and use two model families: a hosted decision model that returns a probability
+  for each declared answer, and a general model read through token log-probabilities. A seed
+  sweep of a model-in-loop run needs one live run per seed, for two families, and again when
+  a model changes. Each live gate declares a cap on calls and spend, and the report prints
+  calls, tokens and spend. A measured estimate is produced before the first live run.
 - **The audit is experimental.** A clean audit is a floor.
 - **Copies of one model are correlated.** The variation check measures it.
 - **Dual use.** A working simulator of social influence could be used to tune persuasion. A
@@ -572,8 +575,8 @@ started only on the maintainer's explicit decision.
    from published appraisal dimensions and search for human ratings with an explicit licence.
    If none is found by P0, appraisal stays a `convention`.
 5. **Licences.** This repository is Apache-2.0, decided 2026-11-15. `broomva/skills`, which
-   holds the audit, is public and GitHub detects no licence. Next step: the maintainer sets
-   one there, or the audit is not vendored.
+   holds the audit, is MIT-licensed. An earlier version of this line said it had no licence;
+   that was wrong.
 6. **Provider terms for transcripts.** Next step: read the terms of each provider used before
    any transcript is committed.
 7. **Datasets without a licence.** choices13k, the Murre and Dros forgetting data, the Iowa
