@@ -1,7 +1,8 @@
 """Synthetic data for the tests: simulated choices, and raw files in the published layout.
 
-Nothing here reads the real dataset. The simulator re-implements the learning rule on its
-own, so that fitting it back is a check on `zoon.pilot.models` and not a tautology.
+Nothing here reads the real dataset or the real outside files. The simulator re-implements
+the learning rule on its own, so that fitting it back is a check on `zoon.pilot.models` and
+not a tautology.
 """
 
 import csv
@@ -10,7 +11,7 @@ from pathlib import Path
 import numpy as np
 from scipy.special import expit
 
-from zoon.pilot import fetch
+from zoon.pilot import fetch, outside
 from zoon.pilot.models import Floats, Sequences
 
 DILEMMAS = len(fetch.DILEMMAS)
@@ -28,6 +29,17 @@ PERSONAL_COLUMNS = (
     "ExternalReference.y",
     "ResponseId.x",
     "strategy_open",
+)
+# Columns of the outside studies' participant-level files that describe a person.
+OUTSIDE_PERSONAL_COLUMNS: tuple[str, ...] = (
+    "subject",
+    "date",
+    "time",
+    "age",
+    "gender",
+    "nativeLanguage",
+    "language",
+    "openEnd",
 )
 
 
@@ -121,4 +133,46 @@ def write_raw(
                 writer.writerow(row)
                 if attentive:
                     intended[(experiment, label)] = chosen
+    return intended
+
+
+def write_outside(raw_dir: Path, people: int = 40) -> dict[int, dict[str, tuple[int, float]]]:
+    """Write one participant-level file per outside study in the published layout.
+
+    Every personal column and every free-text comment holds a marker. Beside each judgment
+    sits another rating of the same dilemma, filled with a value that is off the judgment
+    scale, so that reading the wrong column raises. Each participant is shown about half of
+    the dilemmas, and where a dilemma has several judgment columns, fills one of them.
+
+    Return the judgments that were written: {study: {dilemma: (count, mean)}}.
+    """
+    raw_dir.mkdir(parents=True, exist_ok=True)
+    dilemmas = outside.published()
+    intended: dict[int, dict[str, tuple[int, float]]] = {}
+    for number, study in outside.STUDIES.items():
+        shown = {name: d.columns[number] for name, d in dilemmas.items() if number in d.columns}
+        header = list(OUTSIDE_PERSONAL_COLUMNS)
+        for columns in shown.values():
+            stem = columns[0].partition(".")[0]
+            header += [*columns, f"{stem}.open", f"{stem}.absurd"]
+        given: dict[str, list[int]] = {name: [] for name in shown}
+        with (raw_dir / study.filename).open("w", newline="", encoding="latin-1") as handle:
+            writer = csv.DictWriter(handle, header, delimiter=study.delimiter, restval="")
+            writer.writeheader()
+            for person in range(people):
+                rng = np.random.default_rng([number, person])
+                row: dict[str, str] = dict.fromkeys(OUTSIDE_PERSONAL_COLUMNS, f"{SECRET}-{person}")
+                for name, columns in shown.items():
+                    if rng.random() < 0.5:
+                        continue
+                    stem = columns[0].partition(".")[0]
+                    judgment = int(rng.integers(outside.SCALE[0], outside.SCALE[1] + 1))
+                    row[columns[int(rng.integers(len(columns)))]] = str(judgment)
+                    row[f"{stem}.open"] = f"{SECRET}-comment"
+                    row[f"{stem}.absurd"] = "9"
+                    given[name].append(judgment)
+                writer.writerow(row)
+        intended[number] = {
+            name: (len(v), float(np.mean(v)) if v else float("nan")) for name, v in given.items()
+        }
     return intended
