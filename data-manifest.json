@@ -1,0 +1,26 @@
+{
+  "dataset": "https://osf.io/4up5z/",
+  "files": {
+    "exp1_data_overall.csv": {
+      "sha256": "a9bbd08199dc6091d147f22e9afcea46d2b0de506b5adf45a7ec447eab237383",
+      "size": 1468842,
+      "url": "https://osf.io/download/mq38j/"
+    },
+    "exp2_dataExp2.csv": {
+      "sha256": "6c5c04bbbd4c24d36c65abffeabc82c3fc43f363b1c2990eca0b37ccbf096331",
+      "size": 3923031,
+      "url": "https://osf.io/download/vknx5/"
+    },
+    "exp3_dataExp3.csv": {
+      "sha256": "5a978f3433afdca769f9c64526a3caa7ac6cbcd1cb4acb8d18517cb801945749",
+      "size": 3313600,
+      "url": "https://osf.io/download/c789b/"
+    },
+    "exp4_dataExp4.csv": {
+      "sha256": "3843d5571a94b1af136d8e412a09506612dc8d93e1622bf80b080bc8b9b324ce",
+      "size": 5356938,
+      "url": "https://osf.io/download/fp7ed/"
+    }
+  },
+  "licence": "CC-BY 4.0"
+}
