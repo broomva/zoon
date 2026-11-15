@@ -1,0 +1,25 @@
+# The 13 dilemmas of the moral-learning task, each with the dilemma it was adapted from and the
+# task authors' own categorisation of their adapted text. Transcribed from "Overview of Dilemmas
+# and Categorization" in "dilemmas and outcomes.pdf", https://osf.io/download/sgf5y/, part of the
+# materials of Maier, Cheung and Lieder at https://osf.io/4up5z/, licensed CC BY 4.0
+# (https://creativecommons.org/licenses/by/4.0/). The values are unchanged; the layout is ours.
+#
+# dilemma                 the name used in the task's data files and in `fetch.DILEMMAS`
+# original                the name of the original in `korner_deutsch_2022.csv`
+# context, involves_killing, subset_of_benefited, action_is_utilitarian, opposite_framing
+#                         the first value in each cell of the overview table, which is the task
+#                         authors' own; the value in parentheses there is the original paper's
+dilemma,original,context,involves_killing,subset_of_benefited,action_is_utilitarian,opposite_framing
+Ladder,Rope Ladder,Accident,Yes,No,Yes,No
+Tyran,Tyrannicide,War/Terrorism,Yes,No,Yes,No
+Lifeboat,Real Lifeboat,Accident,Yes,Yes,Yes,No
+Suicide,Assisted Suicide State,Medicine,Yes,No,Yes,Yes
+Medicine,Medicine Costs,Medicine,Yes,No,No,Yes
+RAF,RAF kidnapping,Crime/Terrorism,Yes,No,No,Yes
+Rwanda,Rwanda,War/Terrorism,Yes,No,No,Yes
+Ransom,(Sahara) Ransom,Crime/Terrorism,Yes,No,No,Yes
+Tax,Tax Fraud Detection,Crime,No,Yes,Yes,No
+Operations,Knee Operations,Medicine,No,Unclear,Yes,No
+Vet,Veterinarian,Animal rights,Animals,No,No,Yes
+Endow,Endowment,Justice,No,No,Yes,Yes
+RobinHood,Robin Hood,Crime,No,No,Yes,Yes

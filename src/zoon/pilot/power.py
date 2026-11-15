@@ -79,7 +79,7 @@ def shuffle_feedback(data: Sequences, seed: int = SEED) -> Sequences:
     return Sequences(data.choice, rng.permuted(data.feedback, axis=1), data.dilemma)
 
 
-def _held_out_sets(by_dilemma: bool, dilemmas: int) -> list[list[int]]:
+def held_out_sets(by_dilemma: bool, dilemmas: int) -> list[list[int]]:
     """Dilemma sets to hold out in turn. Neighbours in a fixed circular order, so that every
     dilemma is held out the same number of times."""
     if not by_dilemma:
@@ -110,7 +110,7 @@ def cross_validate(
     count = np.zeros(data.choice.shape)
     for k in range(FOLDS):
         fitting, scoring = data.take(fold != k), data.take(fold == k)
-        for held_out in _held_out_sets(by_dilemma, dilemmas):
+        for held_out in held_out_sets(by_dilemma, dilemmas):
             targets: Bools = ~np.isin(fitting.dilemma, held_out)
             scored: Bools = np.isin(scoring.dilemma, held_out) | (not by_dilemma)
             learning = fit_learning(fitting, targets, dilemmas, dilemma_intercepts)

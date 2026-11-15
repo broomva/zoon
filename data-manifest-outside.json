@@ -1,0 +1,16 @@
+{
+  "dataset": "https://osf.io/cg5tq/",
+  "files": {
+    "kd_study1_dilAll.csv": {
+      "sha256": "98d3f747051d7140db8067d5c39edfce809aaa97d3c7b16cda80583322593ee3",
+      "size": 1459368,
+      "url": "https://osf.io/download/72jta/"
+    },
+    "kd_study2_dilEng.csv": {
+      "sha256": "c53763eb5e633f68b8389f305fdfc8db69cca2db530b266073929a6182336059",
+      "size": 678612,
+      "url": "https://osf.io/download/cye64/"
+    }
+  },
+  "licence": "none stated on the OSF project; the paper is CC BY 4.0"
+}
