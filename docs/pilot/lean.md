@@ -43,7 +43,8 @@ gives a direct test with no model in it:
 2. If the lean came from the published codes, how much would it help?
 3. How large is the effect of learning on top of each?
 
-If human ratings and codes do not help, no model's reading will.
+If human ratings of nearly the same text did not help, a model's reading of it would be
+unlikely to.
 
 ## Outside data
 

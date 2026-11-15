@@ -45,3 +45,21 @@ def test_every_quoted_number_is_in_the_report_output(name: str) -> None:
     quoted = {number.lstrip("+") for number in NUMBER.findall(prose)}
     assert quoted, "the note quotes no figures"
     assert sorted(quoted - printed) == []
+
+
+# A note that pastes no output of its own may quote figures only from these notes' output.
+CITING = {"arms.md": ("power.md", "lean.md")}
+
+
+@pytest.mark.parametrize("name", CITING)
+def test_a_note_that_cites_quotes_only_printed_figures(name: str) -> None:
+    """Protects the entry for each note in CITING: a figure in that note that neither cited
+    report printed would otherwise pass."""
+    printed: set[str] = set()
+    for cited in CITING[name]:
+        _, paste = split_note(cited)
+        printed |= {number.lstrip("+") for number in NUMBER.findall(paste)}
+    prose = re.sub(r"https?://\S+", "", (NOTES / name).read_text())
+    quoted = {number.lstrip("+") for number in NUMBER.findall(prose)}
+    assert quoted, "the note quotes no figures"
+    assert sorted(quoted - printed) == []
