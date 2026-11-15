@@ -6,20 +6,22 @@ model is a stateless subroutine that embeds text, judges a situation on declared
 without seeing the available actions, and writes or parses message content. Code selects the
 action.
 
-**Answer: not as a whole.** No published or implemented system was found that combines a
+**Answer: none was found.** Among the works read, no published or implemented system combines a
 stateless model, a withheld option set, coded learned values and needs, and an
 evidence-accumulation process that yields the choice and its latency. Two pieces of prior work
 come close, and both must be cited.
 
 Verification key: **[me]** fetched and read by the author; **[R]** read in full text by a
-research pass and quoted from it; **[U]** not opened.
+research pass and quoted from it; **[V]** checked against the source by an independent
+reviewer; **[U]** not opened. The reviewer confirmed every direct quote below and corrected the
+description of Malloy et al.
 
 ## The two closest works
 
 | Work | What it shares with zoon | Where it differs |
 |---|---|---|
 | Taillandier et al., "From the Fluency Fallacy to the Micro-to-Macro Validity Gap", §5.3. https://arxiv.org/abs/2507.19364 | Names the category "LLM-as-Subroutine". In its blueprint the model "is restricted to estimating separate numerical scores for each construct" and the engine "computes the behavioral intention score via an explicit, calibrated weighting equation" [R] | It is "a hypothetical hybrid architecture" [R]: not implemented, no learning, no latency. Its constructs concern one named behaviour |
-| Malloy, Ferreira, Fang, Gonzalez, "Leveraging a Cognitive Model to Measure Subjective Similarity of Human and GPT-4 Written Content", 2024. https://arxiv.org/abs/2409.00269 | Implemented and tested on human data: "an integration of an Instance-Based Learning (IBL) cognitive model with LLM embeddings" [me]. Memory with decay is code, and code selects the action [R] | The model supplies embeddings only: no appraisal, no decision timing |
+| Malloy, Ferreira, Fang, Gonzalez, "Leveraging a Cognitive Model to Measure Subjective Similarity of Human and GPT-4 Written Content", 2024. https://arxiv.org/abs/2409.00269 | Implemented and tested on human data: "an integration of an Instance-Based Learning (IBL) cognitive model with LLM embeddings" [me]. Memory with decay is code [R] | The model supplies embeddings only. In their experiment the memory model produces a similarity score that predicts how people categorise emails; it does not choose actions in an environment [V] |
 
 ## What the rest of the field does
 

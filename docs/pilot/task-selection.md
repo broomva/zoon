@@ -12,7 +12,8 @@ So the H1 protocol in the design is incomplete. It splits by participant. It mus
 out items.
 
 Verification key: **[me]** fetched and read by the author; **[R]** read by a research pass and
-quoted from it; **[U]** not opened or not confirmed.
+quoted from it; **[V]** checked against the source by an independent reviewer, who also
+corrected six errors in the first version of this note; **[U]** not opened or not confirmed.
 
 ## Recommended task
 
@@ -22,16 +23,19 @@ quoted from it; **[U]** not opened or not confirmed.
 |---|---|
 | Data | https://osf.io/4up5z/, "CC-By Attribution 4.0 International" [me]. Project created 2023-03-22, modified 2025-10-31 [me] |
 | Paper | Nature Human Behaviour, https://www.nature.com/articles/s41562-025-02271-w, published 2025-08-11 [R] |
-| Size | 2,328 participants across 4 experiments; 13 dilemmas each, every one a paragraph of text followed by outcome feedback [R] |
-| Published models | Six, fitted by likelihood, including model-free and model-based learning and a no-learning baseline [R] |
-| Response times | Page timing only [R] |
+| Size | 2,328 participants across 4 experiments (387, 380, 834 and 727); 13 dilemmas each, every one a paragraph of text followed by outcome feedback [R][V] |
+| Published models | Six, fitted by marginal likelihood: model-free and model-based learning and a constant baseline, each in two variants. They have a learning rate and a temperature, or a constant, and no parameter per dilemma [V] |
+| Order of dilemmas | Randomised per participant, and recorded in the data [V] |
+| Response times | Page timing only [R][V] |
 
 Why it fits: each trial is text, and choices drift with feedback. It was published after
 mid-2025, later than the other candidates, which lowers the chance that a model was trained on
 it. It does not remove that chance, since the project has been public since 2023.
 
 **The split it needs.** Hold out participants and hold out dilemmas. A fitted model can then
-learn nothing about a held-out dilemma except through its text.
+learn nothing about a held-out dilemma except through its text. With only 13 dilemmas, one
+fixed set of held-out dilemmas is too few: the dilemmas are held out in rotation, for example
+two at a time.
 
 ## Risks, in order of seriousness
 
@@ -40,15 +44,18 @@ learn nothing about a held-out dilemma except through its text.
    0.006 to 0.02 nats per choice. That conversion is the research pass's own approximation and
    not a published figure. It must be replaced by a power calculation on training participants
    before anything is pre-registered.
-2. **Personal data in the raw files.** The raw file has columns named `ProlificID`,
-   `IPAddress.x` and `LocationLatitude.x` [R]. Whether they are populated is unchecked. The
-   data is fetched by script and never committed, and those columns are dropped on load.
+2. **Personal data in the raw files.** The files have columns named `ProlificID`,
+   `IPAddress.x`, `LocationLatitude.x` and `LocationLongitude.x`. In experiment 4 the latitude
+   and longitude are populated; the identifier and address are empty [V]. The data is fetched
+   by script and never committed, and all four columns are dropped on load.
 3. **Thirteen dilemmas is few.** Holding out dilemmas leaves little to fit on, and the
    interval for a held-out dilemma will be wide.
 4. **No decision latency.** The accumulator's timing cannot be tested here. This pilot tests
    choices only.
-5. **Whether the order of dilemmas was randomised is unchecked** [U]. If it was fixed,
-   learning and dilemma are confounded.
+5. **The published model already predicts an unseen dilemma.** It learns the worth of two
+   kinds of option and needs only an experimenter's label saying which option is which. So
+   holding out dilemmas does not disable the `laws-only` arm. What language can add is
+   narrower than it first appears: how a particular dilemma leans, read from its text.
 
 ## Other candidates
 
@@ -63,32 +70,37 @@ The Confidence Database (CC0) is mostly perceptual: of 180 datasets, 119 are per
 memory, and none found is a language-described situation with a learning sequence [R]. It
 remains a source for decision timing, not for H1.
 
-Psych-101 itself is Apache-2.0 and holds no response times [R]. Centaur's test split is
+The public Psych-101 dataset is Apache-2.0, and its transcripts omit response times; the
+Centaur authors extracted response times separately for a subset of experiments [V]. Centaur's test split is
 published separately under CC-BY-ND-4.0 in a gated repository [R].
 
 ## If the recommended task fails the power calculation
 
 Fall back to the weaker hypothesis H1′ on two tasks, as the design allows:
 
-- **Learning only:** the drifting four-armed bandit of Bahrami and Navajas 2020, in Psych-101.
-  965 participants; Centaur 0.7029, Llama 0.8810, cognitive model 0.9043 [R].
-- **Wording only:** the THINGS odd-one-out task of Hebart et al. 2023, in Psych-101. 12,340
-  participants; Centaur 0.8068, Llama 1.1386, cognitive model 0.8253 [R].
+- **Learning only:** the drifting four-armed bandit of Bahrami and Navajas 2022, in Psych-101.
+  869 participants in Psych-101, 965 including its test split; original data at
+  https://osf.io/f3t2a, CC-BY-4.0 [V]. Centaur 0.7029, Llama 0.8810, cognitive model 0.9043
+  [R][V].
+- **Wording only:** the THINGS odd-one-out task of Hebart et al. 2023, in Psych-101. 11,122
+  participants in Psych-101, 12,340 including its test split [V]. Centaur 0.8068, Llama
+  1.1386, cognitive model 0.8253 [R][V].
 
-The original licences of both are unchecked [U].
+The original licence of the second is unchecked [U].
 
 ## The three reduced versions, on the recommended task
 
 | Arm | Concretely |
 |---|---|
 | `prompted` | The model is given the dilemma text and the participant's earlier dilemmas, choices and outcomes, and its probability of each choice is read |
-| `laws-only` | The paper's learning model over the two kinds of option, with one fitted number per dilemma and no access to the text. It has no number for a held-out dilemma |
+| `laws-only` | The paper's learning model over the two kinds of option, using the experimenter's labels and no access to the text. As a stronger version, one fitted number per dilemma is added; for a held-out dilemma it takes the average of the fitted ones |
 | `no-state` | The model reads each dilemma, giving a prior lean, and values are never updated from outcomes |
 
 ## Next steps
 
-1. Download the data by script. Confirm the structure, whether dilemma order was randomised,
-   and whether the personal-data columns are populated.
-2. Run a power calculation on training participants only, for the `no-state` comparison under
-   a split by participant and by dilemma.
+1. Download the data by script, dropping the personal-data columns, and confirm the
+   structure.
+2. Run a power calculation on training participants only, for the `no-state` comparison and
+   for the comparison with the stronger `laws-only` arm, under a split by participant and by
+   dilemma in rotation.
 3. If power is adequate, write the pre-registration for this task. If not, write it for H1′.
