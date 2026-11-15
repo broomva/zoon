@@ -12,7 +12,9 @@ one whose judge may make that judgment, and one whose judge may only describe. T
 rests on the first. The second is reported, and is expected to read nothing.
 
 The judge never reads the dilemmas as participants saw them. It reads rewrites from which
-the historic incident has been removed, so that it cannot recite a published rating.
+the historic incident has been removed, which makes a published rating harder to recite and
+does not rule it out. For that reason a pass is a claim about how well this pipeline
+predicts, and not about how the judge arrived at its rating.
 
 An earlier version of this note proposed learning the lean on a different set of dilemmas. A
 review showed that could not work, and it is withdrawn.
@@ -91,10 +93,9 @@ against the task's text for what must be kept and what must go, read by the main
 committed before any call to the judge. The same is done for the 25 outside dilemmas used to
 check the judge, because recall would inflate that check too.
 
-This costs information. Participants read the realistic versions, and the original study
-found that how realistic a dilemma seemed went with how people judged it. A judge that reads
-the rewrites should be expected to predict less well than one that read what participants
-read.
+This changes what is read. Participants read the realistic versions, and the original study
+found that how realistic a dilemma seemed went with how people judged it. Whether a judge
+predicts better or worse from a rewrite than from what participants read is not known.
 
 **Evaluative.** One question: how appropriate is it to take the suggested action? The
 wording and the seven labelled answers are those of the original paper's US study, which is
@@ -151,17 +152,22 @@ task. They allow the judge to be checked against people with no data from this t
 
 ## What a pass would and would not show
 
+A pass is a statement about prediction: this pipeline, a judge's rating of a rewrite turned
+into a lean and combined with learned values, predicted held-out choices better than the
+three reduced versions. It is not a statement that the judge read the dilemma afresh. Where
+its rating came from is not established by anything in this design.
+
 On these 13 dilemmas, human ratings of nearly the same text exist, and a lean built from them
 (`norm`) gains +0.08044 nats per choice over no lean, or +0.08346 when both sides also learn.
-`norm` is a reference and not a ceiling: it rates the original texts, and a reader of the
-adapted texts could do better where the adaptation changed the dilemma. The ceiling is
-`known share`, at +0.11342 with no learning on either side. So:
+`norm` is a reference, not a limit: it rates the original texts. The benchmark `known share`,
+at +0.11342 with no learning on either side, is an estimate from training participants of the
+most a lean could add. So:
 
-- Beating `laws-only` shows that reading the dilemma adds to the laws. It does not show that a
-  model reads better than people.
-- The size of the reading is reported as a share of what `norm` achieves and of what
+- Beating `laws-only` shows that the judge's rating adds predictive value to the laws. It
+  does not show that a model reads better than people, or that the rating was not recalled.
+- The size of that gain is reported as a share of what `norm` achieves and of what
   `known share` achieves.
-- Beating `no-state` shows that state adds to the reading.
+- Beating `no-state` shows that state adds to the judge's rating.
 - Beating `prompted` shows that the whole package did better than one prompt: state kept in
   code, and parameters fitted on training participants. It does not single out the state.
 
@@ -196,8 +202,9 @@ share parameters, as in the power calculation.
 
 The model is given the instructions participants saw, this participant's earlier dilemmas
 with their answers, outcomes and ratings, and the current dilemma, all in the task's own
-texts and not the rewrites. It is asked which answer this participant gives. Giving it the
-real texts favours it, on purpose: it may use anything it recalls. Then, in this order:
+texts and not the rewrites. It is asked which answer this participant gives. It may use
+anything it recalls. Whether the real texts help it or hurt it is not known. Then, in this
+order:
 
 1. Read the model's probability of "yes".
 2. Clamp it to the floor and ceiling used for every arm.
@@ -212,25 +219,40 @@ could lose for that reason alone. The prompt also holds a fixed set of complete 
 participants from the training set. The prompt text, and the number and choice of examples,
 are written once, reviewed, and fixed in the pre-registration.
 
-This arm is given more about the dilemma than a zoon's judge, and the same facts about the
-participant. It does not have what a zoon gets from fitting on all training participants; it
+This arm is given the texts participants read, where a zoon's judge gets rewrites, and the
+same facts about the participant. It does not have what a zoon gets from fitting on all training participants; it
 has its examples and its two fitted numbers, which are fitted on a subsample of training
 participants. If it wins, the architecture added nothing on this task.
 
-## What is left of the recall problem
+**The examples respect the held-out dilemmas.** The coded arms never fit to a participant's
+answer on a held-out dilemma. The same has to hold for the prompt. So the examples are built
+separately for each rotation of held-out dilemmas: an example may show a training
+participant's answer only on a dilemma that is not held out in that rotation. A held-out
+dilemma may appear in an example only as part of the history, which is how the coded arms
+use it. The rule for building examples is fixed before the prompt is written.
 
-Removing the incident prevents recitation; it does not prove the judge reads. Three checks
-are reported with the result. None of them is a gate, because each can be satisfied by a
-judge that does not read, which is why prevention was chosen over detection.
+## Recall is reduced, not ruled out
+
+Removing the incident removes the cues that name a case. It does not remove the case's
+structure, and structure can be enough: a dictator to be killed, passengers on a sinking
+ship. A judge may also retrieve a rating without being able to name the event. A drafting
+model from another vendor may have learned from the same material. So contamination is
+unresolved, and the claim a pass supports is limited accordingly, as stated above.
+
+Three checks are reported with the result. None is a gate, because none can certify that
+recall did not happen.
 
 - **Recognition.** The judge's model is asked to name the event behind each rewrite. Any
-  rewrite it identifies is listed, and the comparisons are repeated without those dilemmas.
+  rewrite it identifies is listed, the comparisons are repeated without those dilemmas, and
+  the result is described as qualified by them.
 - **Reversal.** For dilemmas where the original paper says the opposite framing is
   reasonable, a second rewrite suggests the opposite action and changes nothing else. The
-  judge's rating is compared with its own rating of the first rewrite. It should move against
-  the flip.
-- **How good is too good.** A lean from rewrites that does as well as `norm`, which rates the
-  realistic originals, would be surprising and is reported as such.
+  judge's rating is compared with its own rating of the first rewrite. The two actions need
+  not mirror each other on the scale, so the report gives the difference and does not score
+  it.
+- **Agreement with `norm`.** How closely the judge's ratings of the rewrites follow the
+  published ratings of the originals is reported. Close agreement fits both good judgment and
+  recall, and is not read as evidence for either.
 
 ## What this pilot does not exercise
 
@@ -264,7 +286,7 @@ a run:
 | Part | Calls, per family | Basis |
 |---|---|---|
 | Judge | A few hundred | Rewrites of 38 dilemmas, plus reversed versions; up to six questions each |
-| `prompted` | About 12,700 | 680 held-out participants, and a subsample of 300 training participants to fit its two numbers; 13 trials each |
+| `prompted` | About 25,000 | 680 held-out participants, and a subsample of 300 training participants to fit its two numbers; 13 trials each; each trial once for each of the two rotations in which its dilemma is held out |
 
 The dilemma materials run to 6,184 words for 13 dilemmas with four outcome texts each [me], so
 a prompt with half a participant's history is a few thousand tokens. At the listed prices
@@ -277,6 +299,7 @@ prints the cost before any live run, and stops at the cap.
   held-out data is used.
 - **Thirteen dilemmas.** Three of them carry most of what `norm` gains, and `norm` loses
   -0.11100 on the veterinarian dilemma. A result here is a result about these dilemmas.
+- **The judge may be recalling.** See "Recall is reduced, not ruled out".
 - **A rewrite may change the dilemma.** Removing the incident can remove something people
   responded to, or add something. The list of what is kept and removed, and the maintainer's
   reading, are the guard. There is no human rating of the rewrites to check against.
