@@ -1,0 +1,79 @@
+# Per-dilemma feature codes and mean appropriateness judgments, transcribed from
+# Körner and Deutsch, "Deontology and Utilitarianism in Real Life: A Set of Moral Dilemmas
+# Based on Historic Events", Personality and Social Psychology Bulletin 49(10), 1511-1528,
+# https://doi.org/10.1177/01461672221103058, licensed CC BY 4.0
+# (https://creativecommons.org/licenses/by/4.0/). The values are unchanged; the layout is ours.
+#
+# name                    as printed in Tables 3, 4, 7 and 8
+# number                  Tables 1 and 2 (factual dilemmas only). Tables 4 and 8 number Robin Hood,
+#                         Ashley Treatment and Test Tube Sibling differently
+# kind                    factual (Tables 1, 2, 4, 8) or trolley (Tables 3, 7)
+# section                 the section heading of Tables 1 and 2 the dilemma sits under
+# context                 Tables 1 and 2, "Context"
+# norm                    Table 2, "Norm transgression". Table 1 has no such column, so it is empty there
+# subset_of_benefited     Table 1, "Suffering subset of benefited?"; Table 2, "Victim subset of benefited?"
+# self_in_benefited       Tables 1 and 2, "Self in benefited group?"
+# opposite_framing        Tables 1 and 2, "Opposite framing reasonable?"
+# study1_judgment         Table 3 (trolley-type) and Table 4 (factual), "Appropriateness judgment", Study 1
+# study2_judgment         Table 7 (trolley-type), "Judgment", and Table 8 (factual), "Appropriateness Judgment", Study 2
+# study1_columns,         the columns of the authors' participant-level files at https://osf.io/cg5tq/ that
+# study2_columns          hold the judgment of this dilemma; several where participants were split into sets
+name,kind,number,section,context,norm,subset_of_benefited,self_in_benefited,opposite_framing,study1_judgment,study2_judgment,study1_columns,study2_columns
+Conjoined Twins,factual,1,killing,Medicine,,Yes,No,Not really,5.45,5.13,New_twins.dilemmaNew,New_conjointTwins.dilemmaNew1
+Rope Ladder,factual,2,killing,Accident,,Probably no,Yes,No,4.58,4.96,New_ropeLadder.dilemmaNew,New_ropeLadder.dilemmaNew3
+Cannibalism on Lifeboat,factual,3,killing,Accident,,Yes,Yes,No,2.95,3.82,New_cannibalismOnLifeboat.dilemmaNew,New_cannibalismOnLifeboat.dilemmaNew2
+Doodlebugs,factual,4,killing,War,,Probably no,Probably no,Not really,4.70,4.59,New_doodlebug.dilemmaNew,New_doodlebug.dilemmaNew1
+Plague Spread,factual,5,killing,Medicine,,No,"No, self potentially in victim-group",No,4.90,5.68,New_plague.dilemmaNew,New_plagueSpread.dilemmaNew2
+Euthanasia (in Ghetto),factual,6,killing,War,,Yes,No,No,3.54,3.95,New_euthanasia.dilemmaNew,New_euthanasia.dilemmaNew3
+Immunization (Smallpox),factual,7,killing,Medicine,,Probably no,No,No,2.89,4.34,New_immunization.dilemmaNew,New_immunization.dilemmaNew1
+911,factual,8,killing,Terrorism,,Yes,"No, self in victim-group",Not really,5.22,5.38,New_911.dilemmaNew,New_911.dilemmaNew2
+Coma (Mother),factual,9,killing,Medicine,,No,Yes,No,2.45,4.16,New_coma.dilemmaNew,New_coma.dilemmaNew1
+Organ Law,factual,10,killing,Medicine,,Probably no,No,Yes,2.97,3.79,New_organLaw.dilemmaNew,New_organDonationLaw.dilemmaNew3
+Stillbirths,factual,11,killing,War,,Yes,No,Not really,3.87,4.52,New_stillbirth.dilemmaNew,New_stillBirths.dilemmaNew2
+Tyrannicide,factual,12,killing,War/Terrorism,,No,Maybe,No,5.01,5.49,New_tyrannicide.dilemmaNew,New_tyrannicide.dilemmaNew3
+Real Lifeboat,factual,13,killing,Accident,,Yes,Yes,No,2.54,3.96,New_realLifeboat.dilemmaNew,New_realLifeboat.dilemmaNew1
+Septuplets,factual,14,killing,Medicine,,Yes,No,No,4.11,5.03,New_septuplets.dilemmaNew,New_septuplets.dilemmaNew3
+Assisted Suicide State,factual,15,killing,Medicine,,No,No,Yes,5.16,4.92,New_suicideState.dilemmaNew,New_suicideState.dilemmaNew2
+Atom Bomb,factual,16,killing,War/Terrorism,,No,Not likely,Not really,3.59,5.10,New_nuclearBomb.dilemmaNew,New_nuclearBomb.dilemmaNew3
+Medicine Costs,factual,17,saving,Medicine,,No,No,Rather yes,3.67,4.31,New_medicineCosts.dilemmaNew,New_medicineCosts.dilemmaNew1
+RAF kidnapping,factual,18,saving,Crime/Terrorism,,No,No,Yes,2.84,3.60,New_RAF.dilemmaNew,New_RAF.dilemmaNew2
+Mare Nostrum,factual,19,saving,Humanitarian Aid,,No,No,Yes,4.44,4.46,New_mareNostrum.dilemmaNew,New_mareNostrum.dilemmaNew3
+Rwanda,factual,20,saving,Crime/Terrorism,,Yes,Yes,Yes,4.80,4.62,New_Rwanda.dilemmaNew,New_rwanda.dilemmaNew2
+(Sahara) Ransom,factual,21,saving,Crime/Terrorism,,No,No,Yes,3.92,4.46,New_saharaRansom.dilemmaNew,New_saharaRansom.dilemmaNew3
+Aid for Syria,factual,22,saving,Humanitarian Aid,,Maybe,No,Yes,4.78,4.76,New_aidForSyria.dilemmaNew,New_aidForSyria.dilemmaNew1
+Rescue Torture,factual,23,other proscriptive,State authority/Justice,Torture,No,No,No,4.20,4.85,New_torture.dilemmaNew,New_rescueTorture.dilemmaNew1
+War Torture,factual,24,other proscriptive,War,Torture,Probably no,Not likely,No,3.28,4.42,New_warTorture.dilemmaNew,New_warTorture.dilemmaNew2
+Rugby Cannibalism,factual,25,other proscriptive,Accident,Eating bodies,No,Yes,No,4.67,5.13,New_rugbyCannibalism.dilemmaNew,New_rugbyCannibalism.dilemmaNew3
+Test Tube Sibling,factual,31,other proscriptive,Medicine,Creating a child as an organ donor,No,No,Yes,4.15,5.04,New_testTubeSibling.dilemmaNew,New_testTubeSibbling.dilemmaNew2
+Knee Operations,factual,27,other proscriptive,Medicine,Bodily inviolateness,No,No,No,3.49,4.27,New_knees.dilemmaNew,New_knees.dilemmaNew3
+Organ Market,factual,28,other proscriptive,Medicine,Bodily inviolateness & abusing poverty,No,Yes,Not really,3.67,4.74,New_organMarket.dilemmaNew,New_organMarket.dilemmaNew1
+Tax Fraud Detection,factual,29,other proscriptive,Justice,Making use of & rewarding crime,?,State and its citizens,somewhat,4.72,4.15,New_taxFraudDetection.dilemmaNew,New_taxFraudDetection.dilemmaNew2
+Robin Hood,factual,26,other proscriptive,Crime,Abusing trust & committing fraud,No,No,No,2.29,3.88,New_RobinHood.dilemmaNew,New_robinHood.dilemmaNew1
+Ashley Treatment,factual,30,other proscriptive,Medicine,Bodily inviolateness,Yes but will also benefit,No,Yes,2.81,4.16,New_Ashley.dilemmaNew,New_ashley.dilemmaNew3
+Lion Hunt,factual,32,other proscriptive,Animal rights,Animal deaths,Yes,No,No,2.45,4.00,New_lionHunt.dilemmaNew,New_lionHunt.dilemmaNew1
+Bishops,factual,33,other prescriptive,War,Not speaking up against genocide,No,No,Somewhat,3.90,4.71,New_bishops.dilemmaNew,New_bishops.dilemmaNew1
+Trail of Tears,factual,34,other prescriptive,Justice,Not standing up for one’s tribes’ rights,Yes,"Yes, plus self potentially in victim group",Yes,2.97,4.29,New_trailOfTears.dilemmaNew,New_trailOfTears.dilemmaNew3
+Veterinarian,factual,35,other prescriptive,Animal rights,Animal suffering,No,No,Yes,4.41,4.92,New_veterinarian.dilemmaNew,New_veterinarian.dilemmaNew2
+Hogesa (Hooligan Demo),factual,36,other prescriptive,State authority,Disregarding freedom of assembly (for extremist group),No,No,Yes,4.23,4.55,New_hogesa.dilemmaNew,New_hogesa.dilemmaNew2
+Mass Rape,factual,37,other prescriptive,Justice,Punishing innocent,No,No,Yes,2.76,3.65,New_massRape.dilemmaNew,New_massRape.dilemmaNew1
+Endowment,factual,38,other prescriptive,Justice,Mockery and abuse of crime victim (according to family),No,No,Yes,4.71,4.66,New_endowment.dilemmaNew,New_endowment.dilemmaNew3
+Trolley,trolley,,,,,,,,4.01,4.34,Classic_trolley.dilemmaClassic,Classic_trolley.dilemmaClassic3
+Footbridge,trolley,,,,,,,,2.26,3.55,Classic_footbridge.dilemmaClassic,Classic_footbridge.dilemmaClassic2
+Crying Baby,trolley,,,,,,,,3.36,3.93,Classic_baby.dilemmaClassic,Classic_baby.dilemmaClassic1
+Lifeboat,trolley,,,,,,,,3.92,4.64,Classic_lifeboat.dilemmaClassic,Classic_lifeboat.dilemmaClassic3
+Fumes,trolley,,,,,,,,3.92,4.41,Classic_fumes.dilemmaClassic,Classic_fumes.dilemmaClassic1|Classic_fumes.dilemmaClassic2|Classic_fumes.dilemmaClassic3
+Safari,trolley,,,,,,,,3.70,4.40,Classic_safari.dilemmaClassic,Classic_safari.dilemmaClassic1
+Vitamins,trolley,,,,,,,,2.92,3.57,Classic_vitamines.dilemmaClassic,Classic_vitamines.dilemmaClassic3
+Transplant,trolley,,,,,,,,1.55,3.04,Classic_transplant.dilemmaClassic,Classic_transplant.dilemmaClassic2
+Plane Crash,trolley,,,,,,,,2.24,3.55,Classic_planeCrash.dilemmaClassic,Classic_planeCrash.dilemmaClassic1
+Lawrence of Arabia,trolley,,,,,,,,4.27,4.77,Classic_LawrenceOfArabia.dilemmaClassic,Classic_lawrenceOfArabia.dilemmaClassic2
+Vaccine Test,trolley,,,,,,,,2.62,3.29,Classic_Vaccine.dilemmaClassic,Classic_vaccineTest.dilemmaClassic2
+Submarine,trolley,,,,,,,,4.98,4.81,Classic_submarine.dilemmaClassic,Classic_submarine.dilemmaClassic2
+Burning Building,trolley,,,,,,,,4.51,4.96,Classic_burningBuilding.dilemmaClassic,Classic_burningBuilding.dilemmaClassic3
+Preventing the Spread,trolley,,,,,,,,4.92,4.76,Classic_preventingSpread.dilemmaClassic,Classic_preventingSpread.dilemmaClassic3
+Rescue 911,trolley,,,,,,,,3.93,4.18,Classic_rescue911.dilemmaClassic,Classic_rescue911.dilemmaClassic1
+Border Crossing,trolley,,,,,,,,,4.66,,Classic_borderCrossing.dilemmaClassic1
+Car Accident,trolley,,,,,,,,,4.30,,Classic_carAccident.dilemmaClassic2
+Euthanasia,trolley,,,,,,,,,4.41,,Classic_euthanasia.dilemmaClassic3
+Hard Times,trolley,,,,,,,,,2.88,,Classic_hardTimes.dilemmaClassic2
+Mine Shaft,trolley,,,,,,,,,4.59,,Classic_mineShaft.dilemmaClassic1

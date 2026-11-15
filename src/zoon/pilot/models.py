@@ -32,6 +32,13 @@ with different parts fixed:
 A dilemma with no trial among the fitting targets takes the share of choices over all
 fitting targets, as a logit; the learning model adds the average shift of its fitted intercepts.
 
+A third kind of intercept is not fitted per dilemma at all. In `fit_lean` it is
+
+    intercept[dilemma] = sign[dilemma] * (alpha + beta * measure[dilemma]),
+
+where `measure` comes from outside the task and only `alpha` and `beta` are fitted. Such a
+model has a lean for a dilemma it was never fitted to.
+
 Differences from the paper. The authors fit each participant separately, with priors, and
 compare models by marginal likelihood. Here each model has one set of parameters shared by
 all participants, fitted by maximum likelihood with the paper's prior on the temperature
@@ -218,3 +225,105 @@ def fit_learning(
     )
     intercept, learning_rate, temperature = unpack(best.x)
     return Parameters(intercept, learning_rate, temperature)
+
+
+@dataclass(frozen=True)
+class LeanFit:
+    """A model whose per-dilemma intercepts come from outside information, not from choices.
+
+    `parameters.intercept` is `sign * (alpha + beta * measure)` and carries no fitted number
+    of its own.
+    """
+
+    alpha: float  # how far people favour the suggested action, whatever the dilemma
+    beta: float  # how far a unit of the measure moves them toward the suggested action
+    parameters: Parameters
+
+
+def lean(sign: Floats, measure: Floats, alpha: float, beta: float) -> Floats:
+    """Return each dilemma's logit of choosing the cost-benefit option before any feedback.
+
+    `measure` says how much the suggested action is favoured, and `sign` is +1 where the
+    suggested action is the cost-benefit option and -1 where it is the rule option. The sign
+    multiplies the whole bracket: both the constant and the measure are about the suggested
+    action, and both turn round when that action is the rule option.
+    """
+    return sign * (alpha + beta * measure)
+
+
+def fit_lean(
+    data: Sequences,
+    targets: Bools,
+    sign: Floats,
+    measure: Floats,
+    learning: bool,
+) -> LeanFit:
+    """Fit `alpha` and `beta` of the lean to the trials marked in `targets`, and the learning
+    rate and temperature as well when `learning` is set.
+
+        logit P(cost-benefit option) = sign * (alpha + beta * measure) + tau * (v[1] - v[0])
+
+    The learning part, its bounds and the prior on the temperature are those of
+    `fit_learning`. Without learning, `tau` is zero and the model is a logistic regression
+    with two coefficients. A dilemma with no trial among the targets needs no special
+    treatment: its lean comes from its own sign and measure.
+    """
+    choice_sign = np.where(data.choice == 1, 1.0, -1.0)
+    direction = sign[data.dilemma]  # d logit / d alpha
+    scaled = direction * measure[data.dilemma]  # d logit / d beta
+    count = int(targets.sum())
+
+    def loss(x: Floats) -> tuple[float, Floats]:
+        # x is (alpha, beta) for the model without learning, and (learning rate,
+        # temperature, alpha, beta) for the model with it.
+        moving = len(x) == 4
+        learning_rate, temperature = (float(x[0]), float(x[1])) if moving else (0.0, 0.0)
+        alpha, beta = float(x[-2]), float(x[-1])
+        logits, gap, gap_slope = _run(
+            data, lean(sign, measure, alpha, beta), learning_rate, temperature
+        )
+        residual = np.where(targets, data.choice - expit(logits), 0.0)
+        gradient = np.empty_like(x)
+        gradient[-2] = -(residual * direction).sum()
+        gradient[-1] = -(residual * scaled).sum()
+        penalty = 0.0
+        if moving:
+            gradient[0] = -(residual * temperature * gap_slope).sum()
+            gradient[1] = -(residual * gap).sum()
+            log_temperature = math.log(temperature)
+            penalty = log_temperature + log_temperature**2 / (2 * TEMPERATURE_PRIOR_SCALE**2)
+            gradient[1] += (1 + log_temperature / TEMPERATURE_PRIOR_SCALE**2) / temperature
+        negative_log_likelihood = -float(log_expit(choice_sign * logits)[targets].sum())
+        return (negative_log_likelihood + penalty) / count, gradient / count
+
+    still = minimize(
+        loss,
+        np.zeros(2),
+        jac=True,
+        method="L-BFGS-B",
+        options={"ftol": 1e-12, "gtol": 1e-8, "maxiter": 2000},
+    )
+    if not learning:
+        alpha, beta = float(still.x[0]), float(still.x[1])
+        return LeanFit(alpha, beta, Parameters(lean(sign, measure, alpha, beta), 0.0, 0.0))
+
+    # Start from the lean fitted without learning, at each of the starting points that
+    # `fit_learning` tries for the learning rate and the temperature.
+    starts = [
+        np.concatenate([[learning_rate, temperature], still.x])
+        for learning_rate in (0.05, 0.2, 0.5, 0.9)
+        for temperature in (0.5, 2.0, 6.0)
+    ]
+    first = min(starts, key=lambda x: loss(x)[0])
+    bounds = [LEARNING_RATE_BOUNDS, TEMPERATURE_BOUNDS, (None, None), (None, None)]
+    best = minimize(
+        loss,
+        first,
+        jac=True,
+        method="L-BFGS-B",
+        bounds=bounds,
+        options={"ftol": 1e-12, "gtol": 1e-8, "maxiter": 2000},
+    )
+    alpha, beta = float(best.x[2]), float(best.x[3])
+    intercept = lean(sign, measure, alpha, beta)
+    return LeanFit(alpha, beta, Parameters(intercept, float(best.x[0]), float(best.x[1])))
