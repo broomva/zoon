@@ -1,0 +1,37 @@
+{
+  "id": "Endow",
+  "set": "task",
+  "source": {
+    "authors": "Maier, Cheung and Lieder",
+    "title": "dilemmas and outcomes.pdf",
+    "url": "https://osf.io/download/sgf5y/",
+    "materials_url": "https://osf.io/4up5z/",
+    "locator": "Endowment",
+    "license": "CC BY 4.0",
+    "license_url": "https://creativecommons.org/licenses/by/4.0/",
+    "changes": "De-identified and reworded; incidental details generalised; question in yes/no form."
+  },
+  "suggested_action": "approve the foundation",
+  "kept": [
+    "You head the approving agency; the proposed founder is a convicted child kidnapper and murderer after a long imprisonment.",
+    "The substantial donation plus possible further fundraising would go to a foundation bearing the offender’s name.",
+    "His motives remain unclear between remorse and clearing his name; the victim’s family regards the proposal as immoral, derogatory and exploitative.",
+    "Refusal loses the money; approval benefits young crime victims while disregarding the family’s objection.",
+    "No benefit to you is stated; the original victim’s family and prospective beneficiaries remain distinct. Your act is approval, not the prior crime.",
+    "The task asks for approval; this is opposite to the original paper’s question about opposition."
+  ],
+  "removed": [
+    "Endowment"
+  ],
+  "rewrite": "A convicted child kidnapper and murderer, after a long prison term, wants to establish a foundation for young victims of crime. You head the agency deciding whether to approve it. He would donate a sum in the tens of thousands, but the foundation would bear his name. Whether he feels remorse or merely wants to repair his reputation is unclear. His victim’s family opposes the proposal, finding it immoral, degrading and an exploitation of the victim. Rejecting the foundation means losing the money. Approving it means that crime victims will benefit from the donation and further fundraising. Do you approve the foundation?",
+  "reversed_suggested_action": "oppose the foundation",
+  "reversed": "A convicted child kidnapper and murderer, after a long prison term, wants to establish a foundation for young victims of crime. You head the agency deciding whether to approve it. He would donate a sum in the tens of thousands, but the foundation would bear his name. Whether he feels remorse or merely wants to repair his reputation is unclear. His victim’s family opposes the proposal, finding it immoral, degrading and an exploitation of the victim. Rejecting the foundation means losing the money. Approving it means that crime victims will benefit from the donation and further fundraising. Do you oppose the foundation?",
+  "notes": "Deliberately retained: the offender-named foundation, child kidnapping and murder, unclear remorse versus reputation repair, and the victim family’s objection; these set disrespect of the victim versus help to other victims. The task’s approval question remains. Broad donation wording may change perceived benefit size.",
+  "generalised": [
+    {
+      "from": "25,000 euros",
+      "to": "a sum in the tens of thousands",
+      "why": "the exact amount only signals the scale of help"
+    }
+  ]
+}

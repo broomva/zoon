@@ -1,0 +1,42 @@
+{
+  "id": "Cannibalism on Lifeboat",
+  "set": "outside",
+  "source": {
+    "authors": "Körner and Deutsch",
+    "title": "Deontology and Utilitarianism in Real Life: A Set of Moral Dilemmas Based on Historic Events",
+    "url": "https://doi.org/10.1177/01461672221103058",
+    "materials_url": "https://osf.io/download/ephu6/",
+    "locator": "English Versions, 3) Cannibalism (on Lifeboat)",
+    "license": "CC BY 4.0",
+    "license_url": "https://creativecommons.org/licenses/by/4.0/",
+    "changes": "De-identified and reworded; incidental details generalised; question in yes/no form."
+  },
+  "suggested_action": "kill the boy to feed on his body",
+  "kept": [
+    "You are one of four crew on a vessel being transferred; storm survivors have a lifeboat, navigation instruments, and exhausted provisions.",
+    "After weeks without rescue the youngest crew member, an adolescent boy who is a minor, is weak, in pain and scarcely responsive after drinking seawater; the captain proposes killing him for food.",
+    "Without killing all four die in days; with killing the other three survive weeks longer and could be rescued.",
+    "You would directly participate in killing; no consent is stated.",
+    "You personally gain a survival chance; the boy is part of the group that otherwise dies.",
+    "The suggested action is to kill the boy to eat his body."
+  ],
+  "removed": [
+    "1884",
+    "Australia",
+    "Indian Ocean"
+  ],
+  "rewrite": "You are one of four members of the crew of a small vessel, which you are taking to its destination. A severe storm sinks it at sea. All four of you escape in its lifeboat with food and navigation equipment. Weeks pass without help, and your food and water have long run out. The youngest crew member, an adolescent boy who is a minor, drank seawater out of thirst. He is now weak and in pain, hardly responding when spoken to. The captain suggests killing him so you can eat his body. If you do not kill him, all of you will die within a few days. If you kill him, the remaining three will survive a few more weeks, during which you could be rescued. Do you kill the boy?",
+  "notes": "Deliberately retained: four crew, the remaining three, the youngest member’s minority and incapacity, and death without killing; these set the group sizes, vulnerability and survival choice. Replacing exact age and rank may affect perceived vulnerability or hierarchy.",
+  "generalised": [
+    {
+      "from": "small yacht",
+      "to": "small vessel",
+      "why": "the vessel type does not set the survival choice"
+    },
+    {
+      "from": "17-year old cabin boy",
+      "to": "adolescent boy who is a minor",
+      "why": "minority and vulnerability remain without exact age or job rank"
+    }
+  ]
+}

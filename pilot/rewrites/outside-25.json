@@ -1,0 +1,48 @@
+{
+  "id": "Rugby Cannibalism",
+  "set": "outside",
+  "source": {
+    "authors": "Körner and Deutsch",
+    "title": "Deontology and Utilitarianism in Real Life: A Set of Moral Dilemmas Based on Historic Events",
+    "url": "https://doi.org/10.1177/01461672221103058",
+    "materials_url": "https://osf.io/download/ephu6/",
+    "locator": "English Versions, 25) Rugby cannibalism",
+    "license": "CC BY 4.0",
+    "license_url": "https://creativecommons.org/licenses/by/4.0/",
+    "changes": "De-identified and reworded; incidental details generalised; question in yes/no form."
+  },
+  "suggested_action": "eat the remains of dead teammates",
+  "kept": [
+    "You are a team member and crash survivor; fifteen of forty die initially and nineteen are alive days later.",
+    "The inaccessible site is high in the mountains in extreme cold.",
+    "You cannot communicate, but can receive radio news that the search has ended; food is gone.",
+    "You and survivors would eat already dead teammates, violating dignity and the peace of the dead rather than killing anyone for food.",
+    "Eating prolongs survival and improves rescue chances; refusing means starvation soon. You personally benefit; those whose remains are eaten are already dead.",
+    "The suggested action is to eat dead teammates’ remains."
+  ],
+  "removed": [
+    "rugby",
+    "Montevideo",
+    "Santiago de Chile",
+    "1972"
+  ],
+  "rewrite": "You belong to a team travelling by plane when it crashes in an inaccessible mountain region. Fifteen of the 40 people aboard die in the crash. You cannot communicate with anyone, though you have a radio receiver. You are high in the mountains in extreme cold. Days later, just 19 of you remain alive. Your food is gone, and the radio reports that the search for your plane has ended. You and the others consider eating the bodies of dead teammates, violating their dignity and the peace of the dead. Eating the bodies would let the survivors live longer and improve their chances of rescue. Refusing would mean you soon starve to death. Do you eat the remains of your dead teammates?",
+  "notes": "Deliberately retained: 15 of 40 dead initially, 19 survivors, no food, the abandoned search and eating already dead teammates; these set the populations, survival options and harm to the dead without killing for food. Broad altitude and temperature wording may change perceived survival realism.",
+  "generalised": [
+    {
+      "from": "rugby team",
+      "to": "team",
+      "why": "the sport does not set the survival choice"
+    },
+    {
+      "from": "13,000 feet/4,000 meters at -20°F/-30°C",
+      "to": "high in the mountains in extreme cold",
+      "why": "inaccessibility and lethal survival constraints remain without precise measurements"
+    },
+    {
+      "from": "After ten days",
+      "to": "Days later",
+      "why": "the elapsed count does not change the stated survivors or certain starvation"
+    }
+  ]
+}

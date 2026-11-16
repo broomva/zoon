@@ -1,0 +1,39 @@
+{
+  "id": "Aid for Syria",
+  "set": "outside",
+  "source": {
+    "authors": "Körner and Deutsch",
+    "title": "Deontology and Utilitarianism in Real Life: A Set of Moral Dilemmas Based on Historic Events",
+    "url": "https://doi.org/10.1177/01461672221103058",
+    "materials_url": "https://osf.io/download/ephu6/",
+    "locator": "English Versions, 22) Aid for Syria",
+    "license": "CC BY 4.0",
+    "license_url": "https://creativecommons.org/licenses/by/4.0/",
+    "changes": "De-identified and reworded; incidental details generalised; question in yes/no form."
+  },
+  "suggested_action": "give the funds to local aid organisations",
+  "kept": [
+    "You administer aid payments for an international organisation amid a years-long civil war, food shortages and inadequate care.",
+    "A large sum is approved, but every local receiving organisation is regime-controlled.",
+    "The regime is strongly suspected, not proven, to favour its territories and divert aid to war; others stopped aid to avoid supporting it.",
+    "Payments could save lives; distributing funds helps many while unintentionally supporting the brutal regime; refusal leaves millions without aid.",
+    "You authorise payments, rather than fight; no personal benefit is specified, and beneficiary-victim overlap is not settled.",
+    "The suggested action is to give the funds to local organisations."
+  ],
+  "removed": [
+    "Syrian",
+    "Syria",
+    "employee for the UN"
+  ],
+  "rewrite": "A civil war between a regime and rebels has continued for years. The humanitarian situation is horrible: people lack sufficient food and medical care. You work for an international organisation and are responsible for paying aid funds. A large sum of money has been approved for local organisations in the affected country. All of them, however, are controlled by the regime. It is strongly suspected of restricting aid to its own territories and even diverting money to finance the war. Many other organisations have therefore stopped monetary aid to avoid supporting the brutal regime. Nevertheless, paying could help many suffering people and save lives. If you distribute the funds, you will help many people while unintentionally supporting the regime. If you refuse, millions will no longer receive aid. Do you give the funds to local organisations?",
+  "reversed_suggested_action": "refuse funds to local aid organisations",
+  "reversed": "A civil war between a regime and rebels has continued for years. The humanitarian situation is horrible: people lack sufficient food and medical care. You work for an international organisation and are responsible for paying aid funds. A large sum of money has been approved for local organisations in the affected country. All of them, however, are controlled by the regime. It is strongly suspected of restricting aid to its own territories and even diverting money to finance the war. Many other organisations have therefore stopped monetary aid to avoid supporting the brutal regime. Nevertheless, paying could help many suffering people and save lives. If you distribute the funds, you will help many people while unintentionally supporting the regime. If you refuse, millions will no longer receive aid. Do you refuse to give the funds to local organisations?",
+  "notes": "Deliberately retained: regime control of every receiving organisation, strong suspicion of diversion to war, unintentional support and millions denied aid on refusal; these define the competing harms and uncertainty.",
+  "generalised": [
+    {
+      "from": "Tens of millions of dollars",
+      "to": "A large sum of money",
+      "why": "the amount signals scale rather than a priced alternative"
+    }
+  ]
+}

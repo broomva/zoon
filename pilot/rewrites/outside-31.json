@@ -1,0 +1,38 @@
+{
+  "id": "Test Tube Sibling",
+  "set": "outside",
+  "source": {
+    "authors": "Körner and Deutsch",
+    "title": "Deontology and Utilitarianism in Real Life: A Set of Moral Dilemmas Based on Historic Events",
+    "url": "https://doi.org/10.1177/01461672221103058",
+    "materials_url": "https://osf.io/download/ephu6/",
+    "locator": "English Versions, 31) Test tube sibling",
+    "license": "CC BY 4.0",
+    "license_url": "https://creativecommons.org/licenses/by/4.0/",
+    "changes": "De-identified and reworded; incidental details generalised; question in yes/no form."
+  },
+  "suggested_action": "allow genetic selection of a child as a donor",
+  "kept": [
+    "You decide as a judge, not a parent or clinician; a boy needs stem cells or bone marrow for a deadly blood disease and no suitable donor was found.",
+    "The parents propose a genetically selected embryo through in vitro fertilisation, implanted to produce a sibling donor.",
+    "Stem cells come from the umbilical cord; recovery is above 90% conditional on successful pregnancy and transplantation.",
+    "Approval probably saves the boy with complete recovery; refusal means death unless a very unlikely donor is found.",
+    "The norm concern is creating a baby as a donor; the sick boy benefits, no personal gain for you or physical harm to the planned baby is added.",
+    "The suggested action is to allow genetic selection of a child."
+  ],
+  "removed": [
+    "British",
+    "beta-thalassemia"
+  ],
+  "rewrite": "You are a judge in a court considering an in vitro fertilisation case. A boy with a deadly blood disease can survive only with a stem cell or bone marrow donation. Despite every effort, no matching donor has been found. His parents propose having another child with compatible stem cells. In vitro fertilisation would allow selection of a genetically suitable embryo for implantation. If the pregnancy succeeds and stem cells from the newborn’s umbilical cord are successfully transplanted, the sick child’s recovery chance exceeds 90%. This would, however, mean breeding a baby to be a stem cell donor. If you allow genetic selection, the sick child will probably be saved and recover fully. If you do not, he will die unless another donor is found, which is very unlikely. Do you allow genetic selection of a child?",
+  "reversed_suggested_action": "refuse genetic selection of a child as a donor",
+  "reversed": "You are a judge in a court considering an in vitro fertilisation case. A boy with a deadly blood disease can survive only with a stem cell or bone marrow donation. Despite every effort, no matching donor has been found. His parents propose having another child with compatible stem cells. In vitro fertilisation would allow selection of a genetically suitable embryo for implantation. If the pregnancy succeeds and stem cells from the newborn’s umbilical cord are successfully transplanted, the sick child’s recovery chance exceeds 90%. This would, however, mean breeding a baby to be a stem cell donor. If you allow genetic selection, the sick child will probably be saved and recover fully. If you do not, he will die unless another donor is found, which is very unlikely. Do you refuse to allow genetic selection of a child?",
+  "notes": "Deliberately retained: embryo selection, umbilical-cord stem cells and above-90% recovery conditional on successful pregnancy and transplantation; these define creating a donor child, the procedure’s harm and its benefit. No injury to the donor child is invented.",
+  "generalised": [
+    {
+      "from": "court of appeal",
+      "to": "court",
+      "why": "judicial permission rather than medical performance remains"
+    }
+  ]
+}

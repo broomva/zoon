@@ -1,0 +1,46 @@
+{
+  "id": "Mare Nostrum",
+  "set": "outside",
+  "source": {
+    "authors": "Körner and Deutsch",
+    "title": "Deontology and Utilitarianism in Real Life: A Set of Moral Dilemmas Based on Historic Events",
+    "url": "https://doi.org/10.1177/01461672221103058",
+    "materials_url": "https://osf.io/download/ephu6/",
+    "locator": "English Versions, 19) Mare nostrum",
+    "license": "CC BY 4.0",
+    "license_url": "https://creativecommons.org/licenses/by/4.0/",
+    "changes": "De-identified and reworded; incidental details generalised; question in yes/no form."
+  },
+  "suggested_action": "continue the maritime refugee rescue programme",
+  "kept": [
+    "You are a government official responsible for rescue policy; refugees flee war or poor economic prospects across a sea.",
+    "The joint rescue programme has saved 150,000; this year 3,000 died by drowning or thirst before rescue.",
+    "Traffickers sell unsafe crossings for high prices and rely on rescue as a selling point.",
+    "Ending rescue increases deaths initially but probably reduces future crossings and deaths; continuing could save lives now while thousands keep dying over time.",
+    "You decide programme policy, not personally kill refugees; no personal benefit is specified, and current and future travellers are not equated.",
+    "The suggested action is to continue the rescue programme."
+  ],
+  "removed": [
+    "British",
+    "Northern Africa",
+    "Mediterranean",
+    "EU",
+    "Mare Nostrum"
+  ],
+  "rewrite": "You are a government official responsible for a rescue programme. Many refugees are trying to cross a sea because war or a lack of economic prospects has driven them to leave. A joint rescue programme has already saved 150,000 from drowning. Illegal trafficking gangs exploit it, charging large sums for unseaworthy boats and telling refugees they will be rescued if necessary. Yet 3,000 people have drowned or died of thirst this year because help arrived too late. Your government is considering whether it should put an end to this rescue programme in order to discourage refugees from making the crossing and stop the human trafficking. Initially, more people would die at sea. In the future, probably fewer would try the crossing, leading to fewer deaths over time. Continuing could save lives now, but thousands of refugees will keep dying at sea in the long run. Ending it would discourage refugees and traffickers, but leave refugees to die at sea. Do you continue the programme to save refugees at sea?",
+  "reversed_suggested_action": "stop the maritime refugee rescue programme",
+  "reversed": "You are a government official responsible for a rescue programme. Many refugees are trying to cross a sea because war or a lack of economic prospects has driven them to leave. A joint rescue programme has already saved 150,000 from drowning. Illegal trafficking gangs exploit it, charging large sums for unseaworthy boats and telling refugees they will be rescued if necessary. Yet 3,000 people have drowned or died of thirst this year because help arrived too late. Your government is considering whether it should put an end to this rescue programme in order to discourage refugees from making the crossing and stop the human trafficking. Initially, more people would die at sea. In the future, probably fewer would try the crossing, leading to fewer deaths over time. Continuing could save lives now, but thousands of refugees will keep dying at sea in the long run. Ending it would discourage refugees and traffickers, but leave refugees to die at sea. Do you stop the programme to save refugees at sea?",
+  "notes": "Deliberately retained: 150,000 rescued, 3,000 dead, unsafe crossings and the traffickers’ reliance on rescue; these quantify people affected and explain immediate rescue versus future deterrence. The probably-fewer future crossings and current versus future populations remain distinct.",
+  "generalised": [
+    {
+      "from": "British Ministry of Foreign Affairs",
+      "to": "government official responsible for a rescue programme",
+      "why": "authority over programme policy remains"
+    },
+    {
+      "from": "EU",
+      "to": "joint rescue programme",
+      "why": "the participating institution’s type does not change the rescue trade-off"
+    }
+  ]
+}

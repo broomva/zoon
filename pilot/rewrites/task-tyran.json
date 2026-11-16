@@ -1,0 +1,36 @@
+{
+  "id": "Tyran",
+  "set": "task",
+  "source": {
+    "authors": "Maier, Cheung and Lieder",
+    "title": "dilemmas and outcomes.pdf",
+    "url": "https://osf.io/download/sgf5y/",
+    "materials_url": "https://osf.io/4up5z/",
+    "locator": "Tyrannicide",
+    "license": "CC BY 4.0",
+    "license_url": "https://creativecommons.org/licenses/by/4.0/",
+    "changes": "De-identified and reworded; incidental details generalised; question in yes/no form."
+  },
+  "suggested_action": "ambush and kill the ruler of your country",
+  "kept": [
+    "You remain an army officer and a member of the group seeking change without civil war.",
+    "The ruler has ordered thousands of killings on ethnic or political grounds over decades.",
+    "You consider killing unavoidable to remove the ruler, family and followers from power; a few others join the ambush.",
+    "You directly participate in killing one ruler; the alternative is continued killings by the regime.",
+    "Change is a chance, not a guaranteed peaceful transition; personal benefit is not specified beyond your membership in the country.",
+    "The suggested action is to kill the ruler, not his family or followers."
+  ],
+  "removed": [
+    "Dominican Republic",
+    "1961"
+  ],
+  "rewrite": "You are an army officer in a country whose ruler has governed as a dictator for decades. He has had thousands of people killed for their ethnicity or political views. You belong to a group seeking a new beginning for the country without civil war. You believe killing the ruler is unavoidable if he, his family and his followers are to lose power. You and a few fellow conspirators are asked to ambush and kill him. If you kill the ruler, the people of your country will have a chance of a new beginning. If you do not, his regime will go on killing. Do you kill the ruler?",
+  "notes": "Deliberately retained: thousands already killed, political and ethnic persecution, the family power structure, your army role and the chance of a new beginning without civil war; these define severity, agency and an uncertain benefit. Only the ruler is to be killed.",
+  "generalised": [
+    {
+      "from": "six co-conspirators",
+      "to": "a few fellow conspirators",
+      "why": "the number of collaborators does not count victims or beneficiaries"
+    }
+  ]
+}

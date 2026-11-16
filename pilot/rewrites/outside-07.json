@@ -1,0 +1,43 @@
+{
+  "id": "Immunization (Smallpox)",
+  "set": "outside",
+  "source": {
+    "authors": "Körner and Deutsch",
+    "title": "Deontology and Utilitarianism in Real Life: A Set of Moral Dilemmas Based on Historic Events",
+    "url": "https://doi.org/10.1177/01461672221103058",
+    "materials_url": "https://osf.io/download/ephu6/",
+    "locator": "English Versions, 7) Immunization (smallpox)",
+    "license": "CC BY 4.0",
+    "license_url": "https://creativecommons.org/licenses/by/4.0/",
+    "changes": "De-identified and reworded; incidental details generalised; question in yes/no form."
+  },
+  "suggested_action": "infect the boy with the mild and dangerous diseases",
+  "kept": [
+    "You are the doctor conducting the test; a colleague observed possible immunity after harmless infection.",
+    "The dangerous disease is highly contagious and often deadly; immunity and future lives saved are conditional, not assured.",
+    "Testing requires sequential infection with both diseases and risks the test subject’s life.",
+    "You cannot test yourself because previous infection made you immune; only your employee offers his young son.",
+    "Refusal protects the boy but prevents the test while deaths continue; no personal health benefit is stated and the boy’s later benefit is unspecified.",
+    "The suggested action is to infect the boy with both diseases."
+  ],
+  "removed": [
+    "England",
+    "1796",
+    "cowpox",
+    "smallpox"
+  ],
+  "rewrite": "You are a physician. A colleague has discovered that infection with a harmless disease might have made his patients immune to a dangerous disease that is highly contagious and often fatal. If the mild infection really provides immunity, deliberately giving it could save many lives. You consider testing this by infecting a patient first with the mild disease and then with the dangerous one, putting that person’s life at risk. You cannot test it on yourself because you already survived the dangerous disease and are immune. You seek volunteers, but the sole offer is your employee offering his young son. If you infect the boy with both diseases, you risk his life but can test a procedure that might save many lives. If you refuse, you do not endanger him, but cannot test it, and people will keep dying from the dangerous disease. Do you infect the boy with both diseases?",
+  "notes": "Deliberately retained: the doctor-employee relationship, child subject, parental offer, sequential infections and uncertain immunity; these set authority, vulnerability, direct risk and possible benefit. Broader age wording may change perceived vulnerability.",
+  "generalised": [
+    {
+      "from": "gardener",
+      "to": "employee",
+      "why": "the employment relationship and parental offer remain"
+    },
+    {
+      "from": "eight-year-old son",
+      "to": "young son",
+      "why": "the subject remains a child offered by his parent"
+    }
+  ]
+}

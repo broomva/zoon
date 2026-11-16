@@ -1,0 +1,43 @@
+{
+  "id": "Organ Law",
+  "set": "outside",
+  "source": {
+    "authors": "Körner and Deutsch",
+    "title": "Deontology and Utilitarianism in Real Life: A Set of Moral Dilemmas Based on Historic Events",
+    "url": "https://doi.org/10.1177/01461672221103058",
+    "materials_url": "https://osf.io/download/ephu6/",
+    "locator": "English Versions, 10) Organ donation law",
+    "license": "CC BY 4.0",
+    "license_url": "https://creativecommons.org/licenses/by/4.0/",
+    "changes": "De-identified and reworded; incidental details generalised; question in yes/no form."
+  },
+  "suggested_action": "introduce the new organ donation criterion",
+  "kept": [
+    "You are responsible for national organ-donation policy; the country has opt-out donation, yet patients die waiting for organs.",
+    "The proposed trial involves several hospitals; current complete cessation of brain activity often comes too late for usable organs.",
+    "The new criterion is cardiac arrest persisting after resuscitation attempts, increasing transplantable organs substantially.",
+    "Rare survivors of that criterion might otherwise live but would be killed by organ harvesting; many more transplant recipients would be saved.",
+    "You authorise the criterion while clinicians remove organs; no personal benefit is specified, and donor-recipient overlap is not asserted.",
+    "The suggested action is to introduce the new criterion."
+  ],
+  "removed": [
+    "French Agency for Biomedicine",
+    "France"
+  ],
+  "rewrite": "You are the official responsible for national organ-donation policy. In your country, every person is considered an organ donor unless they explicitly opt out of donation. Many people nevertheless die each year waiting for organs. You must decide whether several hospitals should test a new definition of death for donation. Under the existing rules, organs may only be taken from a patient after all activity in that patient’s brain has stopped completely. By then they are often no longer suitable for transplantation. The proposed criterion allows earlier removal after cardiac arrest that continues despite attempted resuscitation. This would greatly increase the supply of transplantable organs. In rare cases, however, patients have survived after meeting that criterion. Organ removal would kill those patients. If you approve the trial, you risk killing people by harvesting organs who might otherwise survive. The criterion would also save many more lives through a much larger number of transplants. If you veto it, many people will continue to die each year without receiving an organ. Do you introduce the new organ donation criterion?",
+  "reversed_suggested_action": "veto the new organ donation criterion",
+  "reversed": "You are the official responsible for national organ-donation policy. In your country, every person is considered an organ donor unless they explicitly opt out of donation. Many people nevertheless die each year waiting for organs. You must decide whether several hospitals should test a new definition of death for donation. Under the existing rules, organs may only be taken from a patient after all activity in that patient’s brain has stopped completely. By then they are often no longer suitable for transplantation. The proposed criterion allows earlier removal after cardiac arrest that continues despite attempted resuscitation. This would greatly increase the supply of transplantable organs. In rare cases, however, patients have survived after meeting that criterion. Organ removal would kill those patients. If you approve the trial, you risk killing people by harvesting organs who might otherwise survive. The criterion would also save many more lives through a much larger number of transplants. If you veto it, many people will continue to die each year without receiving an organ. Do you veto the new organ donation criterion?",
+  "generalised": [
+    {
+      "from": "nine hospitals",
+      "to": "several hospitals",
+      "why": "the count of trial sites does not count people on either side"
+    },
+    {
+      "from": "director in the French Agency for Biomedicine",
+      "to": "official responsible for national organ-donation policy",
+      "why": "authority to approve the trial remains"
+    }
+  ],
+  "notes": "Deliberately retained: opt-out donation, cessation of brain activity, persistent cardiac arrest despite resuscitation and rare survival after that criterion; these define the risk of killing donors who might survive versus saving many more recipients."
+}

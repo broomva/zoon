@@ -1,0 +1,38 @@
+{
+  "id": "Ladder",
+  "set": "task",
+  "source": {
+    "authors": "Maier, Cheung and Lieder",
+    "title": "dilemmas and outcomes.pdf",
+    "url": "https://osf.io/download/sgf5y/",
+    "materials_url": "https://osf.io/4up5z/",
+    "locator": "Rope Ladder",
+    "license": "CC BY 4.0",
+    "license_url": "https://creativecommons.org/licenses/by/4.0/",
+    "changes": "De-identified and reworded; incidental details generalised; question in yes/no form."
+  },
+  "suggested_action": "push the blocking man off the ladder",
+  "kept": [
+    "You are a passenger already on deck, rather than someone still needing to climb to safety.",
+    "One unresponsive man blocks a ladder; speaking and reaching do not get a response; others jostle and someone urges pushing him.",
+    "The ship seems to be sinking fast; the man seems immobilised by fear or cold.",
+    "Your direct push will probably kill him and allow others to climb; without it he will probably block many people who will drown.",
+    "No exact passenger count is given; the person sacrificed is not described as among those saved by pushing.",
+    "The suggested action is to push the man off the ladder."
+  ],
+  "removed": [
+    "1987",
+    "Belgium",
+    "England",
+    "ferry from Belgium to England"
+  ],
+  "rewrite": "You are travelling on a passenger ship when it suddenly tilts and takes on water. You and some fellow passengers try to reach the deck using a ladder. Having climbed up, you now stand on deck and watch the others following you. Immediately below you, a man halfway up seems unable to move from fear or cold. He blocks the ladder. You try speaking to him and reaching him, but he gives no response. The people below are jostling. The ship seems to be sinking quickly, and the man continues to block their way. Someone in the crowd calls for you to push him off. If you push the man off, he will probably die, but the other passengers will be able to reach the deck. If you leave him there, he will probably keep blocking the ladder. Many people behind you will then be unable to reach the deck and will drown. Do you push the man off the ladder?",
+  "generalised": [
+    {
+      "from": "rope ladder",
+      "to": "ladder",
+      "why": "the exact ladder material does not change blocking or pushing"
+    }
+  ],
+  "notes": "Deliberately retained: your position already on deck, the unresponsive blocking man, fear or cold, jostling and probable death from your direct push; these determine agency, absent self-rescue benefit and the alternative drownings."
+}

@@ -1,0 +1,30 @@
+{
+  "id": "RobinHood",
+  "set": "task",
+  "source": {
+    "authors": "Maier, Cheung and Lieder",
+    "title": "dilemmas and outcomes.pdf",
+    "url": "https://osf.io/download/sgf5y/",
+    "materials_url": "https://osf.io/4up5z/",
+    "locator": "Robin Hood",
+    "license": "CC BY 4.0",
+    "license_url": "https://creativecommons.org/licenses/by/4.0/",
+    "changes": "De-identified and reworded; question in yes/no form."
+  },
+  "suggested_action": "redirect wealthy customers’ money to indebted customers",
+  "kept": [
+    "You are a bank employee trusted by loyal customers; difficult interviews cause stress to you and indebted customers.",
+    "One customer and his family face ruin without a loan; other indebted customers could also benefit.",
+    "The temporary, undetectable transfer of deposits and investments raises creditworthiness; it defrauds wealthy customers and betrays their and your superiors’ trust.",
+    "Following rules means bankruptcy for indebted customers and their families; no personal financial reward is stated.",
+    "You carry out the fraudulent transfer; the wealthy depositors and indebted beneficiaries remain distinct.",
+    "The suggested action is to redirect wealthy customers’ money."
+  ],
+  "removed": [
+    "Germany",
+    "Robin Hood"
+  ],
+  "rewrite": "You are employed by a bank and have many loyal customers who trust both you and the bank. Some are in debt and cannot meet the conditions for a loan. Your interviews with them are stressful for you and them. One customer and his family now face ruin unless he receives a loan. You see a way to move some other customers’ deposits and investments temporarily into his account without detection, raising his credit rating enough. It could help him and other customers in difficulty, but would defraud your wealthy customers and betray their trust and that of your superiors. If you temporarily move some wealthy customers’ money, you can help indebted customers while abusing trust. If you obey the rules, the indebted customers and their families will go bankrupt. Do you redirect money from wealthy customers?",
+  "notes": "No further generalisation: the bank role, temporary undetectable transfer, credit rating, wealthy depositors, indebted families and betrayed trust define the fraud and its beneficiaries; no incidental identifying detail remains. The paper codes opposite framing “No”, so no reversal is included despite the task’s different code.",
+  "generalised": []
+}

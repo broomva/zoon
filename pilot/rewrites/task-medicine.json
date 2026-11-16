@@ -1,0 +1,47 @@
+{
+  "id": "Medicine",
+  "set": "task",
+  "source": {
+    "authors": "Maier, Cheung and Lieder",
+    "title": "dilemmas and outcomes.pdf",
+    "url": "https://osf.io/download/sgf5y/",
+    "materials_url": "https://osf.io/4up5z/",
+    "locator": "Medicine Costs",
+    "license": "CC BY 4.0",
+    "license_url": "https://creativecommons.org/licenses/by/4.0/",
+    "changes": "De-identified and reworded; incidental details generalised; question in yes/no form."
+  },
+  "suggested_action": "refund the boy’s medicine",
+  "kept": [
+    "You are the health minister deciding about reimbursement, not the treating doctor.",
+    "The young boy has a rare, fatal disease and needs regular medicine to live; his family can no longer sustain the very large annual cost.",
+    "The medicine is not covered; refusing means death, described in the comparison as probably within the next few years.",
+    "Funding reduces other patients’ care and risks less effective treatment; an independent agency estimates likely deaths of more people.",
+    "No personal benefit is specified; the boy and other patients are distinct; harm follows resource allocation rather than a direct attack.",
+    "The suggested action is to refund the boy’s medicine."
+  ],
+  "removed": [
+    "Belgian"
+  ],
+  "rewrite": "You are your country’s health minister. A young boy with a rare, fatal disease asks you to reimburse his medicine. Without regular doses he will die. The health care system does not currently cover it. His family has paid for it for years, but cannot afford the cost much longer: a very large annual sum. Refusing reimbursement therefore means the boy will die. If you refuse to fund the medicine, the boy will probably die within the next few years. If you fund it, the money must be saved elsewhere. Other patients’ care would be reduced in quality, increasing the risk of less effective treatment. An independent agency estimates that paying for the boy’s medicine will therefore likely cause more people to die. Do you refund the boy’s medicine?",
+  "reversed_suggested_action": "refuse to refund the boy’s medicine",
+  "reversed": "You are your country’s health minister. A young boy with a rare, fatal disease asks you to reimburse his medicine. Without regular doses he will die. The health care system does not currently cover it. His family has paid for it for years, but cannot afford the cost much longer: a very large annual sum. Refusing reimbursement therefore means the boy will die. If you refuse to fund the medicine, the boy will probably die within the next few years. If you fund it, the money must be saved elsewhere. Other patients’ care would be reduced in quality, increasing the risk of less effective treatment. An independent agency estimates that paying for the boy’s medicine will therefore likely cause more people to die. Do you refuse to refund the boy’s medicine?",
+  "notes": "Deliberately retained: regular dosing, certain death without medicine, probably death within a few years, reduced care elsewhere and the independent estimate of likely more deaths; these define the one-versus-more resource choice. Broader cost, age and disease wording may change perceived urgency or benefit size.",
+  "generalised": [
+    {
+      "from": "7-year-old boy",
+      "to": "young boy",
+      "why": "childhood and dependence on family funding remain"
+    },
+    {
+      "from": "very rare immunological disease",
+      "to": "rare, fatal disease",
+      "why": "regular medicine and certain death without it retain the medical stakes"
+    },
+    {
+      "from": "approximately 200,000 euros per year",
+      "to": "a very large annual sum",
+      "why": "the stated loss of other care and likely additional deaths define the opportunity cost"
+    }
+  ]
+}
