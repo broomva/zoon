@@ -103,8 +103,9 @@ predicts better or worse from a rewrite than from what participants read is not 
 wording and the seven labelled answers are those of the original paper's US study, which is
 the sample the `norm` lean uses. The paper's two studies worded the question and its end
 points differently, so the pre-registration quotes the US wording from the paper and uses no
-other. `m(d)` is the expected value of the judge's answer, standardised over the 13 dilemmas.
-Standardising uses no participant's data, and `alpha` and `beta` absorb it.
+other. `m(d)` is the expected value of the judge's answer, standardised. The
+pre-registration standardises it within each rotation, on the dilemmas that are not held
+out. Standardising uses no participant's data.
 
 **Strict.** The descriptive questions the original study coded for each dilemma: the context,
 whether it involves killing, whether those harmed are among those who benefit, whether the
@@ -144,13 +145,12 @@ task. They allow the judge to be checked against people with no data from this t
 - **Strict.** Agreement between the judge's answers and the published codes, per question,
   over the 25 and over the 13.
 - **Stop rule.** One wording of the evaluative question is fixed before any call to the
-  judge. If the lower end of a confidence interval for its correlation with human ratings on
-  the 25 is below a threshold, the pilot stops before any held-out data is read. The
-  interval's level and the threshold are fixed in the pre-registration, also before any call.
-  With 25 dilemmas the interval is wide: its standard error is about 0.21 on the scale
-  usually used for correlations. Stopping is reported as "the judge could not be calibrated".
-  It is not a result about either hypothesis. The rule uses outside data only, so passing it
-  does not make a false positive on the 13 more likely.
+  judge. If its correlation with human ratings on the 25 is below a minimum fixed in the
+  pre-registration, the pilot stops before any held-out data is read. With 25 dilemmas a
+  correlation is known only roughly: its standard error is about 0.21 on the scale usually
+  used for correlations. Stopping is reported as "the judge could not be calibrated". It is
+  not a result about either hypothesis. The rule uses outside data only, so passing it does
+  not make a false positive on the 13 more likely.
 
 ## What a pass would and would not show
 
@@ -202,9 +202,10 @@ share parameters, as in the power calculation.
 
 ## The `prompted` arm
 
-The model is given the instructions participants saw, this participant's earlier dilemmas
-with their answers, outcomes and ratings, and the current dilemma, all in the task's own
-texts and not the rewrites. It is asked which answer this participant gives. It may use
+The model is given a short description of the study, this participant's earlier dilemmas
+with their answers, the outcome texts they were shown and their ratings, and the current
+dilemma, all in the task's own texts and not the rewrites. `prereg/h1.md` gives
+the prompt word for word. It is asked which answer this participant gives. It may use
 anything it recalls. Whether the real texts help it or hurt it is not known. Then, in this
 order:
 
@@ -229,10 +230,10 @@ participants. If it wins, the architecture added nothing on this task.
 
 **The examples respect the held-out dilemmas.** The coded arms never fit to a participant's
 answer on a held-out dilemma. The same has to hold for the prompt. So the examples are built
-separately for each rotation of held-out dilemmas: an example may show a training
-participant's answer only on a dilemma that is not held out in that rotation. A held-out
-dilemma may appear in an example only as part of the history, which is how the coded arms
-use it. The rule for building examples is fixed before the prompt is written.
+separately for each rotation of held-out dilemmas, and an example stops before the training
+participant first met a held-out dilemma. It is an unbroken run of that participant's first
+trials, with no dilemma left out of the middle. The rule for building examples is fixed in
+the pre-registration.
 
 ## Recall is reduced, not ruled out
 
