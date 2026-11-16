@@ -51,14 +51,7 @@ class Decision:
 
 def contexts() -> tuple[str, ...]:
     """Contexts in their first-appearance order in the committed source table."""
-    return tuple(
-        dict.fromkeys(
-            part.strip()
-            for d in outside.published().values()
-            if d.codes is not None
-            for part in d.codes.context.split("/")
-        )
-    )
+    return outside.CONTEXTS
 
 
 def declared(labels: Sequence[str]) -> tuple[Answer, ...]:

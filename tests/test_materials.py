@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from zoon.pilot import fetch, materials
+from zoon.pilot import fetch, materials, rewrites
 
 
 def test_committed_digest_and_inventory() -> None:
@@ -14,7 +14,9 @@ def test_committed_digest_and_inventory() -> None:
     assert tuple(tasks) == fetch.DILEMMAS
     document = json.loads(materials.TEXTS.read_text())
     assert document["source"] == materials.SOURCE
-    for task in tasks.values():
+    counts = rewrites.load_counts()
+    for name, task in tasks.items():
+        assert len(task["text"].split()) == counts[name]
         assert task["text"].endswith("?")
         assert set(task["outcomes"]) == {"Yes", "No"}
         assert all(
@@ -69,6 +71,7 @@ def test_normalisation() -> None:
     assert materials.normalise("some\nwhite-space and hyphen-\nation\u00ad") == materials.normalise(
         "some white space and hyphenation"
     )
+    assert materials.normalise("not able") != materials.normalise("notable")
 
 
 def test_manifest_pins_existing_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -93,3 +96,56 @@ def test_missing_pdf_is_downloaded(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     monkeypatch.setattr(materials.urllib.request, "urlopen", download)
     materials.fetch(tmp_path / "materials", tmp_path / "manifest.json")
     assert (tmp_path / "materials" / materials.PDF.name).read_bytes() == b"PDF"
+
+
+def test_extraction_logic_without_pdf(monkeypatch: pytest.MonkeyPatch) -> None:
+    def columns(path: Path = materials.PDF) -> dict[str, tuple[str, str, str]]:
+        return {
+            name: (
+                "Title You decide. Do you act?",
+                "Yes Yes success: You help. Yes failure : You fail.",
+                "No No success: You wait. No failure: You lose.",
+            )
+            for name in fetch.DILEMMAS
+        }
+
+    monkeypatch.setattr(materials, "extracted_columns", columns)
+    document = materials.extract()
+    assert tuple(document["dilemmas"]) == fetch.DILEMMAS
+    for task in document["dilemmas"].values():
+        assert task == {
+            "text": "You decide. Do you act?",
+            "outcomes": {
+                "Yes": {"success": "You help.", "failure": "You fail."},
+                "No": {"success": "You wait.", "failure": "You lose."},
+            },
+        }
+    tasks = document["dilemmas"]
+    assert materials.outcome_text("Ladder", "Yes", success=True, tasks=tasks) == "You help."
+    assert materials.outcome_text("Ladder", "No", success=False, tasks=tasks) == "You lose."
+
+
+@pytest.mark.parametrize(
+    "body,yes,error",
+    [
+        ("Title alone", "", "no vignette start"),
+        ("You decide.", "", "no final question"),
+        ("You decide?", "Unlabelled text", "cannot separate Yes"),
+    ],
+)
+def test_malformed_extraction_rejected(
+    body: str, yes: str, error: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def columns(path: Path = materials.PDF) -> dict[str, tuple[str, str, str]]:
+        return {"Ladder": (body, yes, "")}
+
+    monkeypatch.setattr(materials, "extracted_columns", columns)
+    with pytest.raises(ValueError, match=error):
+        materials.extract()
+
+
+def test_loader_rejects_wrong_inventory(tmp_path: Path) -> None:
+    path = tmp_path / "texts.json"
+    path.write_text('{"source": {}, "dilemmas": {}}')
+    with pytest.raises(ValueError, match="IDs"):
+        materials.load(path)

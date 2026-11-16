@@ -108,7 +108,8 @@ def digest(content: bytes) -> str:
 def normalise(text: str) -> str:
     """Ignore whitespace and hyphenation, including soft and line-break hyphens."""
     text = unicodedata.normalize("NFKC", text)
-    return re.sub(r"[\s\-\u00ad\u2010-\u2015]+", "", text)
+    text = re.sub(r"(?<=\w)[\-\u00ad\u2010]\s*\n\s*(?=\w)", "", text)
+    return " ".join(re.sub(r"[\-\u00ad\u2010-\u2015]", " ", text).split())
 
 
 def extracted_columns(path: Path = PDF) -> dict[str, tuple[str, str, str]]:

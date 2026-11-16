@@ -10,6 +10,7 @@ NUMBER = re.compile(r"[+-]?\d+\.\d{3,}")
 # Each note that pastes report output, with the first line of that output and a line that
 # only a complete run prints.
 PASTED = {
+    "budget.md": ("zoon pilot: spending bound", "[budget] total at most 120 USD"),
     "power.md": ("zoon pilot: power calculation", "[pooled] held-out participants"),
     "lean.md": (
         "zoon pilot: a lean from published human norms and codes",
@@ -36,13 +37,14 @@ def test_report_output_is_pasted(name: str) -> None:
 
 @pytest.mark.parametrize("name", PASTED)
 def test_every_quoted_number_is_in_the_report_output(name: str) -> None:
-    """A figure in the prose with three or more decimals must appear in the pasted output.
+    """Figures with three or more decimals, and every budget figure, must appear in the paste.
     Protects the entry for each note in PASTED: without it, a figure in that note that the
     report never printed would pass."""
     prose, paste = split_note(name)
-    printed = {number.lstrip("+") for number in NUMBER.findall(paste)}
+    pattern = re.compile(r"[+-]?\d+(?:\.\d+)?") if name == "budget.md" else NUMBER
+    printed = {number.lstrip("+") for number in pattern.findall(paste)}
     prose = re.sub(r"https?://\S+", "", prose)  # a DOI is not a figure
-    quoted = {number.lstrip("+") for number in NUMBER.findall(prose)}
+    quoted = {number.lstrip("+") for number in pattern.findall(prose)}
     assert quoted, "the note quotes no figures"
     assert sorted(quoted - printed) == []
 

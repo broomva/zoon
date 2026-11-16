@@ -158,3 +158,9 @@ def test_invalid_requests() -> None:
         prompts.example(person, 1, "A", {})
     with pytest.raises(ValueError, match="two examples"):
         prompts.examples(cast(cohorts.Rotation, {"held_out": [], "examples": []}), [], {})
+
+
+def test_study_introduction_matches_registration() -> None:
+    registration = (fetch.REPO / "prereg" / "h1.md").read_text()
+    template = registration.split("### What the model is sent\n\n```\n", 1)[1].split("\n```", 1)[0]
+    assert template.split("\n\nHere are records", 1)[0] == prompts.INTRO
