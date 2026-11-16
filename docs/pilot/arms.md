@@ -246,9 +246,11 @@ unresolved, and the claim a pass supports is limited accordingly, as stated abov
 Three checks are reported with the result. None is a gate, because none can certify that
 recall did not happen.
 
-- **Recognition.** The judge's model is asked to name the event behind each rewrite. Any
-  rewrite it identifies is listed, the comparisons are repeated without those dilemmas, and
-  the result is described as qualified by them.
+- **Recognition.** A model is asked to name the event behind each rewrite, and its replies
+  are matched against the details the rewrite removed. The comparisons are repeated without
+  the dilemmas that match. Only a model that writes text can be asked, so this check cannot
+  be run on the decision model. The rule is fixed in the pre-registration, which also says
+  how little a match shows.
 - **Reversal.** For dilemmas where the original paper says the opposite framing is
   reasonable, a second rewrite suggests the opposite action and changes nothing else. The
   judge's rating is compared with its own rating of the first rewrite. The two actions need
