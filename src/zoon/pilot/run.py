@@ -261,9 +261,7 @@ class Run:
             }
             binding = self.binding()
             repairs = clients.items(binding["repairs"])
-            if (self.code or repairs) and not any(
-                clients.obj(r).get("code") == self.code for r in repairs
-            ):
+            if self.code != (clients.obj(repairs[-1])["code"] if repairs else {}):
                 if not repair or not repair.strip():
                     raise clients.GuardRefusal(
                         "code requires --repair with a reason: " + ", ".join(sorted(self.code))
@@ -288,13 +286,15 @@ class Run:
         if not self.synthetic:
             self.records = rewrites.load(self.root / "pilot" / "rewrites")
             self.verify_materials()
-        if step == "report" and self.session.spent <= self.session.cap:
+        if step == "report":
+            interrupted = False
             for earlier in STEPS[:-1]:
-                state = self.state(earlier)
-                if state["status"] == "failed":
+                state = self.state(
+                    earlier, required=not interrupted and self.session.spent <= self.session.cap
+                )
+                if state.get("status") == "failed":
                     raise clients.GuardRefusal(f"repeat step {earlier} before report")
-                if state["status"] == "stopped":
-                    break
+                interrupted |= state.get("status") == "stopped"
 
     def state(self, step: str, *, required: bool = True) -> State:
         try:
@@ -307,28 +307,40 @@ class Run:
             state = clients.obj(json.loads(raw))
             if state.get("registered_commit") != self.registered_commit:
                 raise clients.GuardRefusal("state belongs to another registered commit")
+            if state.get("step") != step or state.get("mode") != self.mode:
+                raise clients.GuardRefusal("state belongs to another step or mode")
+            if state.get("status") not in ("completed", "failed", "stopped") or (
+                step == "report" and state["status"] == "stopped"
+            ):
+                raise clients.GuardRefusal("invalid step status")
             snapshot = clients.obj(state["code_snapshot"])
             repairs = clients.items((self.pending_binding or self.binding())["repairs"])
-            if (
-                not self.synthetic
-                and repairs
-                and git(self.root, "rev-parse", "HEAD") == self.registered_commit
-                and not any(clients.obj(r).get("code") == {} for r in repairs)
-            ):
-                raise clients.GuardRefusal("return to registered code requires a declared repair")
+            if not self.synthetic:
+                changed = changed_files(self.root, self.registered_commit, "HEAD")
+                _, code = split_dependencies(
+                    {
+                        name: digest(path.read_bytes())
+                        if (path := self.root / name).is_file()
+                        else "deleted"
+                        for name in changed
+                        if not name.startswith(("docs/", "tests/"))
+                    }
+                )
+                if code != (clients.obj(repairs[-1])["code"] if repairs else {}):
+                    raise clients.GuardRefusal("current code requires a declared repair")
             if snapshot != {} and not any(clients.obj(r).get("code") == snapshot for r in repairs):
                 raise clients.GuardRefusal("state has an unbound code snapshot")
-            for earlier, expected in clients.obj(state["previous"]).items():
+            previous_steps = clients.obj(state["previous"])
+            if set(previous_steps) != set(STEPS[: STEPS.index(step)]):
+                raise clients.GuardRefusal("previous step set changed")
+            for earlier, expected in previous_steps.items():
                 previous = self.directory / f"{earlier}.json"
+                if expected is None and not previous.exists():
+                    continue
                 if not previous.exists() or digest(previous.read_bytes()) != expected:
                     raise clients.GuardRefusal("previous step changed")
-            payload_path = self.directory / f"{step}-values.json"
-            if (
-                not payload_path.exists()
-                or digest(payload_path.read_bytes()) != state["payload_digest"]
-            ):
+            if digest(encoded(state["payload"])) != state["payload_digest"]:
                 raise clients.GuardRefusal("step output digest changed")
-            state["payload"] = clients.obj(json.loads(payload_path.read_text()))
             for family in budget.FAMILIES:
                 expected = clients.obj(clients.obj(state["transcripts"])[family])
                 found = checkpoint(
@@ -347,11 +359,13 @@ class Run:
         self, step: str, payload: State, *, status: str = "completed", reason: str = ""
     ) -> State:
         previous = {
-            name: prior["_digest"]
+            name: prior.get("_digest")
             for name in STEPS[: STEPS.index(step)]
-            if (prior := self.state(name, required=False))
+            for prior in [self.state(name, required=False)]
         }
         state: State = {
+            "step": step,
+            "mode": self.mode,
             "registered_commit": self.registered_commit,
             "code_snapshot": self.code,
             "previous": previous,
@@ -364,14 +378,8 @@ class Run:
         self.directory.mkdir(parents=True, exist_ok=True)
         path = self.directory / f"{step}.json"
         temporary = path.with_suffix(".tmp")
-        payload_path = self.directory / f"{step}-values.json"
-        payload_bytes = encoded(payload)
-        payload_temp = payload_path.with_suffix(".tmp")
-        payload_temp.write_bytes(payload_bytes)
-        payload_temp.replace(payload_path)
-        stored = {k: v for k, v in state.items() if k != "payload"}
-        stored["payload_digest"] = digest(payload_bytes)
-        temporary.write_bytes(encoded(stored))
+        state["payload_digest"] = digest(encoded(payload))
+        temporary.write_bytes(encoded(state))
         temporary.replace(path)
         return state
 
@@ -704,26 +712,18 @@ class Run:
             self.session.transcripts = {
                 f: clients.Transcript(t.path.parent, f) for f, t in self.session.transcripts.items()
             }
-            if step == "report" and self.session.spent > self.session.cap:
-                return self._report(record=False)
+            self.guard(step, registered, repair)
             try:
                 state = self.state(step, required=False)
-            except clients.GuardRefusal:
-                if not repair:
-                    raise
-                self.guard(step, registered, repair)
-                self.binding(self.pending_binding)
+            except BaseException:
                 self.pending_binding = None
-                state = self.state(step, required=False)
-            if state.get("status") in ("completed", "stopped"):
-                if step != "report":
-                    return self.status_lines(step, state)
-                return cast(list[str], clients.obj(state["payload"])["lines"])
+                raise
+            if self.pending_binding is not None:
+                self.binding(self.pending_binding)
+            self.pending_binding = None
+            if state.get("status") in ("completed", "stopped") and step != "report":
+                return self.status_lines(step, state)
             over_cap = step != "report" and self.session.spent > self.session.cap
-            if not over_cap:
-                self.guard(step, registered, repair)
-                self.binding(self.pending_binding)
-                self.pending_binding = None
             try:
                 if over_cap:
                     raise clients.TerminalStop(clients.StopReason.CAP)
@@ -739,7 +739,12 @@ class Run:
                 else:
                     state = self._held_out(registered)
             except clients.TerminalStop as error:
-                state = self.save(step, error.payload, status="stopped", reason=error.reason.value)
+                if step == "report":
+                    state = self.save(step, {}, status="failed", reason=type(error).__name__)
+                else:
+                    state = self.save(
+                        step, error.payload, status="stopped", reason=error.reason.value
+                    )
             except BaseException as error:
                 state = self.save(step, {}, status="failed", reason=type(error).__name__)
             return self.status_lines(step, state)
@@ -749,7 +754,7 @@ class Run:
     def status_lines(self, step: str, state: State) -> list[str]:
         return [self.line(step, key, state[key] or "none") for key in ("status", "reason")]
 
-    def _report(self, *, record: bool = True) -> list[str]:
+    def _report(self) -> list[str]:
         from zoon.pilot.result import render, write_report
 
         states: dict[str, State] = {}
@@ -761,8 +766,6 @@ class Run:
             if state["status"] != "completed":
                 break
         lines = render(self, states)
-        if not record:
-            return lines
         write_report(self, lines)
         self.save("report", {"lines": lines})
         return lines

@@ -481,3 +481,65 @@ def test_refused_guard_cannot_leave_a_pending_repair_for_a_later_command(
     assert "completed" in live.execute("judge-check")[0]
     assert live.binding()["repairs"] == []
     assert live.state("judge-check")["code_snapshot"] == {}
+
+
+@pytest.mark.parametrize("return_kind", ["earlier", "second-return", "revert"])
+def test_repair_chain_requires_latest_snapshot(
+    live: run.Run, monkeypatch: pytest.MonkeyPatch, return_kind: str
+) -> None:
+    tagged = live.registered_commit
+
+    def complete(step: str) -> None:
+        live.save(step, {})
+
+    monkeypatch.setattr(live, "_judge_check", lambda: live.save("judge-check", {}))
+    change(live, "src/zoon/pilot/clients.py")
+    first = git(live.root, "rev-parse", "HEAD")
+    live.execute("judge-check", repair="First correction")
+    if return_kind in ("second-return", "revert"):
+        git(live.root, "checkout", "-q", tagged)
+        live.guard("judge", None, "First return")
+        live.binding(live.pending_binding)
+        live.pending_binding = None
+    change(live, "src/zoon/pilot/run.py")
+    live.guard("judge", None, "Second correction")
+    live.binding(live.pending_binding)
+    live.pending_binding = None
+    complete("judge")
+    complete("calibrate")
+    if return_kind == "revert":
+        git(live.root, "restore", "--source", tagged, "--staged", "--worktree", ".")
+        commit(live.root)
+        assert git(live.root, "rev-parse", "HEAD") != tagged
+    else:
+        git(live.root, "checkout", "-q", first if return_kind == "earlier" else tagged)
+    reached: list[str] = []
+
+    def held(registered: str | None) -> run.State:
+        reached.append("loader")
+        return live.save("held-out", {})
+
+    monkeypatch.setattr(live, "_held_out", held)
+    before = {p.name: p.read_bytes() for p in live.directory.iterdir()}
+    with pytest.raises(clients.GuardRefusal, match="repair"):
+        live.execute("held-out", tagged)
+    assert not reached
+    assert not any(t.entries for t in live.session.transcripts.values())
+    assert before == {p.name: p.read_bytes() for p in live.directory.iterdir()}
+    live.execute("held-out", tagged, repair="Declare return")
+    assert reached == ["loader"]
+    repairs = clients.items(live.binding()["repairs"])
+    assert [clients.obj(r)["reason"] for r in repairs] == (
+        ["First correction", "First return", "Second correction", "Declare return"]
+        if return_kind in ("second-return", "revert")
+        else ["First correction", "Second correction", "Declare return"]
+    )
+    # Rendering a terminal state avoids requiring numerical results in this fixture.
+    live.save("held-out", {}, status="stopped", reason=clients.StopReason.RECORDS.value)
+    lines = live.execute("report")
+    history = [line for line in lines if line.startswith("[Repairs]")]
+    positions = [
+        next(i for i, line in enumerate(history) if str(clients.obj(r)["reason"]) in line)
+        for r in repairs
+    ]
+    assert positions == sorted(positions)
