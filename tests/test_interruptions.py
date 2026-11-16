@@ -58,3 +58,30 @@ def test_second_request_fault_interrupts_and_reuses_recorded_answers(
     runner.session.clients["second"] = original
     assert "completed" in runner.execute("judge")[0]
     assert recorded <= runner.session.transcripts["second"].entries.keys()
+
+
+@pytest.mark.parametrize("authentication_first", [False, True])
+def test_authentication_interrupts_even_beside_a_family_exclusion(
+    runner: run.Run, authentication_first: bool
+) -> None:
+    runner.execute("judge-check")
+    original = runner.session.clients["second"]
+    keys = sorted(
+        clients.key(clients.wire(prompts.evaluative(record), "second"))
+        for record in runner.records
+        if record["set"] == "task"
+    )
+    authentication = keys[0 if authentication_first else 1]
+
+    class Interrupted(clients.StubClient):
+        def ask(self, request: clients.Request) -> clients.Response:
+            key = clients.key(clients.wire(request, "second"))
+            if key == authentication:
+                raise clients.StepFailure("authentication fault")
+            if key in keys:
+                raise clients.FamilyUnusable("second family withdrawn")
+            return original.ask(request)
+
+    runner.session.clients["second"] = Interrupted("second")
+    assert "failed" in runner.execute("judge")[0]
+    assert runner.state("judge")["reason"] == "authentication fault"

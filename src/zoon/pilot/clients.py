@@ -694,9 +694,16 @@ class Session:
                 if isinstance(result, StopRun):
                     if isinstance(result, ModelChanged):
                         transcript.append(request, result.response)
-                    if failure is None or (
-                        isinstance(failure, (StepFailure, FamilyUnusable))
-                        and not isinstance(result, (StepFailure, FamilyUnusable))
+                    if (
+                        failure is None
+                        or (
+                            isinstance(failure, FamilyUnusable)
+                            and not isinstance(result, FamilyUnusable)
+                        )
+                        or (
+                            isinstance(failure, StepFailure)
+                            and not isinstance(result, (StepFailure, FamilyUnusable))
+                        )
                     ):
                         failure = result
                 else:
