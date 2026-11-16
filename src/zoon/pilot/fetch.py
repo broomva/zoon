@@ -20,6 +20,7 @@ Two rules shape `load`:
 import csv
 import hashlib
 import json
+import math
 import re
 import urllib.request
 from collections.abc import Iterator
@@ -174,6 +175,10 @@ def allowed_columns(source: Source) -> set[str]:
     return allowed
 
 
+class RecordFault(ValueError):
+    """A participant record cannot be read as valid trials."""
+
+
 def _number(cell: str) -> float | None:
     try:
         return float(cell.replace(",", "."))
@@ -209,12 +214,12 @@ def _trials(source: Source, cells: dict[str, str]) -> Iterator[dict[str, str | i
     shown = cells[source.order_columns[CONDITIONS.index(condition)]].split("|")
     order = [block.partition("_")[2] for block in shown if block != "AttnCheck"]
     if sorted(order) != sorted(DILEMMAS):
-        raise ValueError(f"unexpected dilemma order: {order}")
+        raise RecordFault("unexpected dilemma order")
     for trial, dilemma in enumerate(order, start=1):
         choice_column, valence_column = responses[dilemma]
         answer, valence = cells[choice_column], _number(cells[valence_column])
-        if answer not in ("Yes", "No") or valence is None:
-            raise ValueError(f"missing response for {dilemma}")
+        if answer not in ("Yes", "No") or valence is None or not math.isfinite(valence):
+            raise RecordFault("missing or invalid response")
         action = answer == "Yes"
         cbr = action == CBR_IS_ACTION[dilemma]
         yield {
@@ -228,7 +233,9 @@ def _trials(source: Source, cells: dict[str, str]) -> Iterator[dict[str, str | i
         }
 
 
-def _scan(raw_dir: Path) -> tuple[list[dict[str, str | int | float]], dict[int, int]]:
+def _scan(
+    raw_dir: Path, *, count_sealed: bool = False
+) -> tuple[list[dict[str, str | int | float]], dict[int, int]]:
     """Read every raw file once. Return training trial rows and held-out counts."""
     rows: list[dict[str, str | int | float]] = []
     held_out: dict[int, int] = {}
@@ -251,7 +258,8 @@ def _scan(raw_dir: Path) -> tuple[list[dict[str, str | int | float]], dict[int, 
                 if not _included(experiment, cells):
                     continue
                 if assign(experiment, raw_id) == "held_out":
-                    held_out[experiment] += 1
+                    if count_sealed:
+                        held_out[experiment] += 1
                     continue
                 cells = {name: record[position[name]] for name in allowed}
                 index = participant_index(experiment, raw_id)
@@ -278,5 +286,34 @@ def load(raw_dir: Path = RAW_DIR) -> pd.DataFrame:
 def held_out_counts(raw_dir: Path = RAW_DIR) -> dict[int, int]:
     """Return how many participants who pass the exclusion rules are held out in each
     experiment, and nothing else."""
-    _, held_out = _scan(raw_dir)
+    _, held_out = _scan(raw_dir, count_sealed=True)
     return held_out
+
+
+def load_registered_held_out(raw_dir: Path = RAW_DIR) -> pd.DataFrame:
+    """Load held-out trials only for the registered fifth step."""
+    rows: list[dict[str, str | int | float]] = []
+    for experiment, source in SOURCES.items():
+        allowed = allowed_columns(source)
+        gate = (ROW_LABEL, *source.exclusion_columns)
+        seen: set[str] = set()
+        with (raw_dir / source.filename).open(encoding="latin-1", newline="") as handle:
+            reader = csv.reader(handle, delimiter=source.delimiter)
+            position = {name: i for i, name in enumerate(next(reader)) if name in allowed}
+            if set(position) != allowed:
+                raise RecordFault("raw file lacks required columns")
+            for record in reader:
+                cells = {name: record[position[name]] for name in gate}
+                raw_id = cells[ROW_LABEL]
+                if not raw_id or raw_id in seen:
+                    raise RecordFault("empty or repeated identifier")
+                seen.add(raw_id)
+                if not _included(experiment, cells) or assign(experiment, raw_id) != "held_out":
+                    continue
+                if len(record) <= max(position.values()):
+                    raise RecordFault("unreadable record")
+                cells = {name: record[position[name]] for name in allowed}
+                index = participant_index(experiment, raw_id)
+                for trial in _trials(source, cells):
+                    rows.append({"experiment": experiment, "participant": index, **trial})
+    return pd.DataFrame(rows)

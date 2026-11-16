@@ -10,7 +10,7 @@ experiment has to succeed before most of it is built at all.
 Status: accepted by the maintainer on 2026-11-15 as the basis for the pilot. The pilot section
 is binding; the kernel section stays provisional until the pilot passes. The design went
 through four passes of independent adversarial review by models from three vendors; it has not
-been reviewed by people outside the project. No part of zoon is built yet.
+been reviewed by people outside the project. Only the pilot's analysis code is built.
 Reversal cost: high for three decisions the pilot commits to, which are one-way doors: the
 language, the model boundary and the licence. Publishing becomes a one-way door at the first
 public commit. The kernel and the log schema are provisional until the pilot passes. The rest
@@ -604,8 +604,7 @@ started only on the maintainer's explicit decision.
    Gambling Task pool and others state none. Next step: fetch by script without redistributing,
    and write to the authors where one becomes an anchor.
 8. **The package name.** `zoon` is taken on npm and crates.io and appeared free on PyPI on
-   2026-11-15. `github.com/zoon` is a personal account; `broomva/zoon` is free. Next step:
-   reserve the PyPI name when the repository is created.
+   2026-11-15. Next step: reserve the PyPI name.
 9. **Multi-option decisions.** Next step: read the leaky competing accumulator and decision
    field theory papers before any world offers more than two options.
 10. **Unread prior work on the same interface.** Done: `docs/pilot/prior-work.md`. No

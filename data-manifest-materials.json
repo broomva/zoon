@@ -1,0 +1,11 @@
+{
+  "dataset": "https://osf.io/4up5z/",
+  "files": {
+    "dilemmas-and-outcomes.pdf": {
+      "sha256": "4c072a234120e07a5526b13298c44747646414484493f052b4e7dd2c19146d59",
+      "size": 159501,
+      "url": "https://osf.io/download/sgf5y/"
+    }
+  },
+  "licence": "CC BY 4.0"
+}

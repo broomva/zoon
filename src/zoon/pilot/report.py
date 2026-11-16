@@ -1,7 +1,7 @@
 """Print the pilot's numbers. Run as `uv run python -m zoon.pilot.report power` or
-`uv run python -m zoon.pilot.report lean`.
+`uv run python -m zoon.pilot.report lean`, or use the `budget` subcommand.
 
-Every number quoted in `docs/pilot/power.md` and `docs/pilot/lean.md` is printed here, on a
+Every number quoted in the power, lean and budget notes is printed here, on a
 labelled line.
 """
 
@@ -10,7 +10,7 @@ import sys
 
 import numpy as np
 
-from zoon.pilot import fetch, lean, outside, power
+from zoon.pilot import budget, fetch, lean, outside, power
 from zoon.pilot.models import (
     LEARNING_RATE_BOUNDS,
     PROBABILITY_FLOOR,
@@ -519,5 +519,7 @@ if __name__ == "__main__":
         run_power()
     elif sys.argv[1:] == ["lean"]:
         run_lean()
+    elif sys.argv[1:] == ["budget"]:
+        budget.run()
     else:
-        sys.exit("usage: python -m zoon.pilot.report power|lean")
+        sys.exit("usage: python -m zoon.pilot.report power|lean|budget")

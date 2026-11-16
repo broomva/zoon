@@ -100,7 +100,8 @@ found that how realistic a dilemma seemed went with how people judged it. Whethe
 predicts better or worse from a rewrite than from what participants read is not known.
 
 **Evaluative.** One question: how appropriate is it to take the suggested action? The
-wording and the seven labelled answers are those of the original paper's US study, which is
+wording and the seven answers, labelled at the two ends, are those of the original paper's
+US study, which is
 the sample the `norm` lean uses. The paper's two studies worded the question and its end
 points differently, so the pre-registration quotes the US wording from the paper and uses no
 other. `m(d)` is the expected value of the judge's answer, standardised. The
@@ -165,8 +166,10 @@ On these 13 dilemmas, human ratings of nearly the same text exist, and a lean bu
 at +0.11342 with no learning on either side, is an estimate from training participants of the
 most a lean could add. So:
 
-- Beating `laws-only` shows that the judge's rating adds predictive value to the laws. It
-  does not show that a model reads better than people, or that the rating was not recalled.
+- Beating `laws-only` shows that the rating, together with knowing which option the
+  suggested action is, adds predictive value to the laws. `laws-only` has neither, so what
+  the rating adds alone is read from the comparison with `sign`, which is reported. It does
+  not show that a model reads better than people, or that the rating was not recalled.
 - The size of that gain is reported as a share of what `norm` achieves and of what
   `known share` achieves.
 - Beating `no-state` shows that state adds to the judge's rating.
@@ -246,9 +249,11 @@ unresolved, and the claim a pass supports is limited accordingly, as stated abov
 Three checks are reported with the result. None is a gate, because none can certify that
 recall did not happen.
 
-- **Recognition.** The judge's model is asked to name the event behind each rewrite. Any
-  rewrite it identifies is listed, the comparisons are repeated without those dilemmas, and
-  the result is described as qualified by them.
+- **Recognition.** A model is asked to name the event behind each rewrite, and its replies
+  are matched against the details the rewrite removed. The comparisons are repeated without
+  the dilemmas that match. Only a model that writes text can be asked, so this check cannot
+  be run on the decision model. The rule is fixed in the pre-registration, which also says
+  how little a match shows.
 - **Reversal.** For dilemmas where the original paper says the opposite framing is
   reasonable, a second rewrite suggests the opposite action and changes nothing else. The
   judge's rating is compared with its own rating of the first rewrite. The two actions need
@@ -271,7 +276,8 @@ outcomes.
 - The penalty for the strict map, and the calibration threshold for the stop rule.
 - The floor and ceiling for probabilities, and the smallest difference that counts.
 - The `prompted` prompt and its examples.
-- The exclusion of the one held-out participant whose record was seen during development.
+- What is done about the one held-out participant whose record was seen during development.
+  The pre-registration keeps that participant and says why.
 - That the interval over dilemmas is reported beside the interval over participants. With 13
   dilemmas the second says the effect is real for these dilemmas and little about others.
 - The de-identified rewrites, the reversed versions, and the list of what each rewrite keeps
@@ -292,12 +298,9 @@ a run:
 | Judge | A few hundred | Rewrites of 38 dilemmas, plus reversed versions; up to six questions each |
 | `prompted` | About 60,600 | Evaluation: 680 held-out participants, 13 trials, each once for each of the two rotations in which its dilemma is held out, which is 17,680. Fitting its two numbers: 300 training participants, the 11 dilemmas not held out, in each of 13 rotations with that rotation's examples, which is 42,900 |
 
-The dilemma materials run to 6,184 words for 13 dilemmas with four outcome texts each [me], so
-one trial's text is a few hundred tokens. The cost of the `prompted` arm depends mostly on how
-many examples each prompt holds. With prompts of a few thousand tokens it fits under the cap
-for both families at the listed prices; with long prompts it may not, and the number of
-examples is then reduced before anything is run. The runner counts real tokens and prints the
-cost before any live run, and stops at the cap.
+The number of examples is fixed at two in the pre-registration, by an estimate of cost that
+needs no model call and no held-out data. `docs/pilot/budget.md` holds that estimate. The run
+stops at the cap.
 
 ## Risks
 

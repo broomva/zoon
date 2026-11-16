@@ -200,7 +200,7 @@ def _contains_mention(text: str, mentions: Sequence[str]) -> bool:
     )
 
 
-def _question(text: str) -> tuple[str, str]:
+def question(text: str) -> tuple[str, str]:
     body, separator, question = text.rpartition("Do you ")
     if (
         not separator
@@ -210,6 +210,10 @@ def _question(text: str) -> tuple[str, str]:
     ):
         raise ValueError("rewrite must end with one Do you yes/no question")
     return body, separator + question
+
+
+# Retain the registered helper name for existing callers.
+_question = question
 
 
 def digest(records: Sequence[Record]) -> str:

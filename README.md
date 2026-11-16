@@ -10,13 +10,13 @@ state.
 
 ## Status
 
-No part of zoon is built yet. This repository holds the design and the preparation for a
-pilot, including the code for a power calculation.
+The simulator is not built yet. This repository holds the design, and a pilot that tests the
+design's first hypothesis: its notes, its pre-registration and its analysis code.
 
 | What | State |
 |---|---|
-| Design | Draft, in [docs/design.md](docs/design.md). Reviewed by models, not yet by people outside the project |
-| Pilot (hypothesis H1) | Preparation only: notes on prior work and the choice of task, a power calculation, and a ceiling for what reading a dilemma could add, all on training participants, in [docs/pilot](docs/pilot). Its protocol will be fixed in a pre-registration before any held-out data is read |
+| Design | Accepted as the basis for the pilot, in [docs/design.md](docs/design.md). Reviewed by models, not yet by people outside the project |
+| Pilot (hypothesis H1) | Pre-registered in [prereg/h1.md](prereg/h1.md), with the analysis code and the files it fixes. The notes behind it are in [docs/pilot](docs/pilot), and the commands that run it in [docs/pilot/running.md](docs/pilot/running.md). At registration no judge had been called and no held-out participant read. The result is published whether it passes or fails |
 | Kernel and social simulation | Not started, and not started at all if the pilot fails |
 | Licence | [Apache-2.0](LICENSE) |
 
