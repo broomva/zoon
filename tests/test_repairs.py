@@ -143,7 +143,7 @@ def reach(live: run.Run, monkeypatch: pytest.MonkeyPatch) -> list[str]:
         reached.append("work")
         return live.save("judge-check", {}, status="stopped", reason="fixture stop")
 
-    monkeypatch.setattr(live, "judge_check", stopped)
+    monkeypatch.setattr(live, "_judge_check", stopped)
     return reached
 
 
@@ -227,3 +227,49 @@ def test_report_without_repairs_says_none(live: run.Run, monkeypatch: pytest.Mon
     assert "[Repairs] history = none" in live.execute("report")
     saved = json.loads((live.directory / "judge-check.json").read_text())
     assert saved["registered_files"] and saved["code_files"]
+
+
+@pytest.mark.parametrize("step", ["judge", "calibrate", "held-out"])
+@pytest.mark.parametrize("entry", ["guard", "command"])
+def test_one_guard_checks_prerequisites_before_materials(
+    live: run.Run, monkeypatch: pytest.MonkeyPatch, step: str, entry: str
+) -> None:
+    earlier = run.STEPS[: run.STEPS.index(step)]
+    for previous in earlier:
+        live.save(previous, {}, status="stopped" if previous == earlier[-1] else "completed")
+
+    def forbidden() -> None:
+        raise AssertionError("materials reached before the prerequisite gate")
+
+    monkeypatch.setattr(live, "verify_materials", forbidden)
+    registered = git(live.root, "rev-parse", "HEAD")
+    with pytest.raises(clients.StopRun, match="did not pass"):
+        if entry == "guard":
+            live.guard(step, registered, None)
+        else:
+            live.execute(step, registered)
+
+
+@pytest.mark.parametrize("name", ["pyproject.toml", "uv.lock"])
+def test_deleted_code_inputs_can_be_declared_as_repairs(
+    live: run.Run, monkeypatch: pytest.MonkeyPatch, name: str
+) -> None:
+    (live.root / name).unlink()
+    commit(live.root)
+    live = restart(live, monkeypatch)
+    reach(live, monkeypatch)
+    with pytest.raises(clients.StopRun, match="repair"):
+        live.execute("judge-check")
+    live.execute("judge-check", repair="Restore the execution environment")
+    repair = clients.obj(clients.items(live.binding()["repairs"])[0])
+    assert repair["code"] == {name: "deleted"}
+
+
+def test_malformed_registered_material_is_refused_by_the_guard_before_parsing(
+    live: run.Run, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    next((live.root / "pilot" / "rewrites").glob("*.json")).write_text("{")
+    commit(live.root)
+    live = restart(live, monkeypatch)
+    with pytest.raises(clients.StopRun, match="registered files"):
+        live.execute("judge-check", repair="Restore operation")

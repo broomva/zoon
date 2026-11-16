@@ -188,8 +188,8 @@ class Run:
         self.synthetic = synthetic
         self.mode = "stub" if synthetic else "live"
         self.directory = root / "data" / "run" / self.mode
-        self.records = rewrites.load(root / "pilot" / "rewrites")
-        self.deps = dependencies(root)
+        self.records = rewrites.load(root / "pilot" / "rewrites") if synthetic else []
+        self.deps = dependencies(root) if synthetic else {}
         available = (
             supplied_clients
             if supplied_clients is not None
@@ -276,18 +276,23 @@ class Run:
             )
         if self.session.spent > self.session.cap and step != "report":
             raise clients.StopRun("spending cap reached; no verdict")
+        if step != "report":
+            for earlier in STEPS[: STEPS.index(step)]:
+                if self.state(earlier)["status"] != "completed":
+                    raise clients.StopRun(f"step {earlier} did not pass its gate")
+        if step == "held-out":
+            checked = clients.obj(self.state("judge-check")["payload"])
+            if "decision" not in checked or not clients.obj(checked["decision"])["passed"]:
+                raise clients.StopRun("the judge could not be calibrated")
+            self.session.check_family("decision")
 
     def state(self, step: str) -> State:
         path = self.directory / f"{step}.json"
         if not path.exists():
             raise clients.StopRun(f"step {step} has not completed")
         state = clients.obj(json.loads(path.read_text()))
-        if (
-            split_dependencies(cast(dict[str, str], state["dependencies"]))[0]
-            != split_dependencies(self.deps)[0]
-            or state["mode"] != self.mode
-        ):
-            raise clients.StopRun("registration digests changed; previous state cannot be used")
+        if state["mode"] != self.mode:
+            raise clients.StopRun("previous state has another mode")
         for earlier, expected in clients.obj(state["previous"]).items():
             previous = self.directory / f"{earlier}.json"
             if not previous.exists() or digest(previous.read_bytes()) != expected:
@@ -363,7 +368,7 @@ class Run:
     ) -> list[clients.Response]:
         return self.session.ask_many(family, requests, recognition=recognition_only)
 
-    def judge_check(self) -> State:
+    def _judge_check(self) -> State:
         records = [r for r in self.records if r["set"] == "outside"]
         if self.synthetic:
             means = judge.human_ratings()
@@ -400,7 +405,7 @@ class Run:
             reason="" if passed else "the judge could not be calibrated",
         )
 
-    def judge_all(self) -> State:
+    def _judge_all(self) -> State:
         checked = clients.obj(self.state("judge-check")["payload"])
         outside_records = [r for r in self.records if r["set"] == "outside"]
         tasks = {str(r["id"]): r for r in self.records if r["set"] == "task"}
@@ -530,7 +535,7 @@ class Run:
             result[i, t] = response.probabilities["Yes"]
         return result
 
-    def calibrate(self) -> State:
+    def _calibrate(self) -> State:
         people, document = self.training()
         tasks = materials.load(self.root / "pilot" / "task-texts.json")
         judged = clients.obj(self.state("judge")["payload"])
@@ -563,14 +568,7 @@ class Run:
         result["rotations"] = fit_document(arms.fit_rotations(arms.sequences(people), ratings))
         return self.save("calibrate", result)
 
-    def held_out(self, registered: str | None) -> State:
-        for step in STEPS[:3]:
-            if self.state(step)["status"] != "completed":
-                raise clients.StopRun(f"step {step} did not pass its gate")
-        checked = clients.obj(self.state("judge-check")["payload"])
-        if "decision" not in checked or not clients.obj(checked["decision"])["passed"]:
-            raise clients.StopRun("the judge could not be calibrated")
-        self.session.check_family("decision")
+    def _held_out(self, registered: str | None) -> State:
         commit = registered
         self.preflight()
         calibrated = clients.obj(self.state("calibrate")["payload"])
@@ -697,15 +695,10 @@ class Run:
                     self.line(step, "reason", state["reason"]),
                 ]
             if not self.synthetic and step != "report":
+                self.records = rewrites.load(self.root / "pilot" / "rewrites")
                 self.verify_materials()
             if step == "report":
-                return self.report()
-            for earlier in STEPS[: STEPS.index(step)]:
-                state = self.state(earlier)
-                if state["status"] != "completed":
-                    raise clients.StopRun(f"step {earlier} did not pass its gate")
-            if step == "held-out":
-                self.session.check_family("decision")
+                return self._report()
             path = self.directory / f"{step}.json"
             if path.exists():
                 state = self.state(step)
@@ -718,13 +711,13 @@ class Run:
                 if step != "held-out":
                     self.preflight()
                 if step == "judge-check":
-                    state = self.judge_check()
+                    state = self._judge_check()
                 elif step == "judge":
-                    state = self.judge_all()
+                    state = self._judge_all()
                 elif step == "calibrate":
-                    state = self.calibrate()
+                    state = self._calibrate()
                 elif step == "held-out":
-                    state = self.held_out(registered)
+                    state = self._held_out(registered)
                 else:
                     raise clients.StopRun("unknown step")
             except clients.StepFailure as error:
@@ -743,7 +736,7 @@ class Run:
                 self.line(step, "reason", state["reason"] or "none"),
             ]
 
-    def report(self) -> list[str]:
+    def _report(self) -> list[str]:
         from zoon.pilot.result import render
 
         if self.session.spent <= self.session.cap:

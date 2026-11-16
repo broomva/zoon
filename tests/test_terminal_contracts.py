@@ -251,10 +251,10 @@ def test_live_material_guards_accept_regenerated_inputs(
         return complete()
 
     method = {
-        "judge-check": "judge_check",
-        "judge": "judge_all",
-        "calibrate": "calibrate",
-        "held-out": "held_out",
+        "judge-check": "_judge_check",
+        "judge": "_judge_all",
+        "calibrate": "_calibrate",
+        "held-out": "_held_out",
     }[step]
     monkeypatch.setattr(runner, method, held_out if step == "held-out" else complete)
     runner.synthetic = False

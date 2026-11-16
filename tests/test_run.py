@@ -133,13 +133,12 @@ def test_out_of_order_refuses(runner: run.Run, step: str) -> None:
     assert not runner.session.transcripts["decision"].entries
 
 
-def test_changed_dependency_refuses(runner: run.Run) -> None:
+def test_stub_steps_skip_registration_baselines(runner: run.Run) -> None:
     runner.execute("judge-check")
     target = runner.root / "prereg" / "h1.md"
     target.write_text(target.read_text() + "\n")
     restarted = run.Run(runner.root, synthetic=True)
-    with pytest.raises(clients.StopRun, match="digests changed"):
-        restarted.execute("judge")
+    assert "completed" in restarted.execute("judge")[0]
 
 
 def test_changed_transcript_and_previous_state_refuse(runner: run.Run) -> None:
@@ -394,21 +393,21 @@ def test_preflight_operator_fault_precedes_every_step_request(
     assert len(refreshes) == len(calls)
 
 
-def test_direct_held_out_checks_stopped_prerequisite_before_loader(
-    runner: run.Run,
-    monkeypatch: pytest.MonkeyPatch,
+def test_held_out_checks_stopped_prerequisite_before_loader(
+    runner: run.Run, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     runner.save("judge-check", {}, status="completed")
     runner.save("judge", {}, status="completed")
     runner.save("calibrate", {}, status="stopped")
-    runner.synthetic = False
+    reached: list[bool] = []
 
-    def verified(*args: object) -> None:
-        pass
+    def loader(directory: Path) -> None:
+        reached.append(True)
 
-    monkeypatch.setattr(run, "verify_data", verified)
+    monkeypatch.setattr(fetch, "load_registered_held_out", loader)
     with pytest.raises(clients.StopRun, match="calibrate did not pass"):
-        runner.held_out(COMMIT)
+        runner.execute("held-out", COMMIT)
+    assert not reached
 
 
 def test_smoke_covers_seven_and_nine_answers_without_materials() -> None:
