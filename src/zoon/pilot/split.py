@@ -4,8 +4,8 @@ The assignment depends only on a committed salt, the experiment number and the p
 raw identifier. It does not depend on the order of the rows or on who else is in the file, so
 adding participants never moves an existing one.
 
-The held-out set is sealed. Nothing in this package returns a held-out row; the loader in
-`fetch` counts held-out participants and skips them.
+Training loaders keep the held-out set sealed. The registered fifth step has the only
+loader that returns held-out trials; training reads skip them without counting them.
 """
 
 import hashlib

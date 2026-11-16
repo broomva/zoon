@@ -64,7 +64,7 @@ def test_nothing_can_ask_for_held_out_rows(tmp_path: Path, monkeypatch: pytest.M
             assert "environ" not in source and "getenv" not in source, module.name
 
     public = {name for name in vars(fetch) | vars(split) if "held" in name.lower()}
-    assert public == {"held_out_counts", "HELD_OUT_FRACTION"}
+    assert public == {"held_out_counts", "HELD_OUT_FRACTION", "load_registered_held_out"}
 
     write_raw(tmp_path, PEOPLE)
     expected = fetch.load(tmp_path)

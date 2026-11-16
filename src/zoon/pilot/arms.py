@@ -44,12 +44,17 @@ def sequences(people: Sequence[cohorts.Participant]) -> Sequences:
     return data
 
 
-def reference_ratings() -> dict[str, Floats]:
+def reference_ratings(human: Mapping[str, float] | None = None) -> dict[str, Floats]:
     published = outside.published()
-    rated = {name: outside.Rating(0, d.published[2]) for name, d in published.items()}
+    means = judge.human_ratings() if human is None else human
+    rated = {name: outside.Rating(0, means[name]) for name in published}
     fitted = lean.fit_map(published, outside.originals(), rated)
     coded = lean.coded_lean(fitted, outside.original_codes()).rating
-    return {"sign": np.zeros(len(fetch.DILEMMAS)), "coded": coded, "norm": judge.norm_ratings()}
+    return {
+        "sign": np.zeros(len(fetch.DILEMMAS)),
+        "coded": coded,
+        "norm": judge.norm_ratings(means),
+    }
 
 
 def fit_rotations(training: Sequences, ratings: Mapping[str, Floats]) -> list[Rotation]:

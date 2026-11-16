@@ -1,7 +1,7 @@
 """Registered judge transforms and calibration, with no participant data."""
 
 import math
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
 import numpy as np
@@ -94,8 +94,8 @@ def human_ratings() -> dict[str, float]:
     return {name: dilemma.published[2] for name, dilemma in outside.published().items()}
 
 
-def norm_ratings() -> Floats:
-    human = human_ratings()
+def norm_ratings(human: Mapping[str, float] | None = None) -> Floats:
+    human = human_ratings() if human is None else human
     ratings = np.array([human[outside.originals()[name]] for name in fetch.DILEMMAS])
     return lean.suggested_action_rating(
         ratings, np.array([outside.action_reversed()[name] for name in fetch.DILEMMAS])

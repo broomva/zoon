@@ -283,3 +283,30 @@ def held_out_counts(raw_dir: Path = RAW_DIR) -> dict[int, int]:
     experiment, and nothing else."""
     _, held_out = _scan(raw_dir, count_sealed=True)
     return held_out
+
+
+def load_registered_held_out(raw_dir: Path = RAW_DIR) -> pd.DataFrame:
+    """Load held-out trials only for the registered fifth step."""
+    rows: list[dict[str, str | int | float]] = []
+    for experiment, source in SOURCES.items():
+        allowed = allowed_columns(source)
+        gate = (ROW_LABEL, *source.exclusion_columns)
+        seen: set[str] = set()
+        with (raw_dir / source.filename).open(encoding="latin-1", newline="") as handle:
+            reader = csv.reader(handle, delimiter=source.delimiter)
+            position = {name: i for i, name in enumerate(next(reader)) if name in allowed}
+            if set(position) != allowed:
+                raise ValueError("raw file lacks required columns")
+            for record in reader:
+                cells = {name: record[position[name]] for name in gate}
+                raw_id = cells[ROW_LABEL]
+                if not raw_id or raw_id in seen:
+                    raise ValueError("empty or repeated identifier")
+                seen.add(raw_id)
+                if not _included(experiment, cells) or assign(experiment, raw_id) != "held_out":
+                    continue
+                cells = {name: record[position[name]] for name in allowed}
+                index = participant_index(experiment, raw_id)
+                for trial in _trials(source, cells):
+                    rows.append({"experiment": experiment, "participant": index, **trial})
+    return pd.DataFrame(rows)
