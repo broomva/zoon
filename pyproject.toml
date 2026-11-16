@@ -12,6 +12,11 @@ dependencies = [
     "scipy>=1.14",
 ]
 
+[project.optional-dependencies]
+live = [
+    "typesafe-sdk>=0.7.5",
+]
+
 [dependency-groups]
 dev = [
     "pandas-stubs>=3.1.0.261029",

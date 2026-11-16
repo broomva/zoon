@@ -228,7 +228,9 @@ def _trials(source: Source, cells: dict[str, str]) -> Iterator[dict[str, str | i
         }
 
 
-def _scan(raw_dir: Path) -> tuple[list[dict[str, str | int | float]], dict[int, int]]:
+def _scan(
+    raw_dir: Path, *, count_sealed: bool = False
+) -> tuple[list[dict[str, str | int | float]], dict[int, int]]:
     """Read every raw file once. Return training trial rows and held-out counts."""
     rows: list[dict[str, str | int | float]] = []
     held_out: dict[int, int] = {}
@@ -251,7 +253,8 @@ def _scan(raw_dir: Path) -> tuple[list[dict[str, str | int | float]], dict[int, 
                 if not _included(experiment, cells):
                     continue
                 if assign(experiment, raw_id) == "held_out":
-                    held_out[experiment] += 1
+                    if count_sealed:
+                        held_out[experiment] += 1
                     continue
                 cells = {name: record[position[name]] for name in allowed}
                 index = participant_index(experiment, raw_id)
@@ -278,5 +281,5 @@ def load(raw_dir: Path = RAW_DIR) -> pd.DataFrame:
 def held_out_counts(raw_dir: Path = RAW_DIR) -> dict[int, int]:
     """Return how many participants who pass the exclusion rules are held out in each
     experiment, and nothing else."""
-    _, held_out = _scan(raw_dir)
+    _, held_out = _scan(raw_dir, count_sealed=True)
     return held_out
