@@ -116,6 +116,7 @@ def vertex_shape() -> dict[str, object]:
         "candidates": [
             {
                 "content": {"parts": [{"text": "Yes"}]},
+                "finishReason": "STOP",
                 "logprobsResult": {
                     "topCandidates": [
                         {
@@ -209,8 +210,9 @@ def test_decision_recorded_shape_integer_keys() -> None:
             )
 
     r = clients.DecisionClient(cast(clients.DecisionSDK, SDK())).ask(scale)
-    assert r.probabilities == dict.fromkeys(map(str, range(1, 8)), 1 / 7)
-    assert (r.input_tokens, r.output_tokens, r.share, r.text) == (22, 0, None, "")
+    assert r.probabilities == pytest.approx(dict.fromkeys(map(str, range(1, 8)), 1 / 7))
+    assert (r.input_tokens, r.output_tokens, r.text) == (22, 0, "")
+    assert r.share == pytest.approx(1)
 
 
 def test_bounded_retry_and_delays() -> None:
@@ -266,7 +268,7 @@ def test_completed_order_and_cap_do_not_depend_on_worker_count(tmp_path: Path) -
 @pytest.mark.parametrize(
     "status,exception",
     [
-        (400, clients.StopRun),
+        (400, clients.FamilyUnusable),
         (403, clients.StopRun),
         (404, clients.FamilyUnusable),
         (410, clients.FamilyUnusable),
@@ -284,7 +286,7 @@ def test_permanent_http_errors_are_bounded_and_redacted(
 
     with pytest.raises(exception) as error:
         clients.VertexClient(lambda: "token-marker", transport).ask(REQUEST)
-    assert len(calls) == 1
+    assert len(calls) == (4 if status == 400 else 1)
     assert "marker" not in str(error.value)
 
 
@@ -406,3 +408,234 @@ def test_transcript_digest_is_the_file_sha256(tmp_path: Path) -> None:
     assert transcript.digest() == hashlib.sha256(b"").hexdigest()
     transcript.append(REQUEST, response())
     assert transcript.digest() == hashlib.sha256(transcript.path.read_bytes()).hexdigest()
+
+
+@pytest.mark.parametrize("total", [0.95, 0.99, 1.02, 1.05])
+def test_rounded_decision_probabilities_keep_returned_values(tmp_path: Path, total: float) -> None:
+    raw = {"Yes": total / 2, "No": total / 2}
+
+    class SDK:
+        def Choice(self, **kwargs: object) -> object:
+            return object()
+
+        def TypeSafeClient(self, **kwargs: object) -> object:
+            return self
+
+        def system_one(self, *args: object) -> object:
+            return SimpleNamespace(
+                answers={"q": SimpleNamespace(probabilities=raw)},
+                usage=SimpleNamespace(input_tokens=2),
+                model=prices.DECISION.model,
+            )
+
+    session = clients.Session(tmp_path, [clients.DecisionClient(cast(clients.DecisionSDK, SDK()))])
+    actual = session.ask_many("decision", [REQUEST])[0]
+    assert actual.probabilities == {"Yes": 0.5, "No": 0.5}
+    row = json.loads(session.transcripts["decision"].path.read_text())
+    assert row["response"]["returned_probabilities"] == raw
+    replay = clients.Transcript(tmp_path, "decision")
+    assert replay.entries[clients.key(REQUEST)].response == actual
+
+
+@pytest.mark.parametrize("bad", [0.0, 0.94, 1.06, float("nan"), float("inf"), "missing"])
+def test_decision_reply_fault_retries_then_is_resumable(
+    monkeypatch: pytest.MonkeyPatch, bad: float | str
+) -> None:
+    attempts: list[int] = []
+    delays: list[float] = []
+    original = clients.retry
+
+    def fast_retry(call: clients.Callable[[], clients.Response]) -> clients.Response:
+        return original(call, pause=delays.append)
+
+    class SDK:
+        def Choice(self, **kwargs: object) -> object:
+            return object()
+
+        def TypeSafeClient(self, **kwargs: object) -> object:
+            return self
+
+        def system_one(self, *args: object) -> object:
+            attempts.append(1)
+            return SimpleNamespace(
+                answers={}
+                if bad == "missing"
+                else {"q": SimpleNamespace(probabilities={"Yes": bad, "No": 0})},
+                usage=SimpleNamespace(input_tokens=2),
+                model=prices.DECISION.model,
+            )
+
+    monkeypatch.setattr(clients, "retry", fast_retry)
+    with pytest.raises(clients.StepFailure):
+        clients.DecisionClient(cast(clients.DecisionSDK, SDK())).ask(REQUEST)
+    assert len(attempts) == 4 and delays == [1, 2, 4]
+
+
+@pytest.mark.parametrize(
+    "fault",
+    ["candidates", "content", "logprobs", "blocked", "finish", "missing finish", "probabilities"],
+)
+def test_unreadable_second_reply_records_zero_share(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fault: str
+) -> None:
+    monkeypatch.setenv("ZOON_VERTEX_PROJECT", "fixture")
+    shape = vertex_shape()
+    candidate = clients.obj(clients.items(shape["candidates"])[0])
+    if fault == "candidates":
+        shape["candidates"] = []
+    elif fault == "content":
+        candidate.pop("content")
+    elif fault == "logprobs":
+        candidate.pop("logprobsResult")
+    elif fault == "blocked":
+        shape["promptFeedback"] = {"blockReason": "SAFETY"}
+    elif fault == "finish":
+        candidate["finishReason"] = "SAFETY"
+    elif fault == "missing finish":
+        candidate.pop("finishReason")
+    else:
+        candidate["logprobsResult"] = {
+            "topCandidates": [{"candidates": [{"token": "Yes", "logProbability": 1}]}]
+        }
+
+    def transport(*args: object) -> tuple[int, dict[str, object]]:
+        return 200, shape
+
+    session = clients.Session(tmp_path, [clients.VertexClient(lambda: "fixture-token", transport)])
+    with pytest.raises(clients.FamilyUnusable):
+        session.ask_many("second", [REQUEST])
+    assert session.transcripts["second"].entries[clients.key(REQUEST)].response.share == 0
+    with pytest.raises(clients.FamilyUnusable):
+        clients.Session(tmp_path, []).ask_many("second", [REQUEST])
+
+
+def test_second_request_disables_all_four_filters(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ZOON_VERTEX_PROJECT", "fixture")
+    bodies: list[dict[str, object]] = []
+
+    def transport(url: str, headers: dict[str, str], body: bytes) -> tuple[int, dict[str, object]]:
+        bodies.append(clients.obj(json.loads(body)))
+        return 200, vertex_shape()
+
+    clients.VertexClient(lambda: "fixture-token", transport).ask(REQUEST)
+    assert bodies[0]["safetySettings"] == [
+        {"category": "HARM_CATEGORY_" + category, "threshold": "OFF"}
+        for category in ("HARASSMENT", "HATE_SPEECH", "SEXUALLY_EXPLICIT", "DANGEROUS_CONTENT")
+    ]
+
+
+@pytest.mark.parametrize("status", [400, 401, 403, 404, 410, 429, 500, 503])
+def test_second_service_faults_are_isolated_or_operator_faults(
+    monkeypatch: pytest.MonkeyPatch, status: int
+) -> None:
+    monkeypatch.setenv("ZOON_VERTEX_PROJECT", "fixture")
+    attempts: list[int] = []
+    original = clients.retry
+
+    def fast_retry(call: clients.Callable[[], clients.Response]) -> clients.Response:
+        return original(call, pause=lambda delay: None)
+
+    def transport(*args: object) -> tuple[int, dict[str, object]]:
+        attempts.append(1)
+        return status, {}
+
+    monkeypatch.setattr(clients, "retry", fast_retry)
+    expected = clients.StepFailure if status in (401, 403) else clients.FamilyUnusable
+    with pytest.raises(expected) as error:
+        clients.VertexClient(lambda: "fixture-token", transport).ask(REQUEST)
+    assert len(attempts) == (2 if status == 401 else 1 if status in (403, 404, 410) else 4)
+    if status in (401, 403):
+        assert str(error.value) == "ZOON_VERTEX_PROJECT"
+
+
+@pytest.mark.parametrize(
+    "fault", ["empty text", "null text", "filtered", "unknown version", "excess mass"]
+)
+def test_other_unreadable_second_replies_record_zero(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fault: str
+) -> None:
+    monkeypatch.setenv("ZOON_VERTEX_PROJECT", "fixture")
+    shape = vertex_shape()
+    candidate = clients.obj(clients.items(shape["candidates"])[0])
+    if fault in ("empty text", "null text"):
+        candidate["content"] = {"parts": [{"text": None if fault == "null text" else " "}]}
+    elif fault == "filtered":
+        candidate["safetyRatings"] = [{"blocked": True}]
+    elif fault == "unknown version":
+        shape.pop("modelVersion")
+    else:
+        candidate["logprobsResult"] = {
+            "topCandidates": [
+                {
+                    "candidates": [
+                        {"token": "Yes", "logProbability": math.log(0.8)},
+                        {"token": "other", "logProbability": math.log(0.8)},
+                    ]
+                }
+            ]
+        }
+
+    def transport(*args: object) -> tuple[int, dict[str, object]]:
+        return 200, shape
+
+    session = clients.Session(tmp_path, [clients.VertexClient(lambda: "fixture-token", transport)])
+    with pytest.raises(clients.FamilyUnusable):
+        session.ask_many("second", [REQUEST])
+    assert session.transcripts["second"].entries[clients.key(REQUEST)].response.share == 0
+
+
+def test_malformed_json_is_an_unreadable_reply(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import io
+
+    class Reply(io.BytesIO):
+        status = 200
+
+    def opened(*args: object, **kwargs: object) -> Reply:
+        return Reply(b"unreadable")
+
+    monkeypatch.setenv("ZOON_VERTEX_PROJECT", "fixture")
+    monkeypatch.setattr(clients.urllib.request, "urlopen", opened)
+    session = clients.Session(tmp_path, [clients.VertexClient(lambda: "fixture-token")])
+    with pytest.raises(clients.FamilyUnusable):
+        session.ask_many("second", [REQUEST])
+    assert session.transcripts["second"].entries[clients.key(REQUEST)].response.share == 0
+
+
+def test_preflight_uses_non_generating_metadata_route(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ZOON_VERTEX_PROJECT", "fixture")
+    calls: list[tuple[str, dict[str, str], bytes]] = []
+
+    def transport(url: str, headers: dict[str, str], body: bytes) -> tuple[int, dict[str, object]]:
+        calls.append((url, headers, body))
+        return 200, {}
+
+    clients.VertexClient(lambda: "fixture-token", preflight_transport=transport).preflight()
+    url, headers, body = calls[0]
+    assert url.endswith("/v1/publishers/google/models/" + prices.SECOND.model)
+    assert headers["x-goog-user-project"] == "fixture"
+    assert body == b""
+
+
+def test_changed_decision_version_is_recorded_before_terminal_stop(tmp_path: Path) -> None:
+    class SDK:
+        def Choice(self, **kwargs: object) -> object:
+            return object()
+
+        def TypeSafeClient(self, **kwargs: object) -> object:
+            return self
+
+        def system_one(self, *args: object) -> object:
+            return SimpleNamespace(
+                answers={}, usage=SimpleNamespace(input_tokens=2), model="changed-version"
+            )
+
+    session = clients.Session(tmp_path, [clients.DecisionClient(cast(clients.DecisionSDK, SDK()))])
+    with pytest.raises(clients.StopRun, match="version changed"):
+        session.ask_many("decision", [REQUEST])
+    recorded = session.transcripts["decision"].entries[clients.key(REQUEST)].response
+    assert recorded.version == "changed-version"
+    assert (recorded.input_tokens, recorded.output_tokens) == (2, 0)
+    with pytest.raises(clients.StopRun, match="version changed"):
+        clients.Session(tmp_path, []).ask_many("decision", [REQUEST])

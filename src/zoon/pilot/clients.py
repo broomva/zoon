@@ -23,6 +23,10 @@ Request = prompts.Decision | str
 Family = budget.Family
 CAP = Decimal("150")
 WINDOW = 16
+SAFETY_SETTINGS = [
+    {"category": "HARM_CATEGORY_" + category, "threshold": "OFF"}
+    for category in ("HARASSMENT", "HATE_SPEECH", "SEXUALLY_EXPLICIT", "DANGEROUS_CONTENT")
+]
 
 
 class StopRun(ValueError):
@@ -49,6 +53,13 @@ class Response:
     version: str
     input_tokens: int
     output_tokens: int
+    returned_probabilities: dict[str, float] | None = None
+
+
+class ModelChanged(StopRun):
+    def __init__(self, response: Response) -> None:
+        super().__init__("decision model version changed; no verdict")
+        self.response = response
 
 
 class Client(Protocol):
@@ -86,7 +97,11 @@ def wire(request: Request, family: Family) -> Request:
 
 
 def validate(request: Request, response: Response) -> None:
-    if not response.version or response.input_tokens < 0 or response.output_tokens < 0:
+    if (
+        (not response.version and response.share != 0)
+        or response.input_tokens < 0
+        or response.output_tokens < 0
+    ):
         raise StopRun("invalid reported version or token usage")
     if isinstance(request, str):
         if response.probabilities:
@@ -102,7 +117,10 @@ def validate(request: Request, response: Response) -> None:
     if not empty and not math.isclose(sum(values.values()), 1, abs_tol=1e-7):
         raise StopRun("declared-answer probabilities do not sum to one")
     if response.share is not None and (
-        not math.isfinite(response.share) or not 0 <= response.share <= 1 + 1e-7
+        not math.isfinite(response.share)
+        or not 0
+        <= response.share
+        <= (1.05 + 1e-12 if response.returned_probabilities else 1 + 1e-7)
     ):
         raise StopRun("invalid declared-answer share")
 
@@ -166,14 +184,46 @@ class DecisionClient:
                         )
                     },
                 )
-                probabilities = {
+                if result.model != prices.DECISION.model:
+                    usage = cast(object, getattr(result, "usage", None))
+                    incoming = cast(object, getattr(usage, "input_tokens", 0))
+                    outgoing = cast(object, getattr(usage, "output_tokens", 0))
+                    raise ModelChanged(
+                        Response(
+                            {},
+                            None,
+                            "",
+                            result.model,
+                            incoming if isinstance(incoming, int) and incoming >= 0 else 0,
+                            outgoing if isinstance(outgoing, int) and outgoing >= 0 else 0,
+                        )
+                    )
+                returned = {
                     str(label): float(p) for label, p in result.answers["q"].probabilities.items()
                 }
+                total = sum(returned.values())
+                if (
+                    set(returned) != {a.answer for a in request.answers}
+                    or any(not math.isfinite(p) or not 0 <= p <= 1 for p in returned.values())
+                    or total <= 0
+                    or abs(total - 1) > 0.05 + 1e-12
+                ):
+                    raise TransientError
+                probabilities = {label: p / total for label, p in returned.items()}
                 output = cast(int, getattr(result.usage, "output_tokens", 0))
                 response = Response(
-                    probabilities, None, "", result.model, result.usage.input_tokens, output
+                    probabilities,
+                    total,
+                    "",
+                    result.model,
+                    result.usage.input_tokens,
+                    output,
+                    returned,
                 )
-                validate(request, response)
+                try:
+                    validate(request, response)
+                except StopRun:
+                    raise TransientError from None
                 return response
             except (StopRun, TransientError, TimeoutError):
                 raise
@@ -183,9 +233,9 @@ class DecisionClient:
                     raise TransientError from None
                 if "timeout" in type(error).__name__.lower():
                     raise TimeoutError from None
-                raise StepFailure(
-                    "decision request failed; check service availability and live installation"
-                ) from None
+                if status in (404, 410):
+                    raise StopRun("decision model withdrawn; no verdict") from None
+                raise TransientError from None
 
         return retry(call)
 
@@ -215,14 +265,20 @@ def token_probabilities(
     tokens = list("ABCDEFGHI") if tuple(labels) == prompts.contexts() else labels
     mass = dict.fromkeys(labels, 0.0)
     seen: set[str] = set()
+    total = 0.0
     for candidate in candidates:
-        token = str(candidate["token"])
+        token = candidate["token"]
+        if not isinstance(token, str):
+            raise StopRun("invalid candidate token")
         if token in seen:
             raise StopRun("duplicate token in top candidates")
         seen.add(token)
         logp = number(candidate["logProbability"])
         if not math.isfinite(logp) or logp > 0:
             raise StopRun("invalid token log probability")
+        total += math.exp(logp)
+        if total > 1 + 1e-7:
+            raise StopRun("invalid top-candidate probability mass")
         for label, expected in zip(labels, tokens, strict=True):
             if token in (expected, " " + expected):
                 mass[label] += math.exp(logp)
@@ -237,13 +293,27 @@ def post(url: str, headers: dict[str, str], body: bytes) -> tuple[int, dict[str,
     try:
         request = urllib.request.Request(url, data=body, headers=headers, method="POST")
         with urllib.request.urlopen(request, timeout=30) as reply:
-            return reply.status, obj(json.loads(reply.read()))
+            try:
+                return reply.status, obj(json.loads(reply.read()))
+            except (ValueError, TypeError):
+                return reply.status, {}
     except urllib.error.HTTPError as error:
         return error.code, {}
     except (TimeoutError, urllib.error.URLError):
         raise TimeoutError from None
     except Exception:
-        raise StepFailure("second-family transport failed") from None
+        raise FamilyUnusable("second-family transport failed") from None
+
+
+def get(url: str, headers: dict[str, str], body: bytes) -> tuple[int, dict[str, object]]:
+    try:
+        request = urllib.request.Request(url, headers=headers, method="GET")
+        with urllib.request.urlopen(request, timeout=30) as reply:
+            return reply.status, {}
+    except urllib.error.HTTPError as error:
+        return error.code, {}
+    except (TimeoutError, urllib.error.URLError):
+        raise TimeoutError from None
 
 
 def access_token() -> str:
@@ -259,38 +329,99 @@ def access_token() -> str:
             raise ValueError
         return token
     except Exception:
-        raise StepFailure("could not obtain an application-default access token") from None
+        raise StepFailure("ZOON_VERTEX_PROJECT") from None
 
 
 class VertexClient:
     family: Family = "second"
 
-    def __init__(self, token: Callable[[], str] = access_token, transport: HTTP = post) -> None:
+    def __init__(
+        self,
+        token: Callable[[], str] = access_token,
+        transport: HTTP = post,
+        *,
+        preflight_transport: HTTP = get,
+    ) -> None:
         self._token = token
         self._transport = transport
+        self._preflight_transport = preflight_transport
         self._bearer: str | None = None
         self._token_lock = Lock()
 
     def bearer(self, rejected: str | None = None) -> str:
         with self._token_lock:
             if self._bearer is None or self._bearer == rejected:
-                self._bearer = self._token()
+                try:
+                    self._bearer = self._token()
+                    if not self._bearer:
+                        raise ValueError
+                except Exception:
+                    raise StepFailure("ZOON_VERTEX_PROJECT") from None
             return self._bearer
 
+    def endpoint(self) -> str:
+        project = os.environ.get("ZOON_VERTEX_PROJECT", "")
+        if not project:
+            raise StepFailure("ZOON_VERTEX_PROJECT")
+        return (
+            "https://aiplatform.googleapis.com/v1/projects/"
+            + project
+            + "/locations/global/publishers/google/models/"
+            + prices.SECOND.model
+        )
+
+    def send(self, transport: HTTP, url: str, body: bytes) -> dict[str, object]:
+        status, data = 401, {}
+        bearer = self.bearer()
+        for refresh in range(2):
+            status, data = transport(
+                url,
+                {
+                    "Authorization": "Bearer " + bearer,
+                    "Content-Type": "application/json",
+                    "x-goog-user-project": os.environ.get("ZOON_VERTEX_PROJECT", ""),
+                },
+                body,
+            )
+            if status != 401 or refresh:
+                break
+            bearer = self.bearer(rejected=bearer)
+        if status in (401, 403):
+            raise StepFailure("ZOON_VERTEX_PROJECT")
+        if (
+            status == 429
+            or 500 <= status < 600
+            or (400 <= status < 500 and status not in (404, 410))
+        ):
+            raise TransientError
+        if status != 200:
+            raise FamilyUnusable("second-family service unavailable")
+        return data
+
+    def preflight(self) -> None:
+        self.endpoint()
+        try:
+            retry(self._probe)
+        except FamilyUnusable:
+            pass
+        except StepFailure as error:
+            if str(error) == "ZOON_VERTEX_PROJECT":
+                raise
+        except Exception:
+            pass
+
+    def _probe(self) -> Response:
+        metadata = (
+            "https://aiplatform.googleapis.com/v1/publishers/google/models/" + prices.SECOND.model
+        )
+        self.send(self._preflight_transport, metadata, b"")
+        return Response({}, None, "", prices.SECOND.model, 0, 0)
+
     def ask(self, request: Request) -> Response:
+        endpoint = self.endpoint()
+
         def call() -> Response:
             try:
-                project = os.environ.get("ZOON_VERTEX_PROJECT", "")
-                if not project:
-                    raise StopRun("ZOON_VERTEX_PROJECT is required")
-                url = (
-                    "https://aiplatform.googleapis.com/v1/projects/"
-                    + project
-                    + "/locations/global/publishers/google/models/"
-                    + prices.SECOND.model
-                    + ":generateContent"
-                )
-                text = wire(request, self.family)
                 config: dict[str, object] = {
                     "temperature": 0,
                     "maxOutputTokens": 40 if isinstance(request, str) else 1,
@@ -300,61 +431,80 @@ class VertexClient:
                     config.update(responseLogprobs=True, logprobs=20)
                 body = json.dumps(
                     {
-                        "contents": [{"role": "user", "parts": [{"text": text}]}],
+                        "contents": [
+                            {"role": "user", "parts": [{"text": wire(request, self.family)}]}
+                        ],
                         "generationConfig": config,
+                        "safetySettings": SAFETY_SETTINGS,
                     }
                 ).encode()
-                status, data = 401, {}
-                bearer = self.bearer()
-                for refresh in range(2):
-                    status, data = self._transport(
-                        url,
-                        {
-                            "Authorization": "Bearer " + bearer,
-                            "Content-Type": "application/json",
-                        },
-                        body,
-                    )
-                    if status != 401 or refresh:
-                        break
-                    bearer = self.bearer(rejected=bearer)
-                if status == 429 or 500 <= status < 600:
-                    raise TransientError
-                if status in (404, 410):
-                    raise FamilyUnusable("second family model is unavailable")
-                if status != 200:
-                    raise StepFailure(f"second-family request failed with HTTP {status}")
-                candidate = obj(items(data["candidates"])[0])
-                reply = str(obj(items(obj(candidate["content"])["parts"])[0])["text"])
-                usage = obj(data["usageMetadata"])
-                probabilities: dict[str, float] = {}
-                share = None
-                if isinstance(request, prompts.Decision):
-                    top = obj(items(obj(candidate["logprobsResult"])["topCandidates"])[0])
-                    probabilities, share = token_probabilities(
-                        request, [obj(c) for c in items(top["candidates"])]
-                    )
-                response = Response(
-                    probabilities,
-                    share,
-                    reply if isinstance(request, str) else "",
-                    str(data["modelVersion"]),
-                    int(number(usage["promptTokenCount"])),
-                    int(number(usage["candidatesTokenCount"])),
-                )
-                if any(
-                    secret and secret in json.dumps(asdict(response))
-                    for secret in (project, bearer)
-                ):
-                    raise StopRun("connection metadata in response; no transcript was written")
-                validate(request, response)
-                return response
-            except (StopRun, TransientError, TimeoutError):
+                data = self.send(self._transport, endpoint + ":generateContent", body)
+                return self.read(request, data)
+            except (StepFailure, FamilyUnusable, TransientError, TimeoutError):
                 raise
             except Exception:
-                raise StopRun("second-family response or transport invalid") from None
+                raise FamilyUnusable("second-family response or transport invalid") from None
 
-        return retry(call)
+        try:
+            return retry(call)
+        except StepFailure as error:
+            if str(error) == "ZOON_VERTEX_PROJECT":
+                raise
+            raise FamilyUnusable("second-family service failure after bounded retries") from None
+
+    def read(self, request: Request, data: dict[str, object]) -> Response:
+        project = os.environ.get("ZOON_VERTEX_PROJECT", "")
+        if any(secret and secret in json.dumps(data) for secret in (project, self._bearer)):
+            raise FamilyUnusable("connection metadata in response; no transcript was written")
+        version = str(data.get("modelVersion") or "")
+        input_tokens = output_tokens = 0
+        try:
+            usage = obj(data.get("usageMetadata", {}))
+            input_tokens = int(number(usage.get("promptTokenCount", 0)))
+            output_tokens = int(number(usage.get("candidatesTokenCount", 0)))
+            if "blockReason" in obj(data.get("promptFeedback", {})):
+                raise ValueError
+            candidate = obj(items(data["candidates"])[0])
+            if candidate.get("finishReason") not in ("STOP", "MAX_TOKENS"):
+                raise ValueError
+            for source in (data.get("promptFeedback", {}), candidate):
+                if any(
+                    obj(rating).get("blocked")
+                    for rating in items(obj(source).get("safetyRatings", []))
+                ):
+                    raise ValueError
+            reply = obj(items(obj(candidate["content"])["parts"])[0])["text"]
+            if not isinstance(reply, str) or not reply.strip():
+                raise ValueError
+            probabilities: dict[str, float] = {}
+            share = None
+            if isinstance(request, prompts.Decision):
+                top = obj(items(obj(candidate["logprobsResult"])["topCandidates"])[0])
+                candidates = items(top["candidates"])
+                if not candidates:
+                    raise ValueError
+                probabilities, share = token_probabilities(request, [obj(c) for c in candidates])
+            response = Response(
+                probabilities,
+                share,
+                reply if isinstance(request, str) else "",
+                version,
+                input_tokens,
+                output_tokens,
+            )
+            validate(request, response)
+            return response
+        except (ValueError, KeyError, IndexError, OverflowError, TypeError):
+            return Response(
+                {a.answer: 0.0 for a in request.answers}
+                if isinstance(request, prompts.Decision)
+                else {},
+                0.0,
+                "",
+                version,
+                max(0, input_tokens),
+                max(0, output_tokens),
+            )
 
 
 class StubClient:
@@ -385,6 +535,13 @@ class Entry:
     response: Response
 
 
+def entry_document(entry: Entry) -> dict[str, object]:
+    document = asdict(entry)
+    if entry.response.returned_probabilities is None:
+        obj(document["response"]).pop("returned_probabilities")
+    return document
+
+
 class Transcript:
     def __init__(self, directory: Path, family: Family) -> None:
         self.family: Family = family
@@ -406,6 +563,7 @@ class Transcript:
                     str(payload["version"]),
                     int(number(payload["input_tokens"])),
                     int(number(payload["output_tokens"])),
+                    cast(dict[str, float] | None, payload.get("returned_probabilities")),
                 )
                 digest = str(row["key"])
                 encoded = json.dumps(
@@ -430,7 +588,9 @@ class Transcript:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self.path.open("a") as handle:
             handle.write(
-                json.dumps(asdict(entry), sort_keys=True, ensure_ascii=False, allow_nan=False)
+                json.dumps(
+                    entry_document(entry), sort_keys=True, ensure_ascii=False, allow_nan=False
+                )
                 + "\n"
             )
             handle.flush()
@@ -469,7 +629,9 @@ class Session:
             versions = {e.response.version for e in entries}
             if len(versions) > 1 or any(not v.startswith(prices.SECOND.model) for v in versions):
                 raise FamilyUnusable("second family version changed")
-            if any(e.response.share is None or e.response.share < 0.5 for e in probabilities):
+            if any(
+                e.response.share is None or e.response.share < 0.5 for e in probabilities
+            ) or any(e.response.share == 0 for e in entries):
                 raise FamilyUnusable("second family declared-answer share below one half")
 
     def ask_many(
@@ -504,13 +666,19 @@ class Session:
                 except StopRun as error:
                     return error
                 except Exception:
-                    return StopRun("request failed")
+                    return (
+                        FamilyUnusable("second-family request failed")
+                        if family == "second"
+                        else StepFailure("decision request failed")
+                    )
 
             with ThreadPoolExecutor(max_workers=self.workers) as pool:
                 results = list(pool.map(call, window))
             failure: StopRun | None = None
             for request, result in zip(window, results, strict=True):
                 if isinstance(result, StopRun):
+                    if isinstance(result, ModelChanged):
+                        transcript.append(request, result.response)
                     failure = failure or result
                 else:
                     transcript.append(request, result)
