@@ -14,6 +14,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass
 from decimal import Decimal
 from pathlib import Path
+from threading import Lock
 from typing import Protocol, cast
 
 from zoon.pilot import budget, prices, prompts
@@ -29,6 +30,10 @@ class StopRun(ValueError):
 
 
 class FamilyUnusable(StopRun):
+    pass
+
+
+class StepFailure(StopRun):
     pass
 
 
@@ -110,7 +115,7 @@ def retry(
             return call()
         except (TransientError, TimeoutError):
             if attempt + 1 == attempts:
-                raise StopRun("transient request failure after bounded retries") from None
+                raise StepFailure("transient request failure after bounded retries") from None
             pause(2.0**attempt)
     raise StopRun("request attempts must be positive")
 
@@ -178,7 +183,7 @@ class DecisionClient:
                     raise TransientError from None
                 if "timeout" in type(error).__name__.lower():
                     raise TimeoutError from None
-                raise StopRun(
+                raise StepFailure(
                     "decision request failed; check service availability and live installation"
                 ) from None
 
@@ -238,7 +243,7 @@ def post(url: str, headers: dict[str, str], body: bytes) -> tuple[int, dict[str,
     except (TimeoutError, urllib.error.URLError):
         raise TimeoutError from None
     except Exception:
-        raise StopRun("second-family transport failed") from None
+        raise StepFailure("second-family transport failed") from None
 
 
 def access_token() -> str:
@@ -254,7 +259,7 @@ def access_token() -> str:
             raise ValueError
         return token
     except Exception:
-        raise StopRun("could not obtain an application-default access token") from None
+        raise StepFailure("could not obtain an application-default access token") from None
 
 
 class VertexClient:
@@ -263,6 +268,14 @@ class VertexClient:
     def __init__(self, token: Callable[[], str] = access_token, transport: HTTP = post) -> None:
         self._token = token
         self._transport = transport
+        self._bearer: str | None = None
+        self._token_lock = Lock()
+
+    def bearer(self, rejected: str | None = None) -> str:
+        with self._token_lock:
+            if self._bearer is None or self._bearer == rejected:
+                self._bearer = self._token()
+            return self._bearer
 
     def ask(self, request: Request) -> Response:
         def call() -> Response:
@@ -292,21 +305,25 @@ class VertexClient:
                     }
                 ).encode()
                 status, data = 401, {}
+                bearer = self.bearer()
                 for refresh in range(2):
                     status, data = self._transport(
                         url,
                         {
-                            "Authorization": "Bearer " + self._token(),
+                            "Authorization": "Bearer " + bearer,
                             "Content-Type": "application/json",
                         },
                         body,
                     )
                     if status != 401 or refresh:
                         break
+                    bearer = self.bearer(rejected=bearer)
                 if status == 429 or 500 <= status < 600:
                     raise TransientError
+                if status in (404, 410):
+                    raise FamilyUnusable("second family model is unavailable")
                 if status != 200:
-                    raise StopRun(f"second-family request failed with HTTP {status}")
+                    raise StepFailure(f"second-family request failed with HTTP {status}")
                 candidate = obj(items(data["candidates"])[0])
                 reply = str(obj(items(obj(candidate["content"])["parts"])[0])["text"])
                 usage = obj(data["usageMetadata"])
@@ -325,6 +342,11 @@ class VertexClient:
                     int(number(usage["promptTokenCount"])),
                     int(number(usage["candidatesTokenCount"])),
                 )
+                if any(
+                    secret and secret in json.dumps(asdict(response))
+                    for secret in (project, bearer)
+                ):
+                    raise StopRun("connection metadata in response; no transcript was written")
                 validate(request, response)
                 return response
             except (StopRun, TransientError, TimeoutError):
@@ -392,10 +414,13 @@ class Transcript:
                 if hashlib.sha256(encoded).hexdigest() != digest or digest in self.entries:
                     raise StopRun("invalid or duplicate transcript key")
                 self.entries[digest] = Entry(digest, row["request"], response)
+        self._spent = sum(
+            (cost(self.family, e.response) for e in self.entries.values()), Decimal(0)
+        )
 
     @property
     def spent(self) -> Decimal:
-        return sum((cost(self.family, e.response) for e in self.entries.values()), Decimal(0))
+        return self._spent
 
     def append(self, request: Request, response: Response) -> None:
         digest = key(request)
@@ -411,14 +436,10 @@ class Transcript:
             handle.flush()
             os.fsync(handle.fileno())
         self.entries[digest] = entry
+        self._spent += cost(self.family, response)
 
     def digest(self) -> str:
-        rows = [asdict(self.entries[k]) for k in sorted(self.entries)]
-        return hashlib.sha256(
-            json.dumps(
-                rows, sort_keys=True, ensure_ascii=False, separators=(",", ":"), allow_nan=False
-            ).encode()
-        ).hexdigest()
+        return hashlib.sha256(self.path.read_bytes() if self.path.exists() else b"").hexdigest()
 
 
 class Session:
@@ -428,7 +449,9 @@ class Session:
         if workers < 1:
             raise ValueError("workers must be positive")
         self.clients = {c.family: c for c in clients}
-        self.transcripts = {f: Transcript(directory, f) for f in budget.FAMILIES}
+        self.transcripts: dict[Family, Transcript] = {
+            f: Transcript(directory, f) for f in budget.FAMILIES
+        }
         self.workers = workers
         self.cap = cap
 
@@ -457,7 +480,8 @@ class Session:
             self.check_family(family)
         unique = {key(r): r for r in requests if key(r) not in transcript.entries}
         pending = [unique[k] for k in sorted(unique)]
-        for start in range(0, len(pending), WINDOW):
+        start = 0
+        while start < len(pending):
             window: list[Request] = []
             reserved = Decimal(0)
             for request in pending[start : start + WINDOW]:
@@ -466,6 +490,9 @@ class Session:
                     break
                 window.append(request)
                 reserved += addition
+
+            if not window:
+                raise StopRun("spending cap reached; no verdict")
 
             # Admission and recording use a fixed window and canonical order, independent of
             # the number of workers or the order in which requests complete.
@@ -489,10 +516,11 @@ class Session:
                     transcript.append(request, result)
             if failure:
                 raise failure
-            if len(window) < len(pending[start : start + WINDOW]) or self.spent > self.cap:
+            if self.spent > self.cap:
                 raise StopRun("spending cap reached; no verdict")
             if not recognition:
                 self.check_family(family)
+            start += len(window)
         if not recognition:
             self.check_family(family)
         return [transcript.entries[key(r)].response for r in requests]

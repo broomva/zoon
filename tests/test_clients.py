@@ -235,3 +235,174 @@ def test_bounded_retry_and_delays() -> None:
 def test_invalid_probability_is_rejected(bad: float) -> None:
     with pytest.raises(clients.StopRun, match="invalid"):
         clients.validate(REQUEST, replace(response(), probabilities={"Yes": bad, "No": 0}))
+
+
+def test_completed_order_and_cap_do_not_depend_on_worker_count(tmp_path: Path) -> None:
+    import time
+
+    class Delayed(clients.StubClient):
+        def ask(self, request: clients.Request) -> clients.Response:
+            assert isinstance(request, prompts.Decision)
+            time.sleep((int(request.state) % 3) * 0.001)
+            return replace(
+                super().ask(request), input_tokens=clients.budget.input_tokens(request, "decision")
+            )
+
+    requests = [replace(REQUEST, state=str(i)) for i in range(20)]
+    digests: list[str] = []
+    for workers in (1, 5):
+        session = clients.Session(
+            tmp_path / str(workers),
+            [Delayed("decision")],
+            workers,
+            cap=clients.estimate("decision", requests[0]) * 10,
+        )
+        with pytest.raises(clients.StopRun, match="cap reached"):
+            session.ask_many("decision", requests)
+        digests.append(session.transcripts["decision"].digest())
+    assert len(set(digests)) == 1
+
+
+@pytest.mark.parametrize(
+    "status,exception",
+    [
+        (400, clients.StopRun),
+        (403, clients.StopRun),
+        (404, clients.FamilyUnusable),
+        (410, clients.FamilyUnusable),
+    ],
+)
+def test_permanent_http_errors_are_bounded_and_redacted(
+    monkeypatch: pytest.MonkeyPatch, status: int, exception: type[Exception]
+) -> None:
+    monkeypatch.setenv("ZOON_VERTEX_PROJECT", "project-marker")
+    calls: list[int] = []
+
+    def transport(url: str, headers: dict[str, str], body: bytes) -> tuple[int, dict[str, object]]:
+        calls.append(1)
+        return status, {"error": "project-marker token-marker " + url}
+
+    with pytest.raises(exception) as error:
+        clients.VertexClient(lambda: "token-marker", transport).ask(REQUEST)
+    assert len(calls) == 1
+    assert "marker" not in str(error.value)
+
+
+def test_tokens_are_cached_until_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ZOON_VERTEX_PROJECT", "marker-project")
+    tokens: list[int] = []
+
+    def provider() -> str:
+        tokens.append(1)
+        return "marker-token"
+
+    def transport(url: str, headers: dict[str, str], body: bytes) -> tuple[int, dict[str, object]]:
+        return 200, vertex_shape()
+
+    client = clients.VertexClient(provider, transport)
+    client.ask(REQUEST)
+    client.ask(replace(REQUEST, state="other"))
+    assert len(tokens) == 1
+
+
+def test_corrupt_and_partial_transcripts_refuse(tmp_path: Path) -> None:
+    path = tmp_path / "decision.jsonl"
+    path.write_text('{"key":')
+    with pytest.raises(clients.StopRun, match="incomplete"):
+        clients.Transcript(tmp_path, "decision")
+    path.unlink()
+    transcript = clients.Transcript(tmp_path, "decision")
+    transcript.append(REQUEST, response())
+    row = json.loads(path.read_text())
+    row["key"] = "wrong"
+    path.write_text(json.dumps(row) + "\n")
+    with pytest.raises(clients.StopRun, match="invalid"):
+        clients.Transcript(tmp_path, "decision")
+
+
+def test_private_metadata_in_reply_is_never_transcribed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ZOON_VERTEX_PROJECT", "project-marker")
+
+    def transport(url: str, headers: dict[str, str], body: bytes) -> tuple[int, dict[str, object]]:
+        shape = vertex_shape()
+        shape["candidates"] = [{"content": {"parts": [{"text": "token-marker project-marker"}]}}]
+        return 200, shape
+
+    session = clients.Session(tmp_path, [clients.VertexClient(lambda: "token-marker", transport)])
+    with pytest.raises(clients.StopRun, match="connection metadata"):
+        session.ask_many("second", ["recognition"], recognition=True)
+    assert not session.transcripts["second"].path.exists()
+
+
+@pytest.mark.parametrize("failure", [429, 500, 503, "timeout"])
+def test_transient_http_and_timeout_backoff(
+    monkeypatch: pytest.MonkeyPatch, failure: int | str
+) -> None:
+    monkeypatch.setenv("ZOON_VERTEX_PROJECT", "project-marker")
+    calls: list[int] = []
+    delays: list[float] = []
+    original = clients.retry
+
+    def fast_retry(call: clients.Callable[[], clients.Response]) -> clients.Response:
+        return original(call, pause=delays.append)
+
+    def transport(url: str, headers: dict[str, str], body: bytes) -> tuple[int, dict[str, object]]:
+        calls.append(1)
+        if failure == "timeout":
+            raise TimeoutError
+        return int(failure), {}
+
+    monkeypatch.setattr(clients, "retry", fast_retry)
+    with pytest.raises(clients.StopRun, match="bounded retries"):
+        clients.VertexClient(lambda: "token-marker", transport).ask(REQUEST)
+    assert len(calls) == 4 and delays == [1, 2, 4]
+
+
+def test_both_families_share_the_same_cap(tmp_path: Path) -> None:
+    session = clients.Session(tmp_path, [clients.StubClient(f) for f in clients.budget.FAMILIES])
+    session.ask_many("decision", [REQUEST])
+    session.cap = session.spent + clients.estimate("second", REQUEST) - Decimal("0.000000001")
+    with pytest.raises(clients.StopRun, match="cap reached"):
+        session.ask_many("second", [REQUEST])
+    assert not session.transcripts["second"].entries
+
+
+def test_cap_equality_allows_request(tmp_path: Path) -> None:
+    session = clients.Session(
+        tmp_path, [clients.StubClient("decision")], cap=clients.estimate("decision", REQUEST)
+    )
+    assert session.ask_many("decision", [REQUEST]) == [response()]
+
+
+def test_numeric_first_tokens_use_the_same_rule() -> None:
+    request = replace(REQUEST, answers=prompts.declared(tuple(map(str, range(1, 8)))))
+    p, share = clients.token_probabilities(
+        request,
+        [
+            {"token": "1", "logProbability": math.log(0.2)},
+            {"token": " 7", "logProbability": math.log(0.6)},
+        ],
+    )
+    assert share == pytest.approx(0.8)
+    assert p["1"] == pytest.approx(0.25) and p["7"] == pytest.approx(0.75)
+    assert sum(p[str(i)] for i in range(2, 7)) == 0
+
+
+def test_reservations_release_after_actual_usage_is_known(tmp_path: Path) -> None:
+    requests = [replace(REQUEST, state=str(i)) for i in range(20)]
+    session = clients.Session(
+        tmp_path, [clients.StubClient("decision")], cap=clients.estimate("decision", REQUEST) * 10
+    )
+    assert len(session.ask_many("decision", requests)) == 20
+    assert session.spent < session.cap
+
+
+def test_transcript_digest_is_the_file_sha256(tmp_path: Path) -> None:
+    import hashlib
+
+    transcript = clients.Transcript(tmp_path, "decision")
+    assert transcript.digest() == hashlib.sha256(b"").hexdigest()
+    transcript.append(REQUEST, response())
+    assert transcript.digest() == hashlib.sha256(transcript.path.read_bytes()).hexdigest()
