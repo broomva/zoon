@@ -18,7 +18,7 @@ No project name or token belongs in a command, report or transcript.
 Each calling step first checks ZOON_VERTEX_PROJECT and authentication using a
 non-generating model-metadata request, before sending any question.
 A 401 receives one refresh; a repeated 401 or a 403 fails the step resumably.
-The operator-fault message names only ZOON_VERTEX_PROJECT.
+A request fault fails the step resumably; its saved reason is the exception type only.
 
 An optional smoke command sends three unrelated requests to each family:
 a binary question, a seven-answer question and a nine-answer question.
@@ -58,9 +58,11 @@ A second-family failure removes that family's numerical results.
 judge obtains the task ratings, strict features, reversals and recognition replies.
 Recognition runs even if the second family's numerical results are unusable.
 calibrate fits prompted recalibration and all coded arms on training participants.
-Every live step requires a clean work tree and regenerates the materials digests,
-request fixtures and cohorts before any question is sent. Report also requires a
-clean work tree. Stub commands accept any work tree.
+Every pending live step requires a clean work tree, including all untracked files
+that git does not ignore. Before writing state or sending a request, its guard verifies
+both datasets against their manifests, checks the outside ratings against the paper,
+and regenerates the materials digests, request fixtures and cohorts. Report uses the same
+guard. Stub commands accept any work tree.
 Every live command checks the registered tag, ancestry, registered files and repair
 snapshot before doing its work. held-out also checks --registered-commit against the tag
 and the earlier gates before loading records.
@@ -70,7 +72,7 @@ After a stopped step, run report to record the outcome.
 Report refuses any failed step; repeat that step before reporting.
 Commit the report after inspecting it; the report command does not commit it.
 
-Every step checks registration digests and previous state.
+Every pending step checks registration identity, code snapshots and previous state.
 A decision-model version change stops the run with no verdict.
 A second-family version change or declared-answer share below one half removes its results.
 An unreadable or blocked second-family reply is recorded as a share of zero.
@@ -95,40 +97,60 @@ Admission reserves the registered estimate for outstanding requests.
 A request that would exceed 150 dollars is not sent.
 A cap stop gives no verdict.
 
-Transcripts are append-only JSON lines in data/transcripts/live/.
-State files are in data/run/live/.
+Transcripts are append-only JSON lines in data/transcripts/live-REGISTERED_COMMIT/.
+State files are in data/run/live-REGISTERED_COMMIT/.
+REGISTERED_COMMIT is the full commit at the registered tag. Another registration has
+separate directories and cannot reuse these files. A state file must name that commit;
+its code snapshot must be empty or match a repair snapshot recorded in the binding.
 Both are ignored by git. Do not delete either during a run.
 Each transcript entry is keyed by the canonical request's SHA-256.
 If interrupted, repeat the same command. Completed requests are read from the transcript.
-Completed steps return their recorded status.
+Completed and stopped steps return their recorded status without rerunning the guard
+or overwriting state. Report still gives no verdict above the session's cap.
 Transient request failures receive four attempts with delays of one, two and four seconds.
-An exhausted decision transport or reply fault records a failed step.
+An exhausted transport fault in either family records a failed step.
+Local transport errors, timeouts, 5xx and 429 responses are retried.
+An exhausted decision reply fault also records a failed step.
 An authentication preflight fault also records a failed step.
 Repeat that command after service or authentication recovers.
 Completed requests are reused. Later steps refuse a failed prerequisite.
-A stopped gate or cap is terminal. Run report for that outcome.
-Every live step uses one guard measured from the commit tagged registered, including
-report. Its bound set is every tracked file under src/, plus pyproject.toml, uv.lock,
-prereg/, pilot/ and the data-manifest*.json files, from both that commit and HEAD.
-The guard compares disk bytes with the registered blobs, so hidden edits are seen;
-tracked files must also have a clean git status. Added and deleted files count.
+A refusal happens before the step body and writes nothing: neither state nor a repair
+binding nor a transcript. Restore the inputs and repeat the same command.
+A failed step is interrupted and resumable. Every exception other than a registered
+terminal stop saves failed, naming only the exception type, never its message.
+A stopped step is terminal. Run report for that outcome.
+Every pending live step uses one guard measured from the commit tagged registered,
+including report. Its bound set is every tracked file at the tag or at HEAD.
+The whole work tree must have an empty git status, including untracked files that are
+not ignored. Disk bytes must also equal the HEAD blobs for every bound path; this catches
+skip-worktree and assume-unchanged edits even when git status hides them. A hidden edit
+cannot be declared as a repair: it must first be committed. Added and deleted files count.
 Registered files are prereg/, pilot/, the manifests and CSV tables under src/.
 A difference in any registered file always refuses continuation, even with --repair.
-Code is the rest. Do not reset state to continue a confirmatory run.
+Code is every other tracked difference outside docs/ and tests/, including root-level files.
+Do not reset state to continue a confirmatory run.
 If only code differs, commit the repair and keep the work tree clean.
 Resume the same command with --repair "Reason for the repair".
 The command records the reason, current commit and full difference from the registered commit
 for code, including current digests. It reuses recorded answers. The difference must
 exactly match a recorded repair snapshot; any further difference needs another repair.
+Returning to the registered code after a repair also requires a declared empty snapshot.
 There is no baseline taken from the first step.
 The report's Repairs heading lists every repair, or none, and computes afresh the full
 list of files differing between the registered commit and the report's commit. It also
 reports the registered commit and the commit each step ran at. Readers judge whether
 each repair preserved all registered definitions; the guard cannot certify that.
 
-Four things end it with no verdict: the decision model is withdrawn or reports another
-version; the spending cap is reached; the complete-records rule fails; a change that is
-not a repair is made. The stop rule ends it with its own outcome.
+The closed run-ending reasons are decision-model withdrawal, decision-model version
+change, the spending cap, complete-records failure, and failed judge calibration.
+The first four give no verdict. Calibration has its own outcome:
+“the judge could not be calibrated”. Only the execution boundary saves stopped.
+Only a declared repair can continue a changed implementation. The registration's rule
+that any other change ends the confirmatory run requires the operator's judgment;
+the guard refuses an undeclared difference and cannot certify repair intent.
+The second family's closed exclusion causes are declared-answer share below one half
+(including an unreadable or blocked reply counted as zero), version change, withdrawal,
+failed judge calibration, and connection metadata found in a response.
 Anything else only interrupts a step: a request that fails or a reply that cannot be read
 after the retries, or a fault of authentication in either family. The step is then run
 again. It keeps every answer already recorded and sends only the requests that have none,
