@@ -303,8 +303,6 @@ def load_registered_held_out(raw_dir: Path = RAW_DIR) -> pd.DataFrame:
             if set(position) != allowed:
                 raise RecordFault("raw file lacks required columns")
             for record in reader:
-                if len(record) <= max(position.values()):
-                    raise RecordFault("unreadable record")
                 cells = {name: record[position[name]] for name in gate}
                 raw_id = cells[ROW_LABEL]
                 if not raw_id or raw_id in seen:
@@ -312,6 +310,8 @@ def load_registered_held_out(raw_dir: Path = RAW_DIR) -> pd.DataFrame:
                 seen.add(raw_id)
                 if not _included(experiment, cells) or assign(experiment, raw_id) != "held_out":
                     continue
+                if len(record) <= max(position.values()):
+                    raise RecordFault("unreadable record")
                 cells = {name: record[position[name]] for name in allowed}
                 index = participant_index(experiment, raw_id)
                 for trial in _trials(source, cells):

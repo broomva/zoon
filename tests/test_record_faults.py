@@ -9,6 +9,7 @@ from tests.synthetic import write_raw
 from tests.test_run import COMMIT
 from tests.test_run import runner as runner
 from zoon.pilot import clients, cohorts, fetch, run, split
+from zoon.pilot.fetch import load_registered_held_out
 
 
 @pytest.mark.parametrize("fault", ["short", "nonfinite", "unreadable"])
@@ -72,3 +73,52 @@ def test_training_record_fault_is_not_a_terminal_stop(tmp_path: Path) -> None:
     with pytest.raises(ValueError) as error:
         cohorts.participants(fetch.load(tmp_path))
     assert not isinstance(error.value, clients.TerminalStop)
+
+
+@pytest.mark.parametrize("kind", ["held-out", "excluded", "training"])
+def test_short_raw_row_only_stops_for_analysed_participants(
+    runner: run.Run, monkeypatch: pytest.MonkeyPatch, kind: str
+) -> None:
+    for step in run.STEPS[:3]:
+        assert "completed" in runner.execute(step)[0]
+    training = runner.training()
+    raw = runner.root / "data/raw"
+    intended = write_raw(raw, 40)
+    source = fetch.SOURCES[1]
+    path = raw / source.filename
+    with path.open(newline="", encoding="latin-1") as handle:
+        rows = list(csv.reader(handle, delimiter=source.delimiter))
+    header = rows[0]
+    for index, row in enumerate(rows[1:], 1):
+        identity = (1, row[0])
+        matches = (
+            identity not in intended
+            if kind == "excluded"
+            else identity in intended
+            and split.assign(*identity) == ("held_out" if kind == "held-out" else "train")
+        )
+        if matches:
+            gate_end = max(header.index(name) for name in ("", *source.exclusion_columns)) + 1
+            rows[index] = row[:gate_end]
+            break
+    else:
+        raise AssertionError("synthetic row not found")
+    with path.open("w", newline="", encoding="latin-1") as handle:
+        csv.writer(handle, delimiter=source.delimiter).writerows(rows)
+    monkeypatch.setattr(fetch, "load_registered_held_out", load_registered_held_out)
+    monkeypatch.setattr(runner, "guard", lambda *args: None)
+    monkeypatch.setattr(runner, "training", lambda: training)
+    monkeypatch.setattr(
+        run.budget,
+        "HELD_OUT_PARTICIPANTS",
+        sum(split.assign(*identity) == "held_out" for identity in intended),
+    )
+    runner.synthetic = False
+    lines = runner.execute("held-out", COMMIT)
+    state = runner.state("held-out")
+    if kind == "held-out":
+        assert "stopped" in lines[0]
+        assert state["reason"] == clients.StopReason.RECORDS.value
+    else:
+        assert "completed" in lines[0]
+        assert state["reason"] == ""
