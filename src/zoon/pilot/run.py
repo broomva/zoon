@@ -732,7 +732,7 @@ class Run:
             }
             self.guard(step, registered, repair)
             try:
-                state = self.state(step, required=False)
+                state = {} if step == "report" else self.state(step, required=False)
             except BaseException:
                 self.pending_binding = None
                 raise

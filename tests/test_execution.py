@@ -164,3 +164,16 @@ def test_live_state_rejects_copied_stub_state(live: run.Run) -> None:
     )
     with pytest.raises(clients.GuardRefusal, match="step or mode"):
         live.state("judge-check")
+
+
+def test_report_regenerates_after_absent_step_is_stopped(runner: run.Run) -> None:
+    over_cap(runner)
+    assert "no verdict: spending cap reached" in runner.execute("report")[0]
+    assert "stopped" in runner.execute("judge-check")[0]
+    target = runner.directory / "result.md"
+    target.unlink()
+    lines = runner.execute("report")
+    assert "no verdict: spending cap reached" in lines[0]
+    assert "\n".join(lines) in target.read_text()
+    assert runner.state("report")["status"] == "completed"
+
