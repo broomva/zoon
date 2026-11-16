@@ -255,17 +255,26 @@ def render(run: "Run", states: "dict[str, State]") -> list[str]:
 
     accounting()
 
+    replies = {
+        name: clients.obj(value)
+        for name, value in recognised.items()
+        if str(clients.obj(value)["reply"]).strip()
+    }
+    flagged = [name for name in fetch.DILEMMAS if name in replies and replies[name]["flagged"]]
+    missing = [name for name in fetch.DILEMMAS if name not in replies]
+    add("recognition", "flagged dilemmas", ", ".join(flagged) or "none")
+    add("recognition", "dilemmas with no reply", ", ".join(missing) or "none")
     for name in fetch.DILEMMAS:
-        record = clients.obj(recognised[name]) if name in recognised else None
+        record = replies.get(name)
         add(
             "recognition",
             f"{name} reply and flag",
-            json_reply(record) if record is not None else "not run",
+            json_reply(record) if record is not None else "no reply",
         )
     keep = [
         i
         for i, name in enumerate(fetch.DILEMMAS)
-        if name in recognised and not clients.obj(recognised[name])["flagged"]
+        if name in replies and not replies[name]["flagged"]
     ]
     for label, (first, second) in comparisons.items():
         add(

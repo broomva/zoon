@@ -38,9 +38,11 @@ def test_recognition_unreadable_is_local(runner: run.Run, fault: str) -> None:
     runner.session.check_family("second")
     runner.save("calibrate", {}, status="stopped", reason="terminal stop")
     lines = runner.execute("report")
-    recognition_lines = [line for line in lines if line.startswith("[stub recognition]")]
+    recognition_lines = [
+        line for line in lines if line.startswith("[stub recognition]") and "reply and flag" in line
+    ]
     assert len(recognition_lines) == 13
-    assert all(("not run" in line) == (fault != "limited") for line in recognition_lines)
+    assert all(("no reply" in line) == (fault != "limited") for line in recognition_lines)
 
 
 def test_cap_wins_over_retryable_window_failure(runner: run.Run) -> None:

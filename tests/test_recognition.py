@@ -1,4 +1,4 @@
-"""Recognition uses whole runs, adjacent in order, and unknown vetoes a flag."""
+"""Recognition uses whole runs, adjacent in order."""
 
 from typing import cast
 
@@ -7,9 +7,13 @@ import pytest
 from zoon.pilot import fetch, outside, recognition, rewrites
 
 
-@pytest.mark.parametrize("reply", ["unknown", "Unknown. Medicine Costs", "UNKNOWN: Belgian"])
-def test_unknown_veto(reply: str) -> None:
-    assert not recognition.flagged(reply, recognition.keys("Medicine", rewrites.load()))
+@pytest.mark.parametrize(
+    "reply,expected",
+    [("unknown", False), ("Unknown. Medicine Costs", True), ("UNKNOWN: Belgian", True)],
+)
+def test_unknown_does_not_veto_a_key(reply: str, expected: bool) -> None:
+    assert recognition.flagged(reply, recognition.keys("Medicine", rewrites.load())) == expected
+    assert recognition.flagged("Unknown, but possibly the 1977 kidnapping", ["1977"])
 
 
 @pytest.mark.parametrize(

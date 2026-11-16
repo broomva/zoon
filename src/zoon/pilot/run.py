@@ -475,25 +475,29 @@ class Run:
             except clients.FamilyUnusable as error:
                 result[family] = {"usable": False, "reason": str(error)}
         try:
-            replies = self.request(
+            self.request(
                 "second",
                 [prompts.recognition(tasks[n]) for n in fetch.DILEMMAS],
                 recognition_only=True,
             )
-            result["recognition"] = {
-                name: {
-                    "reply": reply.text,
-                    "flagged": recognition.flagged(
-                        reply.text, recognition.keys(name, self.records)
-                    ),
-                }
-                for name, reply in zip(fetch.DILEMMAS, replies, strict=True)
-                if reply.text.strip()
-            }
         except clients.FamilyUnusable as error:
-            result["recognition"] = {}
             result["recognition_error"] = str(error)
             result["second"] = {"usable": False, "reason": str(error)}
+        result["recognition"] = {
+            name: {
+                "reply": entry.response.text,
+                "flagged": recognition.flagged(
+                    entry.response.text, recognition.keys(name, self.records)
+                ),
+            }
+            for name in fetch.DILEMMAS
+            if (
+                entry := self.session.transcripts["second"].entries.get(
+                    clients.key(prompts.recognition(tasks[name]))
+                )
+            )
+            and entry.response.text.strip()
+        }
         # Recognition also reports a version. A changed version removes the second family's
         # numerical results, while recognition replies remain reportable.
         try:

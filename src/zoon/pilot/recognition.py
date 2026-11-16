@@ -1,4 +1,4 @@
-"""The registered recognition flag: adjacent runs of letters and digits, with an unknown veto."""
+"""The registered recognition flag: adjacent runs of letters and digits."""
 
 import re
 from collections.abc import Sequence
@@ -18,8 +18,6 @@ def runs(text: str) -> tuple[str, ...]:
 
 def flagged(reply: str, keys: Sequence[str]) -> bool:
     words = runs(reply)
-    if "unknown" in words:
-        return False
     return any(
         key_words
         and any(
