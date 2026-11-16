@@ -286,7 +286,14 @@ def test_small_session_cap_overrides_completed_and_failed_state(runner: run.Run)
     from decimal import Decimal
 
     states = finish(runner)
-    runner.session.cap = Decimal("0.001")
+    runner.session = clients.Session(runner.directory / "replacement", [], cap=Decimal("0.001"))
+    runner.session.transcripts["second"].append(
+        REQUEST, replace(response("second"), input_tokens=36000, output_tokens=0)
+    )
+    assert runner.session.spent == Decimal("0.0036")
+    for step, state in states.items():
+        runner.save(step, clients.obj(state["payload"]))
+    states = {step: runner.state(step) for step in states}
     assert "no verdict: spending cap reached" in result.render(runner, states)[0]
     assert "no verdict: spending cap reached" in runner.execute("report")[0]
     runner.save("judge-check", {}, status="failed", reason="interrupted")
