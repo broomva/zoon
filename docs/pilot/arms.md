@@ -202,9 +202,10 @@ share parameters, as in the power calculation.
 
 ## The `prompted` arm
 
-The model is given the instructions participants saw, this participant's earlier dilemmas
-with their answers, outcomes and ratings, and the current dilemma, all in the task's own
-texts and not the rewrites. It is asked which answer this participant gives. It may use
+The model is given a short description of the study, this participant's earlier dilemmas
+with their answers, whether each outcome was the good or the bad one, and their ratings, and
+the current dilemma, all in the task's own texts and not the rewrites. `prereg/h1.md` gives
+the prompt word for word. It is asked which answer this participant gives. It may use
 anything it recalls. Whether the real texts help it or hurt it is not known. Then, in this
 order:
 

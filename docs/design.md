@@ -111,6 +111,24 @@ and Centaur. H1 is an ablation and does not claim to be the best predictor, but 
 the ceiling. A reference known only from a published score is labelled as not comparable,
 since it was measured on a different split.
 
+**Amended for the pilot, 2026-11-15.** Measurements on training participants, and four
+decisions by the maintainer, changed how H1 is tested. `prereg/h1.md` fixes the details and
+governs where it differs from this section.
+
+- **Dilemmas are held out as well as participants.** With participants alone held out, one
+  fitted number per dilemma can stand in for reading it (`docs/pilot/task-selection.md`).
+- **Two hypotheses are run.** H1-strict keeps the boundary as this document first wrote it.
+  H1-evaluative lets the judge rate how appropriate the one suggested action is, because a
+  reading built from descriptive facts predicted nothing (`docs/pilot/lean.md`). The pilot's
+  verdict rests on H1-evaluative. A pass of it is not a pass of H1 as written above.
+- **One model family decides.** The second is reported as a check. Only an older, small
+  model of the second family returns the probabilities the test needs.
+- **The judge reads de-identified rewrites**, not the dilemmas participants read. That makes
+  a published rating harder to recite and does not rule it out, so a pass is a claim about
+  how well the pipeline predicts, and not about how the judge arrived at its rating.
+- **The `prompted` arm has two fitted numbers**, so that it cannot lose only because its
+  probabilities are too extreme.
+
 Each rule below closes a way the test could pass without showing anything.
 
 | Rule | Why |
@@ -262,7 +280,9 @@ Structural rules:
   from it and cannot add its own. Adding a dimension is a reviewed change to that file. The
   first vocabulary is a convention.
 - **The judge never sees the options**, and the generate model writes content only after the
-  choice.
+  choice. Amended 2026-11-15: where a situation suggests exactly one action, a judge may be
+  asked to rate that action. It is still never shown a person, a history or a set of options
+  to choose among.
 - **No free text reaches a decision.** Generated text is sent as a message or parsed into a
   typed value and validated.
 - **Other zoons' words are untrusted input.** A message is read into a proposition by a call
@@ -420,7 +440,7 @@ log.
 | # | Decision | Door | Committed when | Cost to reverse after implementation |
 |---|---|---|---|---|
 | D1 | Python. Decided 2026-11-15 | One-way | Pilot | High. A rewrite of everything except the log schema |
-| D2 | Models hold no state, see no options, return no action | One-way | Pilot | High. It is the project's identity |
+| D2 | Models hold no state, never see the person, and return no action. Amended 2026-11-15: a judge may rate the one action a situation suggests | One-way | Pilot | High. It is the project's identity |
 | D3 | Licence: Apache-2.0. Decided 2026-11-15 | One-way once others contribute | First public commit | High. Relicensing needs every contributor's consent |
 | D4 | Event-sourced kernel, integer time, millisecond batches | One-way | M1; provisional until then | High. Every law and world is written against it |
 | D5 | Log schema and the numeric contract | One-way | M1; provisional until then | High. Every transcript and recorded result depends on them; the schema is versioned to allow migration |
@@ -554,7 +574,7 @@ Thresholds are choices made here, not findings. Command names are proposals.
 
 | # | Milestone | Fails unless |
 |---|---|---|
-| P0 | H1 pilot. One task, four arms, only the laws that task needs, no kernel | The prior work named in open question 10 is read. The pre-registration is committed before `unseal` is run on the held-out split. `uv run pytest` is green. `uv run python -m zoon.report h1 --check` exits 0 only if the `zoon` arm beats `prompted`, `laws-only` and `no-state` on the primary measure by at least the pre-registered difference, with a paired participant-level bootstrap 95% interval excluding zero, for both model families |
+| P0 | H1 pilot. One task, four arms, only the laws that task needs, no kernel | The prior work named in open question 10 is read. The pre-registration is committed before `unseal` is run on the held-out split. `uv run pytest` is green. `uv run python -m zoon.report h1 --check` exits 0 only if the `zoon` arm beats `prompted`, `laws-only` and `no-state` on the primary measure by at least the pre-registered difference, with a paired participant-level bootstrap 95% interval excluding zero. Amended 2026-11-15: the hypothesis that decides is H1-evaluative, for the deciding model family, exactly as `prereg/h1.md` states it |
 | M1 | Kernel | `uv run pytest` green. Replaying a log reproduces it byte for byte for each of 8 seeds, a chosen count. Ledger totals are exactly unchanged over a run. Under a coded policy, Granovetter's case holds exactly: thresholds 0 to 99 give 100 acting, and removing threshold 1 gives 1. With the channel removed, the cascade size is exactly zero. `sim_audit.py --strict --run-mutations` exits 0 for kernel claims |
 | M2 | Laws for the first world, models stubbed | Each law reproduces its published equation within the tolerance written in its claim. Every checked claim has a mutation that turns its own test red |
 | M3 | Two zoons in a repeated exchange, two options per decision | `zoon.report m3 --check` exits 0 only if the measure, as a share of the payoff scale, stays within the pre-registered bound under the disguise control, and the recall control does not reproduce it within that bound. Framing sensitivity is reported |
@@ -571,9 +591,10 @@ started only on the maintainer's explicit decision.
    Maier, Cheung and Lieder, with all four experiments pooled and with dilemmas held out as
    well as participants. The survey and the power calculation behind this are in
    `docs/pilot/task-selection.md` and `docs/pilot/power.md`.
-4. **The appraisal vocabulary and an anchor for it.** Next step: draw the first vocabulary
-   from published appraisal dimensions and search for human ratings with an explicit licence.
-   If none is found by P0, appraisal stays a `convention`.
+4. **The appraisal vocabulary and an anchor for it.** Settled for the pilot: the questions
+   are those of two published codings of the same dilemmas, and the anchor is the published
+   human ratings of 25 dilemmas outside the task (`docs/pilot/arms.md`). A vocabulary for
+   other worlds is still open.
 5. **Licences.** This repository is Apache-2.0, decided 2026-11-15. `broomva/skills`, which
    holds the audit, is MIT-licensed. An earlier version of this line said it had no licence;
    that was wrong.
@@ -587,9 +608,9 @@ started only on the maintainer's explicit decision.
    reserve the PyPI name when the repository is created.
 9. **Multi-option decisions.** Next step: read the leaky competing accumulator and decision
    field theory papers before any world offers more than two options.
-10. **Unread prior work on the same interface.** Next step: read CoALA and the Soar and ACT-R
-    work with language models before any pilot code is written, and revise D2 if they already
-    solve it.
+10. **Unread prior work on the same interface.** Done: `docs/pilot/prior-work.md`. No
+    published system was found that matches the boundary as a whole; two come close and are
+    cited there.
 
 ## Sources
 
@@ -638,8 +659,7 @@ set of appraisal dimensions. Each must be read before it is used.
 
 ## Known open findings
 
-The last review pass passed the design and left two findings open. Both are fixed in the
-pilot's pre-registration, where the numbers they depend on are set.
+The last review pass of this document left two findings open.
 
 1. **The disguise control can reject a correct model.** The text above says that after payoffs
    are rescaled and scores normalised "nothing the laws see has changed". That is wrong when a
@@ -647,7 +667,9 @@ pilot's pre-registration, where the numbers they depend on are set.
    value difference of 1 and an appraisal contribution of 1 give 2; with payoffs multiplied by
    10 and the score divided by 10, the result is 1.1. The fix is to put payoffs in canonical
    units before learning and scoring, and to gate only on that representation being unchanged.
+   The pilot has no payoffs and does not use this control. It stays open for milestone M3.
 2. **Probabilities estimated from repeated calls bias the log-likelihood.** Taking the
    logarithm of a sampled probability is biased, and resampling participants does not remove
-   it. The fix is to bound that bias against the pre-registered smallest difference, and to
-   use token log-probabilities for every arm that can supply them.
+   it. Settled for the pilot: no arm estimates a probability from repeated calls. One model
+   returns a distribution and the other is read through token log-probabilities
+   (`prereg/h1.md`). The rule in the H1 table that allows repeated calls is not used.
