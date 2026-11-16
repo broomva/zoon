@@ -200,6 +200,10 @@ def test_state_binding_and_transcript_readers_are_exclusive() -> None:
             reader = node.func.id if isinstance(node.func, ast.Name) else node.func.attr
             if reader not in {"load", "loads", "open", "read_text", "read_bytes"}:
                 continue
+            if reader == "open" and any(
+                isinstance(arg, ast.Constant) and arg.value == "wb" for arg in node.args
+            ):
+                continue
             sources = kinds(node)
             if "state" in sources:
                 matched["state"] += 1

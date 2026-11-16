@@ -208,7 +208,10 @@ class Run:
         if value is not None:
             self.directory.mkdir(parents=True, exist_ok=True)
             temporary = path.with_suffix(".tmp")
-            temporary.write_bytes(encoded(value))
+            with temporary.open("wb") as handle:
+                handle.write(encoded(value))
+                handle.flush()
+                os.fsync(handle.fileno())
             temporary.replace(path)
         return clients.obj(json.loads(path.read_text())) if path.exists() else {"repairs": []}
 
@@ -383,7 +386,10 @@ class Run:
         path = self.directory / f"{step}.json"
         temporary = path.with_suffix(".tmp")
         state["payload_digest"] = digest(encoded(payload))
-        temporary.write_bytes(encoded(state))
+        with temporary.open("wb") as handle:
+            handle.write(encoded(state))
+            handle.flush()
+            os.fsync(handle.fileno())
         temporary.replace(path)
         return state
 
