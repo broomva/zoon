@@ -654,7 +654,7 @@ class Transcript:
         self.path = directory / f"{family}.jsonl"
         self.entries: dict[str, Entry] = {}
         try:
-            if self.path.exists():
+            if self.path.exists() and self.path.stat().st_size:
                 raw = self.path.read_bytes()
                 if raw and not raw.endswith(b"\n"):
                     raise GuardRefusal(
@@ -705,7 +705,7 @@ class Transcript:
             return
         entry = Entry(digest, json.loads(canonical(rendered)), response)
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        new = not self.path.exists()
+        new = not self.path.exists() or self.path.stat().st_size == 0
         with self.path.open("a") as handle:
             if new:
                 handle.write(json.dumps(self.identity, sort_keys=True) + "\n")

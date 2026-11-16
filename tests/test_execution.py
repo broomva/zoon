@@ -177,3 +177,13 @@ def test_report_regenerates_after_absent_step_is_stopped(runner: run.Run) -> Non
     assert "\n".join(lines) in target.read_text()
     assert runner.state("report")["status"] == "completed"
 
+
+def test_empty_transcript_recovers_by_repeating_command(runner: run.Run) -> None:
+    transcript = runner.session.transcripts["decision"]
+    transcript.path.parent.mkdir(parents=True)
+    transcript.path.touch()
+    for _ in range(2):
+        assert "completed" in runner.execute("judge-check")[0]
+    replay = clients.Transcript(transcript.path.parent, "decision", transcript.identity)
+    assert len(replay.entries) == 25
+    assert json.loads(transcript.path.read_text().splitlines()[0]) == transcript.identity
