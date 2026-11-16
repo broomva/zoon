@@ -44,7 +44,7 @@ class FamilyCause(Enum):
     VERSION = "second family version changed"
     WITHDRAWN = "second family withdrawn"
     CALIBRATION = "second family failed the stop rule"
-    METADATA = "connection metadata in response; no transcript was written"
+    RECORDS = "second family complete-records failure"
 
 
 class StopReason(Enum):
@@ -81,6 +81,16 @@ class TerminalStop(Exception):
 
 class TransientError(Exception):
     pass
+
+
+class ModelMissing(TransientError):
+    def __init__(self, family: Family) -> None:
+        self.family = family
+        super().__init__()
+
+
+class UnreadableReply(Exception):
+    """The second family's reply does not have the required shape or values."""
 
 
 @dataclass(frozen=True)
@@ -160,6 +170,7 @@ def validate(request: Request, response: Response) -> None:
 def retry(
     call: Callable[[], Response], attempts: int = 4, pause: Callable[[float], None] = time.sleep
 ) -> Response:
+    missing = 0
     for attempt in range(attempts):
         try:
             return call()
@@ -169,8 +180,13 @@ def retry(
             ConnectionError,
             urllib.error.URLError,
             http.client.IncompleteRead,
-        ):
+        ) as error:
+            missing += isinstance(error, ModelMissing)
             if attempt + 1 == attempts:
+                if isinstance(error, ModelMissing) and missing == attempts:
+                    if error.family == "decision":
+                        raise TerminalStop(StopReason.WITHDRAWN) from None
+                    raise FamilyUnusable(FamilyCause.WITHDRAWN) from None
                 raise StepFailure("transient request failure after bounded retries") from None
             pause(2.0**attempt)
     raise StepFailure("request attempts must be positive")
@@ -222,10 +238,13 @@ class DecisionClient:
                         )
                     },
                 )
+                reported = cast(object, getattr(result, "model", None))
+                if not isinstance(reported, str) or not reported:
+                    raise TransientError
                 secret = os.environ.get("TYPESAFE_API_KEY", "")
                 if secret and secret in repr((result.model, result.answers, result.usage)):
                     raise StepFailure("connection metadata in response; no transcript was written")
-                if result.model != prices.DECISION.model:
+                if reported != prices.DECISION.model:
                     usage = cast(object, getattr(result, "usage", None))
                     incoming = cast(object, getattr(usage, "input_tokens", 0))
                     outgoing = cast(object, getattr(usage, "output_tokens", 0))
@@ -235,7 +254,7 @@ class DecisionClient:
                             {},
                             None,
                             "",
-                            result.model,
+                            reported,
                             incoming if isinstance(incoming, int) and incoming >= 0 else 0,
                             outgoing if isinstance(outgoing, int) and outgoing >= 0 else 0,
                         ),
@@ -257,7 +276,7 @@ class DecisionClient:
                     probabilities,
                     total,
                     "",
-                    result.model,
+                    reported,
                     result.usage.input_tokens,
                     output,
                     returned,
@@ -276,7 +295,7 @@ class DecisionClient:
                 if "timeout" in type(error).__name__.lower():
                     raise TimeoutError from None
             if status in (404, 410):
-                raise TerminalStop(StopReason.WITHDRAWN) from None
+                raise ModelMissing("decision") from None
             if status in (401, 403):
                 raise StepFailure("decision authentication failed") from None
             raise TransientError from None
@@ -302,6 +321,24 @@ def number(value: object) -> float:
     return float(value)
 
 
+def reply_obj(value: object) -> dict[str, object]:
+    if not isinstance(value, dict):
+        raise UnreadableReply
+    return cast(dict[str, object], value)
+
+
+def reply_items(value: object, *, nonempty: bool = True) -> list[object]:
+    if not isinstance(value, list) or (nonempty and not value):
+        raise UnreadableReply
+    return cast(list[object], value)
+
+
+def reply_number(value: object) -> float:
+    if not isinstance(value, (int, float)) or not math.isfinite(value):
+        raise UnreadableReply
+    return float(value)
+
+
 def token_probabilities(
     request: prompts.Decision, candidates: Sequence[Mapping[str, object]]
 ) -> tuple[dict[str, float], float]:
@@ -311,18 +348,18 @@ def token_probabilities(
     seen: set[str] = set()
     total = 0.0
     for candidate in candidates:
-        token = candidate["token"]
+        token = candidate.get("token")
         if not isinstance(token, str):
-            raise StepFailure("invalid candidate token")
+            raise UnreadableReply("invalid candidate token")
         if token in seen:
-            raise StepFailure("duplicate token in top candidates")
+            raise UnreadableReply("duplicate token in top candidates")
         seen.add(token)
-        logp = number(candidate["logProbability"])
+        logp = reply_number(candidate.get("logProbability"))
         if not math.isfinite(logp) or logp > 0:
-            raise StepFailure("invalid token log probability")
+            raise UnreadableReply("invalid token log probability")
         total += math.exp(logp)
         if total > 1 + 1e-7:
-            raise StepFailure("invalid top-candidate probability mass")
+            raise UnreadableReply("invalid top-candidate probability mass")
         for label, expected in zip(labels, tokens, strict=True):
             if token in (expected, " " + expected):
                 mass[label] += math.exp(logp)
@@ -441,7 +478,7 @@ class VertexClient:
         ):
             raise TransientError
         if status in (404, 410):
-            raise FamilyUnusable(FamilyCause.WITHDRAWN)
+            raise ModelMissing("second")
         if status != 200:
             raise StepFailure("unexpected response status")
         return data
@@ -502,44 +539,53 @@ class VertexClient:
             except (StepFailure, FamilyUnusable, TransientError, TimeoutError):
                 raise
             except Exception:
-                raise TransientError from None
+                raise StepFailure("response processing failed") from None
 
         return retry(call)
 
     def read(self, request: Request, data: dict[str, object]) -> Response:
         project = os.environ.get("ZOON_VERTEX_PROJECT", "")
         if any(secret and secret in json.dumps(data) for secret in (project, self._bearer)):
-            raise FamilyUnusable(FamilyCause.METADATA)
-        version = str(data.get("modelVersion") or "")
+            raise StepFailure("connection metadata in response; no transcript was written")
+        version = data.get("modelVersion")
+        version = version if isinstance(version, str) else ""
         input_tokens = output_tokens = 0
         try:
-            usage = obj(data.get("usageMetadata", {}))
-            input_tokens = int(number(usage.get("promptTokenCount", 0)))
-            output_tokens = int(number(usage.get("candidatesTokenCount", 0)))
-            if "blockReason" in obj(data.get("promptFeedback", {})):
-                raise ValueError
-            candidate = obj(items(data["candidates"])[0])
+            usage = reply_obj(data.get("usageMetadata", {}))
+            input_tokens = int(reply_number(usage.get("promptTokenCount", 0)))
+            output_tokens = int(reply_number(usage.get("candidatesTokenCount", 0)))
+            if "blockReason" in reply_obj(data.get("promptFeedback", {})):
+                raise UnreadableReply
+            candidate = reply_obj(reply_items(data.get("candidates"))[0])
             if candidate.get("finishReason") not in ("STOP", "MAX_TOKENS"):
-                raise ValueError
+                raise UnreadableReply
             for source in (data.get("promptFeedback", {}), candidate):
                 if any(
-                    obj(rating).get("blocked")
-                    for rating in items(obj(source).get("safetyRatings", []))
+                    reply_obj(rating).get("blocked")
+                    for rating in reply_items(
+                        reply_obj(source).get("safetyRatings", []), nonempty=False
+                    )
                 ):
-                    raise ValueError
+                    raise UnreadableReply
             reply = ""
             if isinstance(request, str):
-                reply = obj(items(obj(candidate["content"])["parts"])[0])["text"]
+                reply = reply_obj(
+                    reply_items(reply_obj(candidate.get("content")).get("parts"))[0]
+                ).get("text")
                 if not isinstance(reply, str) or not reply.strip():
-                    raise ValueError
+                    raise UnreadableReply
             probabilities: dict[str, float] = {}
             share = None
             if isinstance(request, prompts.Decision):
-                top = obj(items(obj(candidate["logprobsResult"])["topCandidates"])[0])
-                candidates = items(top["candidates"])
+                top = reply_obj(
+                    reply_items(reply_obj(candidate.get("logprobsResult")).get("topCandidates"))[0]
+                )
+                candidates = reply_items(top.get("candidates"))
                 if not candidates:
-                    raise ValueError
-                probabilities, share = token_probabilities(request, [obj(c) for c in candidates])
+                    raise UnreadableReply
+                probabilities, share = token_probabilities(
+                    request, [reply_obj(c) for c in candidates]
+                )
             response = Response(
                 probabilities,
                 share,
@@ -548,9 +594,10 @@ class VertexClient:
                 input_tokens,
                 output_tokens,
             )
-            validate(request, response)
+            if not version or input_tokens < 0 or output_tokens < 0:
+                raise UnreadableReply
             return response
-        except (StepFailure, ValueError, KeyError, IndexError, OverflowError, TypeError):
+        except UnreadableReply:
             return Response(
                 {a.answer: 0.0 for a in request.answers}
                 if isinstance(request, prompts.Decision)
@@ -688,11 +735,7 @@ class Session:
             if any(e.response.version != prices.DECISION.model for e in entries):
                 raise TerminalStop(StopReason.VERSION)
         else:
-            versions = {
-                e.response.version
-                for e in entries
-                if not isinstance(e.request, str) or e.response.version
-            }
+            versions = {e.response.version for e in entries if e.response.version}
             if len(versions) > 1 or any(not v.startswith(prices.SECOND.model) for v in versions):
                 raise FamilyUnusable(FamilyCause.VERSION)
             if any(e.response.share is None or e.response.share < 0.5 for e in probabilities):

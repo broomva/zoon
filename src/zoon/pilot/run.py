@@ -9,6 +9,7 @@ import os
 import subprocess
 import sys
 from collections.abc import Sequence
+from contextlib import suppress
 from dataclasses import asdict
 from decimal import Decimal
 from pathlib import Path
@@ -502,15 +503,12 @@ class Run:
                 }
             except clients.FamilyUnusable as error:
                 result[family] = {"usable": False, "reason": str(error)}
-        try:
+        with suppress(clients.FamilyUnusable):
             self.request(
                 "second",
                 [prompts.recognition(tasks[n]) for n in fetch.DILEMMAS],
                 recognition_only=True,
             )
-        except clients.FamilyUnusable as error:
-            result["recognition_error"] = str(error)
-            result["second"] = {"usable": False, "reason": str(error)}
         result["recognition"] = {
             name: {
                 "reply": entry.response.text,
@@ -595,11 +593,16 @@ class Run:
         self.session.check_family("decision")
         calibrated = clients.obj(self.state("calibrate")["payload"])
         # The synthetic branch has no route through the real held-out loader.
-        people = (
-            stub.people(12, 83)
-            if self.synthetic
-            else cohorts.participants(fetch.load_registered_held_out(self.root / "data" / "raw"))
-        )
+        try:
+            people = (
+                stub.people(12, 83)
+                if self.synthetic
+                else cohorts.participants(
+                    fetch.load_registered_held_out(self.root / "data" / "raw")
+                )
+            )
+        except fetch.RecordFault:
+            raise clients.TerminalStop(clients.StopReason.RECORDS) from None
         if not self.synthetic and len(people) != budget.HELD_OUT_PARTICIPANTS:
             raise clients.TerminalStop(clients.StopReason.RECORDS)
         data = arms.sequences(people)
@@ -646,7 +649,7 @@ class Run:
             except clients.TerminalStop as error:
                 if family != "second" or error.reason is not clients.StopReason.RECORDS:
                     raise
-                unavailable["second"] = clients.StopReason.RECORDS.value
+                unavailable["second"] = clients.FamilyCause.RECORDS.value
         if "second" in unavailable:
             logs = {name: values for name, values in logs.items() if not name.startswith("second/")}
         return self.save(

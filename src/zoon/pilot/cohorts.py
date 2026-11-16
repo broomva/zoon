@@ -58,21 +58,24 @@ def participants(table: pd.DataFrame) -> list[Participant]:
         ["experiment", "participant", "trial"]
     ).groupby(["experiment", "participant"], sort=True):
         if list(rows["trial"]) != list(range(1, len(fetch.DILEMMAS) + 1)):
-            raise ValueError("participant must have a complete ordered record")
+            raise fetch.RecordFault("participant must have a complete ordered record")
         if sorted(rows["dilemma"]) != sorted(fetch.DILEMMAS):
-            raise ValueError("participant must see each dilemma once")
+            raise fetch.RecordFault("participant must see each dilemma once")
         trials: list[Trial] = []
         for dilemma, action, success, valence in zip(
             rows["dilemma"], rows["action_choice"], rows["success"], rows["valence"], strict=True
         ):
-            rating = float(valence) * 100
+            try:
+                rating = float(valence) * 100
+            except (TypeError, ValueError):
+                raise fetch.RecordFault("unreadable rating") from None
             if not math.isfinite(rating) or not -100 <= rating <= 100:
-                raise ValueError("rating must be between -100 and 100")
+                raise fetch.RecordFault("rating must be between -100 and 100")
             rounded = round(rating)
             if not math.isclose(rating, rounded, abs_tol=1e-8):
-                raise ValueError("rating must be an integer on the original scale")
+                raise fetch.RecordFault("rating must be an integer on the original scale")
             if action not in (0, 1) or success not in (0, 1):
-                raise ValueError("answer and success must be binary")
+                raise fetch.RecordFault("answer and success must be binary")
             trials.append(Trial(str(dilemma), "Yes" if action else "No", bool(success), rounded))
         result.append(Participant(int(str(experiment)), str(index), tuple(trials)))
     return result
