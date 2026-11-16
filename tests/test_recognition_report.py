@@ -60,7 +60,7 @@ def test_unusable_second_family_still_prints_recognition_flags(runner: run.Run) 
     assert not any("second" in line and "mean +" in line for line in lines)
 
 
-def test_partial_recognition_survives_unusable_second_family(runner: run.Run) -> None:
+def test_partial_recognition_preserves_numerical_results(runner: run.Run) -> None:
     runner.execute("judge-check")
     original = runner.session.clients["second"]
     requests = [run.prompts.recognition(r) for r in runner.records if r["set"] == "task"]
@@ -76,7 +76,9 @@ def test_partial_recognition_survives_unusable_second_family(runner: run.Run) ->
     assert "completed" in runner.execute("judge")[0]
     payload = clients.obj(runner.state("judge")["payload"])
     assert len(clients.obj(payload["recognition"])) == 12
-    assert not clients.obj(payload["second"])["usable"]
+    assert clients.obj(payload["second"])["usable"]
+    assert len(clients.items(clients.obj(payload["second"])["evaluative"])) == 13
+    assert len(clients.items(clients.obj(payload["second"])["strict"])) == 13
     runner.save("calibrate", {}, status="stopped", reason="fixture stop")
     lines = runner.execute("report")
     assert sum('"reply":' in line and '"flagged":' in line for line in lines) == 12

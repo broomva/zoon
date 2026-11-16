@@ -508,8 +508,16 @@ def test_repair_chain_requires_latest_snapshot(
     complete("judge")
     complete("calibrate")
     if return_kind == "revert":
-        git(live.root, "restore", "--source", tagged, "--staged", "--worktree", ".")
-        commit(live.root)
+        git(
+            live.root,
+            "-c",
+            "user.name=Fixture",
+            "-c",
+            "user.email=fixture@example.invalid",
+            "revert",
+            "--no-edit",
+            "HEAD",
+        )
         assert git(live.root, "rev-parse", "HEAD") != tagged
     else:
         git(live.root, "checkout", "-q", first if return_kind == "earlier" else tagged)
