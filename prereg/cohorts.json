@@ -1,0 +1,1440 @@
+{
+  "calibration": [
+    {
+      "experiment": 3,
+      "participant": "f1ca15c29f09cdd7"
+    },
+    {
+      "experiment": 2,
+      "participant": "1582dee91ec76bf4"
+    },
+    {
+      "experiment": 2,
+      "participant": "1aac1de13a09d996"
+    },
+    {
+      "experiment": 4,
+      "participant": "a9c4a918456c16df"
+    },
+    {
+      "experiment": 1,
+      "participant": "98ce4fddf546dda5"
+    },
+    {
+      "experiment": 4,
+      "participant": "514c088185f8b162"
+    },
+    {
+      "experiment": 4,
+      "participant": "19876888c9c58d62"
+    },
+    {
+      "experiment": 3,
+      "participant": "66202dde007ad3af"
+    },
+    {
+      "experiment": 3,
+      "participant": "24b771d4c94af0fc"
+    },
+    {
+      "experiment": 3,
+      "participant": "7b0f0c3368831270"
+    },
+    {
+      "experiment": 2,
+      "participant": "fbcfb08a5cc8cedc"
+    },
+    {
+      "experiment": 3,
+      "participant": "337928e027bfbe45"
+    },
+    {
+      "experiment": 1,
+      "participant": "e0d603921148d7ed"
+    },
+    {
+      "experiment": 4,
+      "participant": "8e6dba81bc6815c3"
+    },
+    {
+      "experiment": 3,
+      "participant": "02b5d90e8011eee5"
+    },
+    {
+      "experiment": 4,
+      "participant": "13daeb274dec3d8e"
+    },
+    {
+      "experiment": 3,
+      "participant": "65b4c4ec7bb66a3b"
+    },
+    {
+      "experiment": 4,
+      "participant": "ae0ba635ec0cfc2b"
+    },
+    {
+      "experiment": 2,
+      "participant": "a27bd5938d44ef3b"
+    },
+    {
+      "experiment": 2,
+      "participant": "9270040581d8a7ad"
+    },
+    {
+      "experiment": 3,
+      "participant": "cf59dc41df664e13"
+    },
+    {
+      "experiment": 4,
+      "participant": "b664bba821847660"
+    },
+    {
+      "experiment": 3,
+      "participant": "9b4fa1eecea95f72"
+    },
+    {
+      "experiment": 3,
+      "participant": "1d9f80a643144922"
+    },
+    {
+      "experiment": 3,
+      "participant": "e4f5ada79ae3690c"
+    },
+    {
+      "experiment": 4,
+      "participant": "535c85f5eb56de7f"
+    },
+    {
+      "experiment": 3,
+      "participant": "dfad34f8ba9e8628"
+    },
+    {
+      "experiment": 4,
+      "participant": "9081986a212a084c"
+    },
+    {
+      "experiment": 1,
+      "participant": "8d2abe2abecc9418"
+    },
+    {
+      "experiment": 3,
+      "participant": "2c56f8078c03751c"
+    },
+    {
+      "experiment": 3,
+      "participant": "9f44a9851b2a99db"
+    },
+    {
+      "experiment": 1,
+      "participant": "e6b323dca85d43d0"
+    },
+    {
+      "experiment": 4,
+      "participant": "6a4ba2a48b864b5b"
+    },
+    {
+      "experiment": 1,
+      "participant": "b2e9e69a1ed53552"
+    },
+    {
+      "experiment": 4,
+      "participant": "cd492491d000e85d"
+    },
+    {
+      "experiment": 1,
+      "participant": "d7bbea7573006e03"
+    },
+    {
+      "experiment": 1,
+      "participant": "8454450f473eee49"
+    },
+    {
+      "experiment": 4,
+      "participant": "1c2e845594948537"
+    },
+    {
+      "experiment": 2,
+      "participant": "5d15b8a6cafc1e21"
+    },
+    {
+      "experiment": 4,
+      "participant": "e1d670f4a356ecc3"
+    },
+    {
+      "experiment": 3,
+      "participant": "cea82a609d04d408"
+    },
+    {
+      "experiment": 2,
+      "participant": "66cd5fd98d2e8b79"
+    },
+    {
+      "experiment": 4,
+      "participant": "57a7e598358600f5"
+    },
+    {
+      "experiment": 4,
+      "participant": "24696b3835ec8299"
+    },
+    {
+      "experiment": 3,
+      "participant": "ed1e316b87a997d1"
+    },
+    {
+      "experiment": 4,
+      "participant": "bb8c003ec8bc8e0a"
+    },
+    {
+      "experiment": 2,
+      "participant": "7836cc537ee8cdd1"
+    },
+    {
+      "experiment": 4,
+      "participant": "d978e586e841eaf5"
+    },
+    {
+      "experiment": 3,
+      "participant": "e88ef858ec1379af"
+    },
+    {
+      "experiment": 3,
+      "participant": "4e473dc85f2ad581"
+    },
+    {
+      "experiment": 3,
+      "participant": "590e06d4c9e6a117"
+    },
+    {
+      "experiment": 1,
+      "participant": "cb305f2e4160881f"
+    },
+    {
+      "experiment": 4,
+      "participant": "6f32d54e5b1226fb"
+    },
+    {
+      "experiment": 1,
+      "participant": "8eb2a77eb29680e0"
+    },
+    {
+      "experiment": 1,
+      "participant": "0f5373c00f43348c"
+    },
+    {
+      "experiment": 3,
+      "participant": "3615e05b5b6155c9"
+    },
+    {
+      "experiment": 4,
+      "participant": "a550f97e03d38759"
+    },
+    {
+      "experiment": 4,
+      "participant": "22e946d56e6e31d8"
+    },
+    {
+      "experiment": 4,
+      "participant": "49117c20c26602e1"
+    },
+    {
+      "experiment": 3,
+      "participant": "0784f0b8b7f092b6"
+    },
+    {
+      "experiment": 4,
+      "participant": "8fcd29d7092b5b8d"
+    },
+    {
+      "experiment": 3,
+      "participant": "17303d305031ae68"
+    },
+    {
+      "experiment": 3,
+      "participant": "8fa842ef96961a7c"
+    },
+    {
+      "experiment": 4,
+      "participant": "82c6cb7ed4034758"
+    },
+    {
+      "experiment": 4,
+      "participant": "fc4ab9e6699d1b0b"
+    },
+    {
+      "experiment": 4,
+      "participant": "38413f505478bfc8"
+    },
+    {
+      "experiment": 3,
+      "participant": "95e898fad76e5d72"
+    },
+    {
+      "experiment": 3,
+      "participant": "b4630580f3c23c94"
+    },
+    {
+      "experiment": 3,
+      "participant": "cda3519e16a02353"
+    },
+    {
+      "experiment": 4,
+      "participant": "5efad4695842da7e"
+    },
+    {
+      "experiment": 3,
+      "participant": "245cf685caba1f02"
+    },
+    {
+      "experiment": 4,
+      "participant": "8728e65000519f0a"
+    },
+    {
+      "experiment": 3,
+      "participant": "b3a276d89152fb35"
+    },
+    {
+      "experiment": 4,
+      "participant": "d5d246feac4441bf"
+    },
+    {
+      "experiment": 3,
+      "participant": "0d093c86965781ae"
+    },
+    {
+      "experiment": 1,
+      "participant": "6f52d985563430ec"
+    },
+    {
+      "experiment": 3,
+      "participant": "52c4cb66caef9570"
+    },
+    {
+      "experiment": 2,
+      "participant": "6c417129bca17152"
+    },
+    {
+      "experiment": 1,
+      "participant": "fc768f3901227677"
+    },
+    {
+      "experiment": 2,
+      "participant": "122327b63f43029b"
+    },
+    {
+      "experiment": 3,
+      "participant": "769d5f8bc9e95483"
+    },
+    {
+      "experiment": 3,
+      "participant": "3c8a9919edcf645c"
+    },
+    {
+      "experiment": 3,
+      "participant": "8cb57dddd5a69db7"
+    },
+    {
+      "experiment": 4,
+      "participant": "165051f46d5e5842"
+    },
+    {
+      "experiment": 2,
+      "participant": "a45bff476ce9e661"
+    },
+    {
+      "experiment": 4,
+      "participant": "42bad032c933be93"
+    },
+    {
+      "experiment": 2,
+      "participant": "5e510fbc2d9dacea"
+    },
+    {
+      "experiment": 2,
+      "participant": "900e6dcb79b10400"
+    },
+    {
+      "experiment": 4,
+      "participant": "6f828696737586bd"
+    },
+    {
+      "experiment": 1,
+      "participant": "b72eeb6a4c3b2b9d"
+    },
+    {
+      "experiment": 4,
+      "participant": "c85c16a8c848553f"
+    },
+    {
+      "experiment": 3,
+      "participant": "44944870c0a2e817"
+    },
+    {
+      "experiment": 4,
+      "participant": "5b14d35bb26fbc3b"
+    },
+    {
+      "experiment": 4,
+      "participant": "609de2be2cfff152"
+    },
+    {
+      "experiment": 1,
+      "participant": "67ac3573420da880"
+    },
+    {
+      "experiment": 2,
+      "participant": "35a79688f9b86719"
+    },
+    {
+      "experiment": 4,
+      "participant": "5b96fd530936c1fb"
+    },
+    {
+      "experiment": 2,
+      "participant": "648ed4fb340bddb2"
+    },
+    {
+      "experiment": 3,
+      "participant": "2786d1f514c11a82"
+    },
+    {
+      "experiment": 3,
+      "participant": "d20a47df608dcfc6"
+    },
+    {
+      "experiment": 3,
+      "participant": "ccfc15ca1da84725"
+    },
+    {
+      "experiment": 2,
+      "participant": "9d1f6f8faa54dda7"
+    },
+    {
+      "experiment": 2,
+      "participant": "bd971169d070c15f"
+    },
+    {
+      "experiment": 3,
+      "participant": "f880d233e2a03b85"
+    },
+    {
+      "experiment": 3,
+      "participant": "81ef73194c0bcd5d"
+    },
+    {
+      "experiment": 1,
+      "participant": "56177a17b5b10c60"
+    },
+    {
+      "experiment": 3,
+      "participant": "58b322ff1ac812e6"
+    },
+    {
+      "experiment": 2,
+      "participant": "211469379292de4d"
+    },
+    {
+      "experiment": 3,
+      "participant": "ca5cb462aed8af8f"
+    },
+    {
+      "experiment": 3,
+      "participant": "59d58155d2d9358a"
+    },
+    {
+      "experiment": 2,
+      "participant": "93cadecac2805620"
+    },
+    {
+      "experiment": 3,
+      "participant": "fe31574ae4ae740f"
+    },
+    {
+      "experiment": 4,
+      "participant": "976f7643328d0f88"
+    },
+    {
+      "experiment": 4,
+      "participant": "48562e04b2e93bab"
+    },
+    {
+      "experiment": 4,
+      "participant": "e1c1d5bb190e62d9"
+    },
+    {
+      "experiment": 2,
+      "participant": "d3bb04e4ef5d8fc2"
+    },
+    {
+      "experiment": 4,
+      "participant": "f61b3378f6e0dd08"
+    },
+    {
+      "experiment": 3,
+      "participant": "e48fe7058e731771"
+    },
+    {
+      "experiment": 3,
+      "participant": "f6ba403ba4ad15e6"
+    },
+    {
+      "experiment": 1,
+      "participant": "f40daf6efe3a5150"
+    },
+    {
+      "experiment": 3,
+      "participant": "cf9b29ca834e9c8f"
+    },
+    {
+      "experiment": 3,
+      "participant": "d74f51b8f0713aa0"
+    },
+    {
+      "experiment": 1,
+      "participant": "2be503b46c985a6f"
+    },
+    {
+      "experiment": 1,
+      "participant": "73d9910b56ba19eb"
+    },
+    {
+      "experiment": 3,
+      "participant": "628395d49aaf425c"
+    },
+    {
+      "experiment": 2,
+      "participant": "242d0f4d2f6e8e4b"
+    },
+    {
+      "experiment": 4,
+      "participant": "5f5354e773a1f1bf"
+    },
+    {
+      "experiment": 3,
+      "participant": "90a72d40396faa98"
+    },
+    {
+      "experiment": 1,
+      "participant": "9438397a3646c863"
+    },
+    {
+      "experiment": 3,
+      "participant": "01eac275a0a1c439"
+    },
+    {
+      "experiment": 4,
+      "participant": "351ab25a6b0b3b6e"
+    },
+    {
+      "experiment": 3,
+      "participant": "4c935f604f83d1dc"
+    },
+    {
+      "experiment": 4,
+      "participant": "32dd9af57134e973"
+    },
+    {
+      "experiment": 3,
+      "participant": "cff2ea16b49daeed"
+    },
+    {
+      "experiment": 4,
+      "participant": "74776f1da89303bc"
+    },
+    {
+      "experiment": 3,
+      "participant": "782d6633b3b5e668"
+    },
+    {
+      "experiment": 4,
+      "participant": "9f85e686419dd861"
+    },
+    {
+      "experiment": 3,
+      "participant": "0cea89cc1c2df5cb"
+    },
+    {
+      "experiment": 1,
+      "participant": "87e470163a16a4bb"
+    },
+    {
+      "experiment": 4,
+      "participant": "914037e494bce406"
+    },
+    {
+      "experiment": 4,
+      "participant": "272c728c2e8e9319"
+    },
+    {
+      "experiment": 1,
+      "participant": "ca2e1af8360be9a6"
+    },
+    {
+      "experiment": 4,
+      "participant": "ff02368bfbd9af5c"
+    },
+    {
+      "experiment": 2,
+      "participant": "a057680847b10ab4"
+    },
+    {
+      "experiment": 4,
+      "participant": "86928c38aa10d031"
+    },
+    {
+      "experiment": 3,
+      "participant": "93a890ec3ed86ea7"
+    },
+    {
+      "experiment": 4,
+      "participant": "dc37fa4752588d62"
+    },
+    {
+      "experiment": 2,
+      "participant": "b1f4e780b8297de1"
+    },
+    {
+      "experiment": 4,
+      "participant": "9fc090542f5655e9"
+    },
+    {
+      "experiment": 1,
+      "participant": "567bc3dd964bcfc9"
+    },
+    {
+      "experiment": 3,
+      "participant": "59a678928af37d8d"
+    },
+    {
+      "experiment": 4,
+      "participant": "bc36d95ae8040445"
+    },
+    {
+      "experiment": 4,
+      "participant": "d20de1e7399fe60b"
+    },
+    {
+      "experiment": 3,
+      "participant": "f3380639e8efc72c"
+    },
+    {
+      "experiment": 4,
+      "participant": "bf399fc4eb6c8527"
+    },
+    {
+      "experiment": 2,
+      "participant": "6e76fe3176480b67"
+    },
+    {
+      "experiment": 3,
+      "participant": "aa4acb06897e4bdb"
+    },
+    {
+      "experiment": 4,
+      "participant": "5d3a84f6c13c2bb2"
+    },
+    {
+      "experiment": 1,
+      "participant": "883008cb59740cec"
+    },
+    {
+      "experiment": 3,
+      "participant": "77a3c2212265bad9"
+    },
+    {
+      "experiment": 4,
+      "participant": "4e013609e65b3feb"
+    },
+    {
+      "experiment": 2,
+      "participant": "681b51e67d1b0cce"
+    },
+    {
+      "experiment": 4,
+      "participant": "16fad9faab299896"
+    },
+    {
+      "experiment": 4,
+      "participant": "cddfc4564a8c2487"
+    },
+    {
+      "experiment": 2,
+      "participant": "9bafc08bca3e6c00"
+    },
+    {
+      "experiment": 4,
+      "participant": "ebdc5c2257d74883"
+    },
+    {
+      "experiment": 4,
+      "participant": "11cd20fcff40b86c"
+    },
+    {
+      "experiment": 3,
+      "participant": "444b94d53396820f"
+    },
+    {
+      "experiment": 3,
+      "participant": "8011ff2af2f78f73"
+    },
+    {
+      "experiment": 1,
+      "participant": "5190f56b702581ad"
+    },
+    {
+      "experiment": 4,
+      "participant": "310c51720f52de50"
+    },
+    {
+      "experiment": 3,
+      "participant": "0c629280f9154afb"
+    },
+    {
+      "experiment": 4,
+      "participant": "00c99bdae73b12e6"
+    },
+    {
+      "experiment": 1,
+      "participant": "d4a13bfec790250e"
+    },
+    {
+      "experiment": 2,
+      "participant": "a69a3db4d9afac0c"
+    },
+    {
+      "experiment": 4,
+      "participant": "b933440777b98c1f"
+    },
+    {
+      "experiment": 2,
+      "participant": "b47f41c2bf883b16"
+    },
+    {
+      "experiment": 4,
+      "participant": "60db853941bb2817"
+    },
+    {
+      "experiment": 4,
+      "participant": "9f3aa523a0c5dd67"
+    },
+    {
+      "experiment": 3,
+      "participant": "2487f78ed86d687c"
+    },
+    {
+      "experiment": 3,
+      "participant": "f1c5a736f603f35f"
+    },
+    {
+      "experiment": 3,
+      "participant": "f6602896ebc70713"
+    },
+    {
+      "experiment": 3,
+      "participant": "51c6c23bd0b9b21c"
+    },
+    {
+      "experiment": 1,
+      "participant": "28d8450a9699a9d7"
+    },
+    {
+      "experiment": 4,
+      "participant": "803af82f775134eb"
+    },
+    {
+      "experiment": 3,
+      "participant": "987886ded86088ef"
+    },
+    {
+      "experiment": 1,
+      "participant": "1993043424bc4d12"
+    },
+    {
+      "experiment": 3,
+      "participant": "36702a6d07063737"
+    },
+    {
+      "experiment": 1,
+      "participant": "e12665c2d1d33ee9"
+    },
+    {
+      "experiment": 1,
+      "participant": "c72c110452938523"
+    },
+    {
+      "experiment": 2,
+      "participant": "78518a5bd15b0018"
+    },
+    {
+      "experiment": 2,
+      "participant": "b0a776e43e20e71c"
+    },
+    {
+      "experiment": 3,
+      "participant": "0faf0df7b2aac8a6"
+    },
+    {
+      "experiment": 4,
+      "participant": "98d85abb6caffd86"
+    },
+    {
+      "experiment": 3,
+      "participant": "60dfcb67e7135212"
+    },
+    {
+      "experiment": 4,
+      "participant": "d1b6f07a3f581274"
+    },
+    {
+      "experiment": 3,
+      "participant": "8ea452ebb42d56e9"
+    },
+    {
+      "experiment": 4,
+      "participant": "aa5d99d4738c762c"
+    },
+    {
+      "experiment": 2,
+      "participant": "5f5a2514addeb5db"
+    },
+    {
+      "experiment": 4,
+      "participant": "8cd14c78bd5b16a9"
+    },
+    {
+      "experiment": 1,
+      "participant": "a3bf082baec005a6"
+    },
+    {
+      "experiment": 1,
+      "participant": "89584f7235d730b2"
+    },
+    {
+      "experiment": 3,
+      "participant": "7abb4c7bd7f95c5f"
+    },
+    {
+      "experiment": 3,
+      "participant": "6ff26a325e1b314c"
+    },
+    {
+      "experiment": 2,
+      "participant": "7e359a4e8c0e9106"
+    },
+    {
+      "experiment": 4,
+      "participant": "6591f6e5edfe89a7"
+    },
+    {
+      "experiment": 1,
+      "participant": "165ad6b2ae1f354d"
+    },
+    {
+      "experiment": 3,
+      "participant": "3617d395296fb030"
+    },
+    {
+      "experiment": 4,
+      "participant": "7a95f87b743736b8"
+    },
+    {
+      "experiment": 4,
+      "participant": "667530b5a2fec093"
+    },
+    {
+      "experiment": 4,
+      "participant": "8c195019cae1ec89"
+    },
+    {
+      "experiment": 4,
+      "participant": "17507e40139f2af9"
+    },
+    {
+      "experiment": 3,
+      "participant": "696e197f13f5fd18"
+    },
+    {
+      "experiment": 3,
+      "participant": "49a77eb1d5f2a106"
+    },
+    {
+      "experiment": 3,
+      "participant": "a3ccd9802f5794c7"
+    },
+    {
+      "experiment": 4,
+      "participant": "55f85abd25ddc306"
+    },
+    {
+      "experiment": 3,
+      "participant": "96b74df2fd4ec80c"
+    },
+    {
+      "experiment": 4,
+      "participant": "387c90a07418c99b"
+    },
+    {
+      "experiment": 2,
+      "participant": "e7258037c9aa11ca"
+    },
+    {
+      "experiment": 3,
+      "participant": "aeb875cd7fb8db91"
+    },
+    {
+      "experiment": 4,
+      "participant": "8ba19f126fd6f760"
+    },
+    {
+      "experiment": 3,
+      "participant": "28078f8fb67400b8"
+    },
+    {
+      "experiment": 4,
+      "participant": "daa36e557b1cbfc6"
+    },
+    {
+      "experiment": 2,
+      "participant": "f24ded38fabfdce8"
+    },
+    {
+      "experiment": 1,
+      "participant": "d87f7ac9ded12c32"
+    },
+    {
+      "experiment": 3,
+      "participant": "9f4df182788b552a"
+    },
+    {
+      "experiment": 4,
+      "participant": "c17becd460c98307"
+    },
+    {
+      "experiment": 4,
+      "participant": "f3da365cdd73a7d4"
+    },
+    {
+      "experiment": 2,
+      "participant": "27a5f8d3631f6305"
+    },
+    {
+      "experiment": 4,
+      "participant": "b54c3ba76cb7535a"
+    },
+    {
+      "experiment": 3,
+      "participant": "b2efffc47772dba9"
+    },
+    {
+      "experiment": 4,
+      "participant": "6c29bcca192fb6ec"
+    },
+    {
+      "experiment": 4,
+      "participant": "464c38a8f552cfd3"
+    },
+    {
+      "experiment": 4,
+      "participant": "5cad51640c5539d2"
+    },
+    {
+      "experiment": 3,
+      "participant": "c4a202034638d0c4"
+    },
+    {
+      "experiment": 4,
+      "participant": "d164fdd275d42e08"
+    },
+    {
+      "experiment": 4,
+      "participant": "d09b1f5dab2c8ad3"
+    },
+    {
+      "experiment": 1,
+      "participant": "60bde42fadc787dd"
+    },
+    {
+      "experiment": 4,
+      "participant": "89bb5356eae8672a"
+    },
+    {
+      "experiment": 3,
+      "participant": "5ed6547d894926df"
+    },
+    {
+      "experiment": 2,
+      "participant": "5bdc4b6118b9d039"
+    },
+    {
+      "experiment": 2,
+      "participant": "905c12f64a28247e"
+    },
+    {
+      "experiment": 3,
+      "participant": "74423e299ff89dde"
+    },
+    {
+      "experiment": 1,
+      "participant": "e466c1cb1eaa0767"
+    },
+    {
+      "experiment": 3,
+      "participant": "a50260f8fd78b768"
+    },
+    {
+      "experiment": 3,
+      "participant": "122f2703223e1875"
+    },
+    {
+      "experiment": 1,
+      "participant": "522f6a7878f67cdc"
+    },
+    {
+      "experiment": 3,
+      "participant": "374f35d7209e7320"
+    },
+    {
+      "experiment": 1,
+      "participant": "12ccd1f38f82c20d"
+    },
+    {
+      "experiment": 1,
+      "participant": "e93525dfd2998cc9"
+    },
+    {
+      "experiment": 4,
+      "participant": "85bf6db6cf856eda"
+    },
+    {
+      "experiment": 1,
+      "participant": "4e45163cf40c1c33"
+    },
+    {
+      "experiment": 2,
+      "participant": "4795192d6b9dd316"
+    },
+    {
+      "experiment": 3,
+      "participant": "307bed9605220f1d"
+    },
+    {
+      "experiment": 4,
+      "participant": "ccc3df9d7e244351"
+    },
+    {
+      "experiment": 1,
+      "participant": "f1f69e498d18fe8e"
+    },
+    {
+      "experiment": 1,
+      "participant": "4f5f8faa4b09a760"
+    },
+    {
+      "experiment": 4,
+      "participant": "a8cf6f375a9ef53a"
+    },
+    {
+      "experiment": 4,
+      "participant": "000401f2ffd28354"
+    },
+    {
+      "experiment": 4,
+      "participant": "f2d22f05bff9cfff"
+    },
+    {
+      "experiment": 4,
+      "participant": "349c9dbc4019a3e9"
+    },
+    {
+      "experiment": 1,
+      "participant": "62e8bc9f775eb872"
+    },
+    {
+      "experiment": 3,
+      "participant": "55dc33678b8f15de"
+    },
+    {
+      "experiment": 4,
+      "participant": "02da12f221ea3f25"
+    },
+    {
+      "experiment": 3,
+      "participant": "01c0a4c0e4f8f261"
+    },
+    {
+      "experiment": 4,
+      "participant": "bd7682663b2c5ddf"
+    },
+    {
+      "experiment": 1,
+      "participant": "89f4fc1e0ef0958f"
+    },
+    {
+      "experiment": 1,
+      "participant": "e47f9fea4cfb2627"
+    },
+    {
+      "experiment": 3,
+      "participant": "d44c8357b0dd9e12"
+    },
+    {
+      "experiment": 3,
+      "participant": "b165b269eaedef07"
+    },
+    {
+      "experiment": 2,
+      "participant": "8166ff6bf67747d4"
+    },
+    {
+      "experiment": 1,
+      "participant": "8f6225a38b7cb134"
+    },
+    {
+      "experiment": 1,
+      "participant": "fb0598cfb6cb7b0e"
+    },
+    {
+      "experiment": 4,
+      "participant": "5234a6f7231d3fba"
+    },
+    {
+      "experiment": 4,
+      "participant": "27cb96209ba7959d"
+    },
+    {
+      "experiment": 2,
+      "participant": "52939d6019f97867"
+    },
+    {
+      "experiment": 2,
+      "participant": "9d9babbc1b7efc1c"
+    },
+    {
+      "experiment": 2,
+      "participant": "0d5ca57d6d07d67e"
+    },
+    {
+      "experiment": 3,
+      "participant": "8d4a2397ff0e058d"
+    },
+    {
+      "experiment": 4,
+      "participant": "bce8078b40e8642f"
+    },
+    {
+      "experiment": 4,
+      "participant": "aa1587e17650f50d"
+    },
+    {
+      "experiment": 2,
+      "participant": "3b544ee0901c31cd"
+    },
+    {
+      "experiment": 3,
+      "participant": "282ac1a4eeb6bcba"
+    },
+    {
+      "experiment": 1,
+      "participant": "837784a0540e9236"
+    },
+    {
+      "experiment": 3,
+      "participant": "7b699f20812251ca"
+    },
+    {
+      "experiment": 1,
+      "participant": "9c974b310be43f2f"
+    },
+    {
+      "experiment": 3,
+      "participant": "3ff7425928822aa6"
+    },
+    {
+      "experiment": 3,
+      "participant": "48651e5b60f10ff2"
+    },
+    {
+      "experiment": 4,
+      "participant": "530210aa0d4835e2"
+    },
+    {
+      "experiment": 2,
+      "participant": "63986d4ac7b6de6d"
+    },
+    {
+      "experiment": 4,
+      "participant": "ee5694082add038b"
+    },
+    {
+      "experiment": 1,
+      "participant": "24afb23a834fa6a8"
+    },
+    {
+      "experiment": 1,
+      "participant": "8e768b506e2f5ef9"
+    },
+    {
+      "experiment": 2,
+      "participant": "15c8fe02aa601043"
+    },
+    {
+      "experiment": 1,
+      "participant": "6e9f1f07371b9929"
+    },
+    {
+      "experiment": 1,
+      "participant": "f38eec248af716d3"
+    },
+    {
+      "experiment": 1,
+      "participant": "80bbd28fc110d502"
+    },
+    {
+      "experiment": 4,
+      "participant": "8f040266bc3c3c58"
+    },
+    {
+      "experiment": 4,
+      "participant": "c488f545ecd08302"
+    },
+    {
+      "experiment": 1,
+      "participant": "ecc9aa24bd08e704"
+    }
+  ],
+  "rotations": [
+    {
+      "held_out": [
+        "Ladder",
+        "Tyran"
+      ],
+      "examples": [
+        {
+          "experiment": 1,
+          "participant": "daed0d004b711900",
+          "last": 3
+        },
+        {
+          "experiment": 2,
+          "participant": "73879c97c5d3d5df",
+          "last": 2
+        }
+      ]
+    },
+    {
+      "held_out": [
+        "Tyran",
+        "Lifeboat"
+      ],
+      "examples": [
+        {
+          "experiment": 2,
+          "participant": "5890c8dd29f20e5b",
+          "last": 2
+        },
+        {
+          "experiment": 3,
+          "participant": "4507e808322d9812",
+          "last": 2
+        }
+      ]
+    },
+    {
+      "held_out": [
+        "Lifeboat",
+        "Suicide"
+      ],
+      "examples": [
+        {
+          "experiment": 4,
+          "participant": "8c419fd555799497",
+          "last": 4
+        },
+        {
+          "experiment": 4,
+          "participant": "342d6b00161eee0c",
+          "last": 2
+        }
+      ]
+    },
+    {
+      "held_out": [
+        "Suicide",
+        "Medicine"
+      ],
+      "examples": [
+        {
+          "experiment": 3,
+          "participant": "ac0aaec3cfe534e2",
+          "last": 4
+        },
+        {
+          "experiment": 3,
+          "participant": "cb4a7a99303316be",
+          "last": 3
+        }
+      ]
+    },
+    {
+      "held_out": [
+        "Medicine",
+        "RAF"
+      ],
+      "examples": [
+        {
+          "experiment": 2,
+          "participant": "385de0bc5b398b0d",
+          "last": 2
+        },
+        {
+          "experiment": 1,
+          "participant": "023ba2421ec02bc6",
+          "last": 2
+        }
+      ]
+    },
+    {
+      "held_out": [
+        "RAF",
+        "Rwanda"
+      ],
+      "examples": [
+        {
+          "experiment": 3,
+          "participant": "50c7c082309577a9",
+          "last": 5
+        },
+        {
+          "experiment": 1,
+          "participant": "64cbae23df4408ee",
+          "last": 8
+        }
+      ]
+    },
+    {
+      "held_out": [
+        "Rwanda",
+        "Ransom"
+      ],
+      "examples": [
+        {
+          "experiment": 1,
+          "participant": "39691d14238c3e1d",
+          "last": 3
+        },
+        {
+          "experiment": 1,
+          "participant": "9241ce90a62e13c6",
+          "last": 8
+        }
+      ]
+    },
+    {
+      "held_out": [
+        "Ransom",
+        "Tax"
+      ],
+      "examples": [
+        {
+          "experiment": 4,
+          "participant": "52b6005673fbdb0f",
+          "last": 3
+        },
+        {
+          "experiment": 3,
+          "participant": "106c0aafc471a5bb",
+          "last": 4
+        }
+      ]
+    },
+    {
+      "held_out": [
+        "Tax",
+        "Operations"
+      ],
+      "examples": [
+        {
+          "experiment": 3,
+          "participant": "176d916dde54e013",
+          "last": 8
+        },
+        {
+          "experiment": 1,
+          "participant": "e8d64f6a2ddd5d7f",
+          "last": 3
+        }
+      ]
+    },
+    {
+      "held_out": [
+        "Operations",
+        "Vet"
+      ],
+      "examples": [
+        {
+          "experiment": 3,
+          "participant": "fccd69036cb6eaa8",
+          "last": 2
+        },
+        {
+          "experiment": 3,
+          "participant": "63f54d623a4e6b41",
+          "last": 2
+        }
+      ]
+    },
+    {
+      "held_out": [
+        "Vet",
+        "Endow"
+      ],
+      "examples": [
+        {
+          "experiment": 3,
+          "participant": "2f7a7200ad17420e",
+          "last": 2
+        },
+        {
+          "experiment": 4,
+          "participant": "9fdb3bdead91aeed",
+          "last": 2
+        }
+      ]
+    },
+    {
+      "held_out": [
+        "Endow",
+        "RobinHood"
+      ],
+      "examples": [
+        {
+          "experiment": 3,
+          "participant": "e6081748f32f9294",
+          "last": 2
+        },
+        {
+          "experiment": 2,
+          "participant": "5d32513fe3b168e5",
+          "last": 3
+        }
+      ]
+    },
+    {
+      "held_out": [
+        "RobinHood",
+        "Ladder"
+      ],
+      "examples": [
+        {
+          "experiment": 1,
+          "participant": "3d8d858eccb08081",
+          "last": 3
+        },
+        {
+          "experiment": 4,
+          "participant": "1c5681ad7c98413d",
+          "last": 4
+        }
+      ]
+    }
+  ]
+}

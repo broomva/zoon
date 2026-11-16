@@ -1,0 +1,4 @@
+You are travelling on a passenger ship when it suddenly tilts and takes on water. You and some fellow passengers try to reach the deck using a ladder. Having climbed up, you now stand on deck and watch the others following you. Immediately below you, a man halfway up seems unable to move from fear or cold. He blocks the ladder. You try speaking to him and reaching him, but he gives no response. The people below are jostling. The ship seems to be sinking quickly, and the man continues to block their way. Someone in the crowd calls for you to push him off. If you push the man off, he will probably die, but the other passengers will be able to reach the deck. If you leave him there, he will probably keep blocking the ladder. Many people behind you will then be unable to reach the deck and will drown.
+
+Does the suggested action involve killing a person? The suggested action is: push the blocking man off the ladder.
+Answer with one word: Yes or No.
