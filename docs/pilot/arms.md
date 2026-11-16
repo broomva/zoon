@@ -230,10 +230,10 @@ participants. If it wins, the architecture added nothing on this task.
 
 **The examples respect the held-out dilemmas.** The coded arms never fit to a participant's
 answer on a held-out dilemma. The same has to hold for the prompt. So the examples are built
-separately for each rotation of held-out dilemmas: an example may show a training
-participant's answer only on a dilemma that is not held out in that rotation. A held-out
-dilemma may appear in an example only as part of the history, which is how the coded arms
-use it. The rule for building examples is fixed before the prompt is written.
+separately for each rotation of held-out dilemmas, and an example stops before the training
+participant first met a held-out dilemma. It is an unbroken run of that participant's first
+trials, with no dilemma left out of the middle. The rule for building examples is fixed in
+the pre-registration.
 
 ## Recall is reduced, not ruled out
 
