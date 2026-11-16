@@ -52,6 +52,12 @@ def live(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> run.Run:
     return runner
 
 
+def restart(live: run.Run, monkeypatch: pytest.MonkeyPatch) -> run.Run:
+    fresh = run.Run(live.root, supplied_clients=[])
+    monkeypatch.setattr(fresh, "verify_materials", lambda: None)
+    return fresh
+
+
 def change(live: run.Run, name: str, *, hidden: bool = False) -> None:
     path = live.root / name
     if hidden:
@@ -110,6 +116,7 @@ def test_every_live_step_refuses_before_requests_or_loader(
             commit(live.root)
         else:
             change(live, names[fault], hidden=fault.startswith("hidden"))
+    live = restart(live, monkeypatch)
     reached: list[str] = []
 
     def loader(directory: Path) -> None:
@@ -166,9 +173,13 @@ def test_two_commits_require_the_full_difference_and_report_it(
     first = "src/zoon/pilot/score.py"
     second = "src/zoon/pilot/clients.py"
     change(live, first)
+    live = restart(live, monkeypatch)
+    reach(live, monkeypatch)
     with pytest.raises(clients.StopRun, match=r"score\.py"):
         live.execute("judge-check")
     change(live, second)
+    live = restart(live, monkeypatch)
+    reach(live, monkeypatch)
     with pytest.raises(clients.StopRun, match=r"score\.py"):
         live.execute("judge-check")
     live.execute("judge-check", repair="Restore scoring and requests")
@@ -205,6 +216,7 @@ def test_previous_repair_does_not_cover_later_code(
     change(live, "src/zoon/pilot/score.py")
     live.execute("judge-check", repair="Restore scoring")
     change(live, changed)
+    live = restart(live, monkeypatch)
     with pytest.raises(clients.StopRun, match="repair"):
         live.execute("judge-check")
 
