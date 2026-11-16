@@ -455,3 +455,29 @@ def test_missing_dataset_refuses_before_state_or_requests_then_resumes(
     assert "completed" in fresh.execute("judge-check")[0]
     assert reached == ["training", "body"]
     assert not any(t.entries for t in fresh.session.transcripts.values())
+
+
+def test_refused_guard_cannot_leave_a_pending_repair_for_a_later_command(
+    live: run.Run, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    tagged = git(live.root, "rev-parse", "HEAD")
+    change(live, "src/zoon/pilot/clients.py")
+
+    def refuse() -> None:
+        raise clients.GuardRefusal("materials unavailable")
+
+    monkeypatch.setattr(live, "verify_materials", refuse)
+    with pytest.raises(clients.GuardRefusal, match="materials"):
+        live.execute("judge-check", repair="Restore requests")
+    assert live.pending_binding is None
+    assert not live.directory.exists()
+    git(live.root, "checkout", "-q", tagged)
+    monkeypatch.setattr(live, "verify_materials", lambda: None)
+
+    def complete() -> run.State:
+        return live.save("judge-check", {})
+
+    monkeypatch.setattr(live, "_judge_check", complete)
+    assert "completed" in live.execute("judge-check")[0]
+    assert live.binding()["repairs"] == []
+    assert live.state("judge-check")["code_snapshot"] == {}

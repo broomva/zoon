@@ -209,11 +209,13 @@ class Run:
         return clients.obj(json.loads(path.read_text())) if path.exists() else {"repairs": []}
 
     def guard(self, step: str, registered: str | None, repair: str | None) -> None:
+        self.pending_binding = None
         try:
             self._guard(step, registered, repair)
-        except clients.GuardRefusal:
-            raise
-        except Exception as error:
+        except BaseException as error:
+            self.pending_binding = None
+            if isinstance(error, clients.GuardRefusal):
+                raise
             raise clients.GuardRefusal(
                 "guard could not verify inputs: " + type(error).__name__
             ) from None

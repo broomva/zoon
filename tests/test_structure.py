@@ -101,7 +101,7 @@ def test_state_binding_and_transcript_readers_are_exclusive() -> None:
             source = ast.unparse(node)
             found: set[str] = set()
             if (
-                "self.directory" in source
+                ".directory" in source
                 or "data/run/" in source
                 or '"binding.json"' in source
                 or "'binding.json'" in source
