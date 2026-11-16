@@ -172,8 +172,9 @@ def test_reader_program_fault_is_not_zero_share(
     assert not session.transcripts["second"].entries
 
 
-def test_recognition_withdrawal_preserves_computed_numbers(
-    runner: run.Run, monkeypatch: pytest.MonkeyPatch
+@pytest.mark.parametrize("cause", [clients.FamilyCause.WITHDRAWN, clients.FamilyCause.VERSION])
+def test_recognition_exclusion_withholds_computed_numbers(
+    runner: run.Run, monkeypatch: pytest.MonkeyPatch, cause: clients.FamilyCause
 ) -> None:
     runner.execute("judge-check")
     original = runner.request
@@ -187,7 +188,7 @@ def test_recognition_withdrawal_preserves_computed_numbers(
         recognition_only: bool = False,
     ) -> list[clients.Response]:
         if recognition_only:
-            raise clients.FamilyUnusable(clients.FamilyCause.WITHDRAWN)
+            raise clients.FamilyUnusable(cause)
         return original(family, requests)
 
     def record(step: str, payload: run.State) -> run.State:
@@ -197,7 +198,7 @@ def test_recognition_withdrawal_preserves_computed_numbers(
     monkeypatch.setattr(runner, "request", request)
     monkeypatch.setattr(runner, "save", record)
     assert "completed" in runner.execute("judge")[0]
-    assert clients.obj(captured[0]["second"])["usable"] is True
+    assert clients.obj(captured[0]["second"]) == {"usable": False, "reason": cause.value}
     assert "recognition_error" not in captured[0]
 
 

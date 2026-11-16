@@ -9,7 +9,6 @@ import os
 import subprocess
 import sys
 from collections.abc import Sequence
-from contextlib import suppress
 from dataclasses import asdict
 from decimal import Decimal
 from pathlib import Path
@@ -511,12 +510,15 @@ class Run:
                 if family != "second":
                     raise clients.StepFailure("unexpected decision-family exclusion") from None
                 result[family] = {"usable": False, "reason": str(error)}
-        with suppress(clients.FamilyUnusable):
+        try:
             self.request(
                 "second",
                 [prompts.recognition(tasks[n]) for n in fetch.DILEMMAS],
                 recognition_only=True,
             )
+        except clients.FamilyUnusable as error:
+            if error.cause in (clients.FamilyCause.WITHDRAWN, clients.FamilyCause.VERSION):
+                result["second"] = {"usable": False, "reason": str(error)}
         result["recognition"] = {
             name: {
                 "reply": entry.response.text,

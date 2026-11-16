@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from tests.test_run import finish
+from tests.test_run import COMMIT, finish
 from tests.test_run import runner as runner
 from zoon.pilot import clients, fetch, result, run
 
@@ -60,7 +60,10 @@ def test_unusable_second_family_still_prints_recognition_flags(runner: run.Run) 
     assert not any("second" in line and "mean +" in line for line in lines)
 
 
-def test_partial_recognition_preserves_numerical_results(runner: run.Run) -> None:
+@pytest.mark.parametrize("cause", [clients.FamilyCause.WITHDRAWN, clients.FamilyCause.VERSION])
+def test_partial_recognition_preserves_replies_and_withholds_numbers(
+    runner: run.Run, cause: clients.FamilyCause
+) -> None:
     runner.execute("judge-check")
     original = runner.session.clients["second"]
     requests = [run.prompts.recognition(r) for r in runner.records if r["set"] == "task"]
@@ -69,17 +72,20 @@ def test_partial_recognition_preserves_numerical_results(runner: run.Run) -> Non
     class Withdrawn(clients.StubClient):
         def ask(self, request: clients.Request) -> clients.Response:
             if isinstance(request, str) and clients.key(request) == missing_key:
-                raise clients.FamilyUnusable(clients.FamilyCause.WITHDRAWN)
+                raise clients.FamilyUnusable(cause)
             return original.ask(request)
 
     runner.session.clients["second"] = Withdrawn("second")
     assert "completed" in runner.execute("judge")[0]
     payload = clients.obj(runner.state("judge")["payload"])
     assert len(clients.obj(payload["recognition"])) == 12
-    assert clients.obj(payload["second"])["usable"]
-    assert len(clients.items(clients.obj(payload["second"])["evaluative"])) == 13
-    assert len(clients.items(clients.obj(payload["second"])["strict"])) == 13
-    runner.save("calibrate", {}, status="stopped", reason="fixture stop")
+    assert clients.obj(payload["second"]) == {"usable": False, "reason": cause.value}
+    for step in ("calibrate", "held-out"):
+        assert "completed" in runner.execute(step, COMMIT)[0]
+    logs = clients.obj(clients.obj(runner.state("held-out")["payload"])["logs"])
+    assert not any(name.startswith("second/") for name in logs)
     lines = runner.execute("report")
     assert sum('"reply":' in line and '"flagged":' in line for line in lines) == 12
     assert sum("reply and flag = no reply" in line for line in lines) == 1
+    assert f"[stub family] second availability = {cause.value}" in lines
+    assert not any("second" in line and "mean +" in line for line in lines)
