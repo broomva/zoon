@@ -375,7 +375,15 @@ def render(run: "Run", states: "dict[str, State]") -> list[str]:
         )
     from zoon.pilot.run import git
 
-    add("run", "registered commit", payload.get("registered_commit") or "not recorded")
+    registered = payload.get("registered_commit")
+    if not registered:
+        try:
+            registered = git(
+                run.root, "rev-parse", "HEAD" if run.synthetic else "refs/tags/registered^{commit}"
+            )
+        except clients.StopRun:
+            registered = "not recorded"
+    add("run", "registered commit", registered)
     add("run", "report commit", git(run.root, "rev-parse", "HEAD"))
     for step, state in states.items():
         add("run", f"{step} commit", state["commit"])

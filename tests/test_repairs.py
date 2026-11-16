@@ -120,6 +120,7 @@ def test_report_without_repairs_says_none(runner: run.Run) -> None:
     runner.save("judge", {}, status="failed", reason="interrupted")
     lines = runner.execute("report")
     assert "[stub Repairs] history = none" in lines
+    assert f"[stub run] registered commit = {COMMIT}" in lines
     assert "\n## Repairs\n" in (runner.directory / "result.md").read_text()
     saved = json.loads((runner.directory / "judge-check.json").read_text())
     assert saved["registered_files"] and saved["code_files"]
