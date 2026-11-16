@@ -7,8 +7,8 @@ from typing import cast
 from zoon.pilot import outside, rewrites
 
 
-def keys(dilemma: str) -> tuple[str, ...]:
-    record = next(record for record in rewrites.load() if record["id"] == dilemma)
+def keys(dilemma: str, records: Sequence[rewrites.Record]) -> tuple[str, ...]:
+    record = next(record for record in records if record["id"] == dilemma)
     return (*cast(list[str], record["removed"]), outside.originals()[dilemma])
 
 

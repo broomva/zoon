@@ -124,7 +124,8 @@ def registration_guard(
     current = git(root, "rev-parse", "HEAD")
     if not registered:
         raise clients.StopRun("--registered-commit must match the registered tag")
-    clean_tree(root)
+    if not synthetic:
+        clean_tree(root)
     if synthetic:
         if registered != current:
             raise clients.StopRun(
@@ -274,7 +275,8 @@ class Run:
         if binding["code"] != code:
             if not repair or not repair.strip():
                 raise clients.StopRun("code digests changed; --repair requires a reason")
-            clean_tree(self.root)
+            if not self.synthetic:
+                clean_tree(self.root)
             previous = clients.obj(binding["code"])
             changed = sorted(
                 name for name in set(previous) | set(code) if previous.get(name) != code.get(name)
@@ -390,6 +392,7 @@ class Run:
         return self.session.ask_many(family, requests, recognition=recognition_only)
 
     def judge_check(self) -> State:
+        self.session.check_cap()
         records = [r for r in self.records if r["set"] == "outside"]
         if self.synthetic:
             means = judge.human_ratings()
@@ -427,6 +430,7 @@ class Run:
         )
 
     def judge_all(self) -> State:
+        self.session.check_cap()
         checked = clients.obj(self.state("judge-check")["payload"])
         outside_records = [r for r in self.records if r["set"] == "outside"]
         tasks = {str(r["id"]): r for r in self.records if r["set"] == "task"}
@@ -509,9 +513,12 @@ class Run:
             result["recognition"] = {
                 name: {
                     "reply": reply.text,
-                    "flagged": recognition.flagged(reply.text, recognition.keys(name)),
+                    "flagged": recognition.flagged(
+                        reply.text, recognition.keys(name, self.records)
+                    ),
                 }
                 for name, reply in zip(fetch.DILEMMAS, replies, strict=True)
+                if reply.text.strip()
             }
         except clients.FamilyUnusable as error:
             result["recognition"] = {}
@@ -550,6 +557,7 @@ class Run:
         return result
 
     def calibrate(self) -> State:
+        self.session.check_cap()
         people, document = self.training()
         tasks = materials.load(self.root / "pilot" / "task-texts.json")
         judged = clients.obj(self.state("judge")["payload"])
@@ -583,6 +591,7 @@ class Run:
         return self.save("calibrate", result)
 
     def held_out(self, registered: str | None) -> State:
+        self.session.check_cap()
         for step in STEPS[:3]:
             if self.state(step)["status"] != "completed":
                 raise clients.StopRun(f"step {step} did not pass its gate")
@@ -665,6 +674,30 @@ class Run:
             },
         )
 
+    def verify_materials(self) -> None:
+        if (
+            rewrites.digest(self.records)
+            != (self.root / "pilot" / "rewrites.sha256").read_text().strip()
+        ):
+            raise clients.StopRun("rewrite digest differs from computed materials")
+        texts = self.root / "pilot" / "task-texts.json"
+        if (
+            digest(texts.read_bytes())
+            != (self.root / "pilot" / "task-texts.sha256").read_text().strip()
+        ):
+            raise clients.StopRun("task-text digest differs from computed materials")
+        people, document = self.training()
+        if cohorts.serialise(document) != (self.root / "prereg" / "cohorts.json").read_bytes():
+            raise clients.StopRun("training data do not regenerate registered cohorts")
+        expected = prompts.fixtures(people, document, materials.load(texts), self.records)
+        found = {
+            path.name: path.read_bytes()
+            for path in (self.root / "prereg" / "requests").iterdir()
+            if path.name != "README.md"
+        }
+        if expected != found:
+            raise clients.StopRun("request fixtures differ from regenerated materials")
+
     def preflight(self) -> None:
         second = self.session.clients.get("second")
         if isinstance(second, clients.VertexClient):
@@ -677,6 +710,8 @@ class Run:
         *,
         repair: str | None = None,
     ) -> list[str]:
+        if not self.synthetic:
+            clean_tree(self.root)
         if dependencies(self.root) != self.deps:
             raise clients.StopRun("registration digests changed during the command sequence")
         self.directory.mkdir(parents=True, exist_ok=True)
@@ -689,6 +724,16 @@ class Run:
                 family: clients.Transcript(transcript.path.parent, family)
                 for family, transcript in self.session.transcripts.items()
             }
+            if step != "report" and self.session.spent > self.session.cap:
+                state = self.save(
+                    step, {}, status="stopped", reason="spending cap reached; no verdict"
+                )
+                return [
+                    self.line(step, "status", state["status"]),
+                    self.line(step, "reason", state["reason"]),
+                ]
+            if not self.synthetic and step != "report":
+                self.verify_materials()
             self.bind(repair)
             if step == "report":
                 return self.report()
@@ -707,7 +752,7 @@ class Run:
                 if state["status"] != "failed":
                     return [
                         self.line(step, "status", state["status"]),
-                        self.line(step, "reason", state["reason"]),
+                        self.line(step, "reason", state["reason"] or "none"),
                     ]
             try:
                 if step != "held-out":
@@ -741,10 +786,20 @@ class Run:
     def report(self) -> list[str]:
         from zoon.pilot.result import render
 
+        if not self.synthetic:
+            clean_tree(self.root)
+        if self.session.spent <= clients.CAP:
+            for step in STEPS[:-1]:
+                if (self.directory / f"{step}.json").exists() and self.state(step)[
+                    "status"
+                ] == "failed":
+                    raise clients.StopRun(f"repeat step {step} before report")
         states: dict[str, State] = {}
         stopped = False
         for step in STEPS[:-1]:
             if stopped:
+                break
+            if not (self.directory / f"{step}.json").exists() and self.session.spent > clients.CAP:
                 break
             states[step] = self.state(step)
             stopped = states[step]["status"] != "completed"

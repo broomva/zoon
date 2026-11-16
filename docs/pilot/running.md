@@ -58,11 +58,15 @@ A second-family failure removes that family's numerical results.
 judge obtains the task ratings, strict features, reversals and recognition replies.
 Recognition runs even if the second family's numerical results are unusable.
 calibrate fits prompted recalibration and all coded arms on training participants.
-held-out checks the earlier gates, registered tag, ancestry, registered files,
-repair coverage and clean work tree before loading records, including on direct calls.
+Every live step requires a clean work tree and regenerates the materials digests,
+request fixtures and cohorts before any question is sent. Report also requires a
+clean work tree. Stub commands accept any work tree.
+held-out checks the earlier gates, registered tag, ancestry, registered files and
+repair coverage before loading records, including on direct calls.
 It is the only step that loads held-out participants.
 report writes docs/pilot/result.md and prints the same labelled lines.
 After a stopped step, run report to record the outcome.
+Report refuses any failed step; repeat that step before reporting.
 Commit the report after inspecting it; the report command does not commit it.
 
 Every step checks registration digests and previous state.
@@ -74,7 +78,11 @@ Decision probabilities are divided by their sum when it is within 0.05 of one.
 Both the returned and used probabilities are retained in the transcript.
 Invalid decision replies are retried; exhaustion fails the step resumably.
 Recognition replies are retained regardless of those numerical gates.
-The spending cap is shared across both families.
+A reply cut off at the token limit is used as it stands. A blocked or empty reply
+leaves recognition not run for that dilemma and does not remove numerical results.
+The spending cap is shared across both families and is recomputed from transcripts.
+It is checked before each step, on every request batch and before retryable failures.
+Report gives no verdict above 150 dollars regardless of the saved step statuses.
 Admission reserves the registered estimate for outstanding requests.
 A request that would exceed 150 dollars is not sent.
 A cap stop gives no verdict.
@@ -106,7 +114,7 @@ A partial final transcript line requires recovery of the last complete durable r
 A service reply lost before it was durably recorded cannot be recovered by this program.
 
 For a synthetic dry run, add --stub to each of the five commands.
-Use the current full commit for --registered-commit and keep the checkout clean.
+Use the current full commit for --registered-commit.
 No environment variables or downloaded data are needed.
 The dry run uses 48 synthetic training participants, eight for calibration and 12 for scoring.
 It uses all 13 rotations and the committed materials.

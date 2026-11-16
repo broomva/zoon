@@ -12,7 +12,7 @@ from zoon.pilot import clients, run
 NEW_COMMIT = "c" * 40
 
 
-def test_code_change_requires_clean_explicit_repair_and_records_history(
+def test_code_change_requires_explicit_repair_and_records_history(
     runner: run.Run, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     runner.execute("judge-check")
@@ -27,7 +27,7 @@ def test_code_change_requires_clean_explicit_repair_and_records_history(
 
     monkeypatch.setattr(run, "git", dirty)
     with pytest.raises(clients.StopRun, match="clean work tree"):
-        restarted.execute("judge", repair="Restore reply handling")
+        run.clean_tree(runner.root)
 
     def clean(root: Path, *args: str) -> str:
         return NEW_COMMIT if args == ("rev-parse", "HEAD") else ""
@@ -117,7 +117,7 @@ def test_registered_guard_requires_tag_ancestry_unchanged_inputs_and_current_rep
 
 def test_report_without_repairs_says_none(runner: run.Run) -> None:
     runner.execute("judge-check")
-    runner.save("judge", {}, status="failed", reason="interrupted")
+    runner.save("judge", {}, status="stopped", reason="terminal stop")
     lines = runner.execute("report")
     assert "[stub Repairs] history = none" in lines
     assert f"[stub run] registered commit = {COMMIT}" in lines
