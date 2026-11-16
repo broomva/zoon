@@ -85,6 +85,8 @@ Decision probabilities are divided by their sum when it is within 0.05 of one.
 Both the returned and used probabilities are retained in the transcript.
 Invalid decision replies are retried; exhaustion fails the step resumably.
 Recognition replies are retained regardless of those numerical gates.
+If withdrawal or a version change is detected during recognition,
+the second family's numerical results are withheld; replies already recorded remain in the report.
 A reply cut off at the token limit is used as it stands. A blocked or empty reply
 is listed as having no reply and does not remove numerical results. A recognition reply
 is flagged whenever it contains a registered key, even if it also says unknown.
@@ -117,10 +119,13 @@ Each transcript entry is keyed by the canonical request's SHA-256.
 If interrupted, repeat the same command. Completed requests are read from the transcript.
 Completed and stopped calling steps return their recorded status after the guard passes,
 without overwriting state. Report is regenerated after its guard passes and still gives
-no verdict above the session's cap.
+no verdict above the session's cap. A live report writes docs/pilot/result.md and makes
+the work tree dirty. Commit or remove that file before running report again.
 Transient request failures receive four attempts with delays of one, two and four seconds.
 An exhausted transport fault in either family records a failed step.
 Local transport errors, timeouts, 5xx, 429, 404 and 410 responses are retried.
+Other 4xx responses and bodies that are not JSON are also retried, except for the
+authentication failures described above; exhaustion interrupts the step.
 A model is withdrawn only if 404 or 410 is returned on every attempt at one request.
 A mix of missing-model and other retryable faults interrupts the step after exhaustion.
 An exhausted decision reply fault also records a failed step.
@@ -180,7 +185,9 @@ so running a step again cannot change an answer. A terminal stop wins over a ret
 failure in the same request window; among terminal outcomes the cap comes first.
 Spending counts the tokens in recorded responses; discarded unreadable replies and the
 six unrelated connection-test requests are not counted.
+An empty transcript file needs no recovery; repeat the command.
 A partial final transcript line requires recovery of the last complete durable record.
+For a truncated state file, restore its last complete durable copy before repeating the command.
 A service reply lost before it was durably recorded cannot be recovered by this program.
 
 For a synthetic dry run, add --stub to each of the five commands.
