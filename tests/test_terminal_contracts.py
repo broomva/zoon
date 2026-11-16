@@ -126,21 +126,6 @@ def test_decision_availability_names_terminal_fault(runner: run.Run, reason: str
     assert f"[stub family] decision availability = {reason}" in runner.execute("report")
 
 
-@pytest.mark.parametrize("step", run.STEPS)
-def test_live_commands_refuse_dirty_tracked_tree(
-    runner: run.Run, monkeypatch: pytest.MonkeyPatch, step: str
-) -> None:
-    runner.synthetic = False
-
-    def dirty(root: Path, *args: str) -> str:
-        return " M tracked" if args[0] == "status" else COMMIT
-
-    monkeypatch.setattr(run, "git", dirty)
-    with pytest.raises(clients.StopRun, match="clean work tree"):
-        runner.execute(step, COMMIT)
-    assert not runner.session.transcripts["decision"].entries
-
-
 def test_completed_step_reason_matches_first_execution(runner: run.Run) -> None:
     assert runner.execute("judge-check") == runner.execute("judge-check")
 
@@ -151,6 +136,11 @@ def test_live_material_guards_precede_any_request(
     runner: run.Run, monkeypatch: pytest.MonkeyPatch, step: str, fault: str
 ) -> None:
     runner.synthetic = False
+
+    def guarded(*args: object) -> None:
+        pass
+
+    monkeypatch.setattr(runner, "guard", guarded)
     people = run.stub.people(48, 41)
     document = cohorts.generate(people, calibration_size=8)
     monkeypatch.setattr(runner, "training", lambda: (people, document))
@@ -232,6 +222,10 @@ def test_stub_repair_accepts_dirty_tree(runner: run.Run, monkeypatch: pytest.Mon
 def test_live_material_guards_accept_regenerated_inputs(
     runner: run.Run, monkeypatch: pytest.MonkeyPatch, step: str
 ) -> None:
+    def guarded(*args: object) -> None:
+        pass
+
+    monkeypatch.setattr(runner, "guard", guarded)
     people = run.stub.people(48, 41)
     document = cohorts.generate(people, calibration_size=8)
     monkeypatch.setattr(runner, "training", lambda: (people, document))
@@ -264,3 +258,44 @@ def test_live_material_guards_accept_regenerated_inputs(
     runner.synthetic = False
     assert "completed" in runner.execute(step, COMMIT)[0]
     assert not runner.session.transcripts["decision"].entries
+
+
+@pytest.mark.parametrize("step", run.STEPS[:4])
+def test_small_session_cap_stops_before_any_step_work(
+    runner: run.Run, step: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from decimal import Decimal
+
+    runner.session.cap = Decimal("0.001")
+    runner.session.transcripts["second"].append(
+        REQUEST, replace(response("second"), input_tokens=36000, output_tokens=0)
+    )
+    assert runner.session.spent == Decimal("0.0036")
+
+    def forbidden() -> None:
+        raise AssertionError("work started above the cap")
+
+    monkeypatch.setattr(runner, "preflight", forbidden)
+    assert "stopped" in runner.execute(step, COMMIT)[0]
+    assert "cap reached" in runner.execute("report")[0]
+
+
+def test_small_session_cap_overrides_completed_and_failed_state(runner: run.Run) -> None:
+    from decimal import Decimal
+
+    states = finish(runner)
+    runner.session.cap = Decimal("0.001")
+    assert "no verdict: spending cap reached" in result.render(runner, states)[0]
+    assert "no verdict: spending cap reached" in runner.execute("report")[0]
+    runner.save("judge-check", {}, status="failed", reason="interrupted")
+    assert "no verdict: spending cap reached" in runner.execute("report")[0]
+
+
+def test_small_session_cap_report_without_any_saved_step(runner: run.Run) -> None:
+    from decimal import Decimal
+
+    runner.session.cap = Decimal("0.001")
+    runner.session.transcripts["second"].append(
+        REQUEST, replace(response("second"), input_tokens=36000, output_tokens=0)
+    )
+    assert "no verdict: spending cap reached" in runner.execute("report")[0]

@@ -49,29 +49,13 @@ def digest(value: bytes) -> str:
 
 
 def dependencies(root: Path) -> dict[str, str]:
-    paths = [
-        root / "prereg" / "h1.md",
-        root / "prereg" / "cohorts.json",
-        root / "pilot" / "task-texts.json",
-        root / "pilot" / "task-texts.sha256",
-        root / "pilot" / "rewrites.sha256",
-    ]
-    paths += sorted((root / "prereg" / "requests").glob("*"))
-    paths += sorted((root / "pilot" / "rewrites").glob("*.json"))
-    paths += sorted((root / "src" / "zoon" / "pilot").glob("*.py"))
-    paths += sorted((root / "src" / "zoon" / "pilot").glob("*.csv"))
-    paths += [
-        root / name
-        for name in (
-            "pyproject.toml",
-            "uv.lock",
-            "data-manifest.json",
-            "data-manifest-outside.json",
-            "data-manifest-materials.json",
-        )
-    ]
-    if any(not p.is_file() for p in paths):
-        raise clients.StopRun("registration dependency missing")
+    paths = sorted(
+        p
+        for folder in ("src", "prereg", "pilot")
+        for p in (root / folder).rglob("*")
+        if p.is_file() and "__pycache__" not in p.parts and p.suffix != ".pyc"
+    )
+    paths += [root / "pyproject.toml", root / "uv.lock", *sorted(root.glob("data-manifest*.json"))]
     return {str(p.relative_to(root)): digest(p.read_bytes()) for p in paths}
 
 
@@ -105,63 +89,31 @@ def split_dependencies(deps: dict[str, str]) -> tuple[dict[str, str], dict[str, 
         name: value
         for name, value in deps.items()
         if name.startswith(("prereg/", "pilot/", "data-manifest"))
+        or (name.startswith("src/") and name.endswith(".csv"))
     }
     return registered, {name: value for name, value in deps.items() if name not in registered}
 
 
-def clean_tree(root: Path) -> None:
-    if git(root, "status", "--porcelain", "--untracked-files=normal"):
-        raise clients.StopRun("requires a clean work tree")
+def tree(root: Path, commit: str) -> dict[str, str]:
+    entries = git(root, "ls-tree", "-r", commit).splitlines()
+    return {
+        name: metadata.split()[2]
+        for line in entries
+        for metadata, name in [line.split("\t", 1)]
+        if name.startswith(("src/", "prereg/", "pilot/"))
+        or name in ("pyproject.toml", "uv.lock")
+        or (name.startswith("data-manifest") and name.endswith(".json") and "/" not in name)
+    }
 
 
-def registration_guard(
-    root: Path,
-    registered: str | None,
-    *,
-    synthetic: bool = False,
-    binding: State | None = None,
-) -> str:
-    current = git(root, "rev-parse", "HEAD")
-    if not registered:
-        raise clients.StopRun("--registered-commit must match the registered tag")
-    if not synthetic:
-        clean_tree(root)
-    if synthetic:
-        if registered != current:
-            raise clients.StopRun(
-                "--registered-commit must match the current full commit for a stub run"
-            )
-        return registered
-    try:
-        tagged = git(root, "rev-parse", "refs/tags/registered^{commit}")
-    except clients.StopRun:
-        raise clients.StopRun("registered tag is required") from None
-    if registered != tagged:
-        raise clients.StopRun("--registered-commit must match the registered tag")
-    try:
-        git(root, "merge-base", "--is-ancestor", registered, "HEAD")
-    except clients.StopRun:
-        raise clients.StopRun("registered commit must be an ancestor of HEAD") from None
-    _, code_files = split_dependencies(dependencies(root))
-    fixed_inputs = (
-        "prereg/h1.md",
-        "prereg/cohorts.json",
-        "prereg/requests",
-        "pilot/rewrites",
-        "pilot/rewrites.sha256",
-        "pilot/task-texts.json",
-        "pilot/task-texts.sha256",
-        "data-manifest.json",
-        "data-manifest-outside.json",
-        "data-manifest-materials.json",
-    )
-    if git(root, "diff", "--name-only", registered, "HEAD", "--", *fixed_inputs):
-        raise clients.StopRun("registered files differ from the registered commit")
-    if current != registered and (
-        binding is None or not binding.get("repairs") or binding.get("code") != code_files
-    ):
-        raise clients.StopRun("current code requires a recorded repair")
-    return registered
+def blob(root: Path, object_id: str) -> bytes:
+    return subprocess.run(
+        ["git", "cat-file", "blob", object_id], cwd=root, capture_output=True, check=True
+    ).stdout
+
+
+def changed_files(root: Path, registered: str, current: str) -> list[str]:
+    return git(root, "diff", "--name-only", registered, current).splitlines()
 
 
 def floats(value: object) -> models.Floats:
@@ -256,64 +208,84 @@ class Run:
         path = self.directory / "binding.json"
         if path.exists():
             return clients.obj(json.loads(path.read_text()))
-        deps = self.deps
-        for step in STEPS:
-            state_path = self.directory / f"{step}.json"
-            if state_path.exists():
-                deps = cast(
-                    dict[str, str], clients.obj(json.loads(state_path.read_text()))["dependencies"]
-                )
-                break
-        registered, code = split_dependencies(deps)
-        return {"registered": registered, "code": code, "repairs": []}
+        return {"repairs": []}
 
-    def bind(self, repair: str | None) -> None:
-        binding = self.binding()
-        registered, code = split_dependencies(self.deps)
-        if binding["registered"] != registered:
-            raise clients.StopRun("registered file digests changed; continuation refused")
-        if binding["code"] != code:
-            if not repair or not repair.strip():
-                raise clients.StopRun("code digests changed; --repair requires a reason")
-            if not self.synthetic:
-                clean_tree(self.root)
-            previous = clients.obj(binding["code"])
-            changed = sorted(
-                name for name in set(previous) | set(code) if previous.get(name) != code.get(name)
-            )
+    def guard(self, step: str, registered: str | None, repair: str | None) -> None:
+        self.session.transcripts = {
+            family: clients.Transcript(transcript.path.parent, family)
+            for family, transcript in self.session.transcripts.items()
+        }
+        if not self.synthetic:
+            try:
+                tagged = git(self.root, "rev-parse", "refs/tags/registered^{commit}")
+            except clients.StopRun:
+                raise clients.StopRun("registered tag is required") from None
+            if step == "held-out" and registered != tagged:
+                raise clients.StopRun("--registered-commit must match the registered tag")
+            try:
+                git(self.root, "merge-base", "--is-ancestor", tagged, "HEAD")
+            except clients.StopRun:
+                raise clients.StopRun("registered commit must be an ancestor of HEAD") from None
+            original = tree(self.root, tagged)
+            head = tree(self.root, "HEAD")
+            names = original.keys() | head.keys()
+            current = {
+                name: digest((self.root / name).read_bytes())
+                if (self.root / name).is_file()
+                else "deleted"
+                for name in names
+            }
+            difference = {
+                name: value
+                for name, value in current.items()
+                if name not in original
+                or name not in head
+                or digest(blob(self.root, original[name])) != value
+            }
+            fixed, code = split_dependencies(difference)
+            if fixed:
+                raise clients.StopRun(
+                    "registered files differ from the registered commit: "
+                    + ", ".join(sorted(fixed))
+                )
+            if git(self.root, "status", "--porcelain", "--untracked-files=no"):
+                raise clients.StopRun("requires a clean work tree")
+            binding = self.binding()
             repairs = clients.items(binding["repairs"])
-            repairs.append(
-                {
-                    "reason": repair,
-                    "commit": git(self.root, "rev-parse", "HEAD"),
-                    "files": changed,
-                    "before": previous,
-                    "code": code,
-                }
+            if code and not any(clients.obj(r).get("code") == code for r in repairs):
+                if not repair or not repair.strip():
+                    raise clients.StopRun(
+                        "code requires --repair with a reason: " + ", ".join(sorted(code))
+                    )
+                repairs.append(
+                    {
+                        "reason": repair,
+                        "commit": git(self.root, "rev-parse", "HEAD"),
+                        "files": sorted(code),
+                        "code": code,
+                    }
+                )
+                self.directory.mkdir(parents=True, exist_ok=True)
+                temporary = self.directory / "binding.tmp"
+                temporary.write_bytes(encoded(binding))
+                temporary.replace(self.directory / "binding.json")
+            self.deps = current
+        elif step == "held-out" and registered != git(self.root, "rev-parse", "HEAD"):
+            raise clients.StopRun(
+                "--registered-commit must match the current full commit for a stub run"
             )
-            binding["code"] = code
-        self.directory.mkdir(parents=True, exist_ok=True)
-        temporary = self.directory / "binding.tmp"
-        temporary.write_bytes(encoded(binding))
-        temporary.replace(self.directory / "binding.json")
+        if self.session.spent > self.session.cap and step != "report":
+            raise clients.StopRun("spending cap reached; no verdict")
 
     def state(self, step: str) -> State:
         path = self.directory / f"{step}.json"
         if not path.exists():
             raise clients.StopRun(f"step {step} has not completed")
         state = clients.obj(json.loads(path.read_text()))
-        registered, code = split_dependencies(cast(dict[str, str], state["dependencies"]))
-        current_registered, current_code = split_dependencies(self.deps)
-        binding = self.binding()
-        accepted = [
-            binding["code"],
-            *[clients.obj(r)["before"] for r in clients.items(binding["repairs"])],
-        ]
         if (
-            registered != current_registered
+            split_dependencies(cast(dict[str, str], state["dependencies"]))[0]
+            != split_dependencies(self.deps)[0]
             or state["mode"] != self.mode
-            or binding["code"] != current_code
-            or code not in accepted
         ):
             raise clients.StopRun("registration digests changed; previous state cannot be used")
         for earlier, expected in clients.obj(state["previous"]).items():
@@ -392,7 +364,6 @@ class Run:
         return self.session.ask_many(family, requests, recognition=recognition_only)
 
     def judge_check(self) -> State:
-        self.session.check_cap()
         records = [r for r in self.records if r["set"] == "outside"]
         if self.synthetic:
             means = judge.human_ratings()
@@ -430,7 +401,6 @@ class Run:
         )
 
     def judge_all(self) -> State:
-        self.session.check_cap()
         checked = clients.obj(self.state("judge-check")["payload"])
         outside_records = [r for r in self.records if r["set"] == "outside"]
         tasks = {str(r["id"]): r for r in self.records if r["set"] == "task"}
@@ -557,7 +527,6 @@ class Run:
         return result
 
     def calibrate(self) -> State:
-        self.session.check_cap()
         people, document = self.training()
         tasks = materials.load(self.root / "pilot" / "task-texts.json")
         judged = clients.obj(self.state("judge")["payload"])
@@ -591,7 +560,6 @@ class Run:
         return self.save("calibrate", result)
 
     def held_out(self, registered: str | None) -> State:
-        self.session.check_cap()
         for step in STEPS[:3]:
             if self.state(step)["status"] != "completed":
                 raise clients.StopRun(f"step {step} did not pass its gate")
@@ -599,9 +567,7 @@ class Run:
         if "decision" not in checked or not clients.obj(checked["decision"])["passed"]:
             raise clients.StopRun("the judge could not be calibrated")
         self.session.check_family("decision")
-        commit = registration_guard(
-            self.root, registered, synthetic=self.synthetic, binding=self.binding()
-        )
+        commit = registered
         self.preflight()
         calibrated = clients.obj(self.state("calibrate")["payload"])
         if not self.synthetic:
@@ -710,31 +676,24 @@ class Run:
         *,
         repair: str | None = None,
     ) -> list[str]:
-        if not self.synthetic:
-            clean_tree(self.root)
-        if dependencies(self.root) != self.deps:
-            raise clients.StopRun("registration digests changed during the command sequence")
         self.directory.mkdir(parents=True, exist_ok=True)
         with (self.directory / "execution.lock").open("w") as lock:
             try:
                 fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError:
                 raise clients.StopRun("another command is using this run") from None
-            self.session.transcripts = {
-                family: clients.Transcript(transcript.path.parent, family)
-                for family, transcript in self.session.transcripts.items()
-            }
-            if step != "report" and self.session.spent > self.session.cap:
-                state = self.save(
-                    step, {}, status="stopped", reason="spending cap reached; no verdict"
-                )
+            try:
+                self.guard(step, registered, repair)
+            except clients.StopRun as error:
+                if str(error) != "spending cap reached; no verdict":
+                    raise
+                state = self.save(step, {}, status="stopped", reason=str(error))
                 return [
                     self.line(step, "status", state["status"]),
                     self.line(step, "reason", state["reason"]),
                 ]
             if not self.synthetic and step != "report":
                 self.verify_materials()
-            self.bind(repair)
             if step == "report":
                 return self.report()
             for earlier in STEPS[: STEPS.index(step)]:
@@ -743,9 +702,6 @@ class Run:
                     raise clients.StopRun(f"step {earlier} did not pass its gate")
             if step == "held-out":
                 self.session.check_family("decision")
-                registration_guard(
-                    self.root, registered, synthetic=self.synthetic, binding=self.binding()
-                )
             path = self.directory / f"{step}.json"
             if path.exists():
                 state = self.state(step)
@@ -786,9 +742,7 @@ class Run:
     def report(self) -> list[str]:
         from zoon.pilot.result import render
 
-        if not self.synthetic:
-            clean_tree(self.root)
-        if self.session.spent <= clients.CAP:
+        if self.session.spent <= self.session.cap:
             for step in STEPS[:-1]:
                 if (self.directory / f"{step}.json").exists() and self.state(step)[
                     "status"
@@ -799,7 +753,10 @@ class Run:
         for step in STEPS[:-1]:
             if stopped:
                 break
-            if not (self.directory / f"{step}.json").exists() and self.session.spent > clients.CAP:
+            if (
+                not (self.directory / f"{step}.json").exists()
+                and self.session.spent > self.session.cap
+            ):
                 break
             states[step] = self.state(step)
             stopped = states[step]["status"] != "completed"

@@ -714,5 +714,4 @@ class Session:
             start += len(window)
         if not recognition:
             self.check_family(family)
-        self.check_cap()
         return [transcript.entries[request_key(r)].response for r in requests]

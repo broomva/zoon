@@ -195,23 +195,6 @@ def test_cap_reached_reports_no_verdict(runner: run.Run) -> None:
     assert runner.session.spent == 0
 
 
-def test_registered_commit_and_clean_tree_guard(
-    runner: run.Run, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    with pytest.raises(clients.StopRun, match="must match"):
-        run.registration_guard(runner.root, None)
-    with pytest.raises(clients.StopRun, match="must match"):
-        run.registration_guard(runner.root, "a" * 40)
-    assert run.registration_guard(runner.root, COMMIT) == COMMIT
-
-    def dirty_git(root: Path, *args: str) -> str:
-        return COMMIT if args == ("rev-parse", "HEAD") else " M changed"
-
-    monkeypatch.setattr(run, "git", dirty_git)
-    with pytest.raises(clients.StopRun, match="clean work tree"):
-        run.registration_guard(runner.root, COMMIT)
-
-
 def test_real_held_out_loader_only_on_synthetic_raw_files(tmp_path: Path) -> None:
     intended = write_raw(tmp_path, 40)
     table = fetch.load_registered_held_out(tmp_path)
@@ -423,11 +406,7 @@ def test_direct_held_out_checks_stopped_prerequisite_before_loader(
     def verified(*args: object) -> None:
         pass
 
-    def registered(*args: object, **kwargs: object) -> str:
-        return COMMIT
-
     monkeypatch.setattr(run, "verify_data", verified)
-    monkeypatch.setattr(run, "registration_guard", registered)
     with pytest.raises(clients.StopRun, match="calibrate did not pass"):
         runner.held_out(COMMIT)
 

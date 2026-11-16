@@ -652,3 +652,16 @@ def test_changed_decision_version_is_recorded_before_terminal_stop(tmp_path: Pat
     assert (recorded.input_tokens, recorded.output_tokens) == (2, 0)
     with pytest.raises(clients.StopRun, match="version changed"):
         clients.Session(tmp_path, []).ask_many("decision", [REQUEST])
+
+
+def test_recorded_cost_is_checked_after_final_window_before_retryable_failure(
+    tmp_path: Path,
+) -> None:
+    class Expensive(clients.StubClient):
+        def ask(self, request: clients.Request) -> clients.Response:
+            return replace(super().ask(request), input_tokens=100000, output_tokens=0)
+
+    session = clients.Session(tmp_path, [Expensive("decision")], cap=Decimal("0.003"))
+    with pytest.raises(clients.StopRun, match="cap reached"):
+        session.ask_many("decision", [REQUEST])
+    assert session.spent == Decimal("0.0042")

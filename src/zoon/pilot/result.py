@@ -56,7 +56,7 @@ def render(run: "Run", states: "dict[str, State]") -> list[str]:
             unavailable[family] = str(error)
     if "second" in unavailable:
         logs = {name: value for name, value in logs.items() if not name.startswith("second/")}
-    cap_exceeded = run.session.spent > clients.CAP
+    cap_exceeded = run.session.spent > run.session.cap
     if cap_exceeded:
         completed = False
         add("verdict", "outcome", "no verdict: spending cap reached; no verdict")
@@ -401,7 +401,7 @@ def render(run: "Run", states: "dict[str, State]") -> list[str]:
             family,
             ", ".join(sorted({e.response.version for e in transcript.entries.values()})) or "none",
         )
-    from zoon.pilot.run import git
+    from zoon.pilot.run import changed_files, git
 
     registered = payload.get("registered_commit")
     if not registered:
@@ -422,6 +422,12 @@ def render(run: "Run", states: "dict[str, State]") -> list[str]:
         repair = clients.obj(raw)
         add(
             "Repairs", str(index), json_reply({k: repair[k] for k in ("reason", "commit", "files")})
+        )
+    if not run.synthetic:
+        add(
+            "Repairs",
+            "difference from registered",
+            changed_files(run.root, str(registered), "HEAD"),
         )
     return lines
 
