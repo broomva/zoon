@@ -137,7 +137,7 @@ def test_changed_transcript_and_previous_state_refuse(runner: run.Run) -> None:
     runner.execute("judge-check")
     path = runner.session.transcripts["decision"].path
     rows = [json.loads(line) for line in path.read_text().splitlines()]
-    rows[0]["response"]["input_tokens"] = 50
+    rows[1]["response"]["input_tokens"] = 50
     path.write_text("".join(json.dumps(row) + "\n" for row in rows))
     with pytest.raises(clients.GuardRefusal, match="checkpoint changed"):
         runner.execute("judge")
@@ -269,8 +269,10 @@ def test_manifest_is_checked_without_loading_records(tmp_path: Path) -> None:
 
 def test_changed_step_output_refuses(runner: run.Run) -> None:
     runner.execute("judge-check")
-    path = runner.directory / "judge-check-values.json"
-    path.write_bytes(path.read_bytes() + b"\n")
+    path = runner.directory / "judge-check.json"
+    state = json.loads(path.read_text())
+    state["payload"]["changed"] = True
+    path.write_bytes(run.encoded(state))
     with pytest.raises(clients.GuardRefusal, match="output digest"):
         runner.execute("judge")
 

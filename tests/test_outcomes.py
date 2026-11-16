@@ -66,7 +66,7 @@ def test_closed_outcomes_reject_unregistered_reasons(outcome: type[Exception]) -
 
 
 @pytest.mark.parametrize("status", ["completed", "stopped"])
-def test_recorded_outcome_precedes_any_guard_or_new_cap(
+def test_recorded_outcome_still_requires_guard(
     runner: run.Run, monkeypatch: pytest.MonkeyPatch, status: str
 ) -> None:
     runner.save("judge-check", {}, status=status)
@@ -77,7 +77,8 @@ def test_recorded_outcome_precedes_any_guard_or_new_cap(
 
     monkeypatch.setattr(runner, "guard", refuse)
     runner.session.cap = Decimal("-1")
-    assert status in runner.execute("judge-check")[0]
+    with pytest.raises(clients.GuardRefusal, match="changed inputs"):
+        runner.execute("judge-check")
     assert (runner.directory / "judge-check.json").read_bytes() == before
 
 
@@ -159,3 +160,58 @@ def test_outcome_types_are_unrelated() -> None:
         clients.TerminalStop,
     ):
         assert outcome.__bases__ == (Exception,)
+
+
+@pytest.mark.parametrize(
+    "family,recognition", [("decision", False), ("second", False), ("second", True)]
+)
+def test_cap_admission_uses_each_unequal_estimate(
+    tmp_path: Path, family: clients.Family, recognition: bool
+) -> None:
+    # Select three canonical keys in order with a small first estimate and larger next ones.
+    candidates: list[clients.Request] = [
+        ("recognition " + str(i) + " " + "x" * length)
+        if recognition
+        else replace(REQUEST, state=str(i) + " " + "x" * length)
+        for length in (1, 3000, 6000)
+        for i in range(20)
+    ]
+    ordered = sorted(candidates, key=lambda r: clients.key(clients.wire(r, family)))
+    first = next(
+        r
+        for r in ordered
+        if clients.estimate(family, r) == min(clients.estimate(family, c) for c in candidates)
+    )
+    later = [
+        r
+        for r in ordered[ordered.index(first) + 1 :]
+        if clients.estimate(family, r) > 3 * clients.estimate(family, first)
+    ]
+    assert len(later) >= 2
+    requests = [first, *later[:2]]
+    estimates = [clients.estimate(family, r) for r in requests]
+    assert estimates[0] < estimates[1] and estimates[0] < estimates[2]
+    called: list[str] = []
+
+    class Metered(clients.StubClient):
+        def ask(self, request: clients.Request) -> clients.Response:
+            called.append(clients.key(clients.wire(request, family)))
+            return replace(
+                super().ask(request),
+                input_tokens=clients.budget.input_tokens(clients.wire(request, family), family),
+                output_tokens=40 if recognition else 1,
+            )
+
+    session = clients.Session(tmp_path, [Metered(family)], workers=1)
+    # Existing spending includes both families and a recognition request.
+    session.transcripts["decision"].append(REQUEST, clients.StubClient("decision").ask(REQUEST))
+    session.transcripts["second"].append(
+        "earlier recognition",
+        clients.Response({}, None, "unknown", clients.prices.SECOND.model, 100, 40),
+    )
+    before = session.spent
+    session.cap = before + estimates[0] + estimates[1]
+    with pytest.raises(clients.TerminalStop, match="cap reached"):
+        session.ask_many(family, requests, recognition=recognition)
+    assert called == [clients.key(clients.wire(r, family)) for r in requests[:2]]
+    assert session.spent == session.cap

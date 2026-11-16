@@ -194,7 +194,11 @@ class Run:
             else [clients.DecisionClient(), clients.VertexClient()]
         )
         self.session = clients.Session(
-            root / "data" / "transcripts" / self.mode, available, workers, cap
+            root / "data" / "transcripts" / self.mode,
+            available,
+            workers,
+            cap,
+            identity={"registered_commit": self.registered_commit, "mode": self.mode},
         )
 
     def line(self, tag: str, key: str, value: object) -> str:
@@ -424,6 +428,8 @@ class Run:
                     "reason": "" if check.passed else reason,
                 }
             except clients.FamilyUnusable as error:
+                if family != "second":
+                    raise clients.StepFailure("unexpected decision-family exclusion") from None
                 result[family] = {"correlation": None, "passed": False, "reason": str(error)}
         if not clients.obj(result["decision"])["passed"]:
             raise clients.TerminalStop(clients.StopReason.CALIBRATION, payload=result)
@@ -502,6 +508,8 @@ class Run:
                     "norm_correlation_strict": judge.correlation(raw, judge.norm_ratings(means)),
                 }
             except clients.FamilyUnusable as error:
+                if family != "second":
+                    raise clients.StepFailure("unexpected decision-family exclusion") from None
                 result[family] = {"usable": False, "reason": str(error)}
         with suppress(clients.FamilyUnusable):
             self.request(
@@ -585,6 +593,8 @@ class Run:
                 for kind in ("evaluative", "strict"):
                     ratings[f"{family}/zoon-{kind}"] = floats(judged_family[kind])
             except clients.FamilyUnusable as error:
+                if family != "second":
+                    raise clients.StepFailure("unexpected decision-family exclusion") from None
                 result[family] = {"usable": False, "reason": str(error)}
         result["rotations"] = fit_document(arms.fit_rotations(arms.sequences(people), ratings))
         return self.save("calibrate", result)
@@ -638,6 +648,8 @@ class Run:
                 predicted[f"{family}/prompted"] = probabilities
                 self.session.check_family(family)
             except clients.FamilyUnusable as error:
+                if family != "second":
+                    raise clients.StepFailure("unexpected decision-family exclusion") from None
                 unavailable[family] = str(error)
         logs: State = {}
         for name, probabilities in predicted.items():
@@ -713,7 +725,8 @@ class Run:
             except BlockingIOError:
                 raise clients.GuardRefusal("another command is using this run") from None
             self.session.transcripts = {
-                f: clients.Transcript(t.path.parent, f) for f, t in self.session.transcripts.items()
+                f: clients.Transcript(t.path.parent, f, t.identity)
+                for f, t in self.session.transcripts.items()
             }
             self.guard(step, registered, repair)
             try:

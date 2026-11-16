@@ -41,11 +41,21 @@ def test_held_out_record_fault_is_terminal(
     # Use only these synthetic files, with the normal execution boundary.
     monkeypatch.undo()
     loader = fetch.load_registered_held_out
-    monkeypatch.setattr(run, "git", lambda *args: COMMIT)
-    monkeypatch.setattr(run, "changed_files", lambda *args: [])
+
+    def git(*args: object) -> str:
+        return COMMIT
+
+    def changed(*args: object) -> list[str]:
+        return []
+
+    def guarded(*args: object) -> None:
+        pass
+
+    monkeypatch.setattr(run, "git", git)
+    monkeypatch.setattr(run, "changed_files", changed)
     for step in run.STEPS[:3]:
         runner.save(step, {})
-    monkeypatch.setattr(runner, "guard", lambda *args: None)
+    monkeypatch.setattr(runner, "guard", guarded)
     monkeypatch.setattr(fetch, "load_registered_held_out", loader)
     runner.synthetic = False
     assert "stopped" in runner.execute("held-out", COMMIT)[0]

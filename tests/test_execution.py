@@ -141,3 +141,26 @@ def test_refused_own_checkpoint_cannot_record_repair(live: run.Run) -> None:
     with pytest.raises(clients.GuardRefusal):
         live.execute("judge-check", repair="Correct request handling")
     assert live.binding()["repairs"] == []
+
+
+@pytest.mark.parametrize("field", ["registered_commit", "mode"])
+def test_transcript_stamp_prevents_reuse(runner: run.Run, field: str) -> None:
+    runner.session.ask_many("decision", [REQUEST])
+    path = runner.session.transcripts["decision"].path
+    rows = [json.loads(line) for line in path.read_text().splitlines()]
+    assert rows[0] == {"registered_commit": runner.registered_commit, "mode": runner.mode}
+    rows[0][field] = "different"
+    path.write_text("".join(json.dumps(row) + "\n" for row in rows))
+    with pytest.raises(clients.GuardRefusal, match="identity"):
+        runner.execute("judge-check")
+
+
+def test_live_state_rejects_copied_stub_state(live: run.Run) -> None:
+    synthetic = run.Run(live.root, synthetic=True)
+    synthetic.save("judge-check", {})
+    live.directory.mkdir(parents=True)
+    (live.directory / "judge-check.json").write_bytes(
+        (synthetic.directory / "judge-check.json").read_bytes()
+    )
+    with pytest.raises(clients.GuardRefusal, match="step or mode"):
+        live.state("judge-check")

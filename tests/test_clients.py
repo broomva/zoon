@@ -292,7 +292,7 @@ def test_permanent_http_errors_are_bounded_and_redacted(
 
     with pytest.raises(exception) as error:
         clients.VertexClient(lambda: "token-marker", transport).ask(REQUEST)
-    assert len(calls) == (4 if status == 400 else 1)
+    assert len(calls) == (1 if status == 403 else 4)
     assert "marker" not in str(error.value)
 
 
@@ -321,9 +321,10 @@ def test_corrupt_and_partial_transcripts_refuse(tmp_path: Path) -> None:
     path.unlink()
     transcript = clients.Transcript(tmp_path, "decision")
     transcript.append(REQUEST, response())
-    row = json.loads(path.read_text())
+    header, line = path.read_text().splitlines()
+    row = json.loads(line)
     row["key"] = "wrong"
-    path.write_text(json.dumps(row) + "\n")
+    path.write_text(header + "\n" + json.dumps(row) + "\n")
     with pytest.raises(clients.GuardRefusal, match="invalid"):
         clients.Transcript(tmp_path, "decision")
 
@@ -339,7 +340,7 @@ def test_private_metadata_in_reply_is_never_transcribed(
         return 200, shape
 
     session = clients.Session(tmp_path, [clients.VertexClient(lambda: "token-marker", transport)])
-    with pytest.raises(clients.FamilyUnusable, match="connection metadata"):
+    with pytest.raises(clients.StepFailure, match="connection metadata"):
         session.ask_many("second", ["recognition"], recognition=True)
     assert not session.transcripts["second"].path.exists()
 
@@ -437,7 +438,7 @@ def test_rounded_decision_probabilities_keep_returned_values(tmp_path: Path, tot
     session = clients.Session(tmp_path, [clients.DecisionClient(cast(clients.DecisionSDK, SDK()))])
     actual = session.ask_many("decision", [REQUEST])[0]
     assert actual.probabilities == {"Yes": 0.5, "No": 0.5}
-    row = json.loads(session.transcripts["decision"].path.read_text())
+    row = json.loads(session.transcripts["decision"].path.read_text().splitlines()[1])
     assert row["response"]["returned_probabilities"] == raw
     replay = clients.Transcript(tmp_path, "decision")
     assert replay.entries[clients.key(REQUEST)].response == actual
@@ -556,7 +557,7 @@ def test_second_service_faults_are_isolated_or_operator_faults(
     )
     with pytest.raises(expected) as error:
         clients.VertexClient(lambda: "fixture-token", transport).ask(REQUEST)
-    assert len(attempts) == (2 if status == 401 else 1 if status in (403, 404, 410) else 4)
+    assert len(attempts) == (2 if status == 401 else 1 if status == 403 else 4)
     if status in (401, 403):
         assert str(error.value) == "ZOON_VERTEX_PROJECT"
 

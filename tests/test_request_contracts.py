@@ -35,7 +35,7 @@ def test_probability_system_is_rendered_hashed_budgeted_and_sent(
     )
     session = clients.Session(tmp_path, [clients.VertexClient(lambda: "fixture-token", transport)])
     session.ask_many("second", [REQUEST])
-    row = json.loads(session.transcripts["second"].path.read_text())
+    row = json.loads(session.transcripts["second"].path.read_text().splitlines()[1])
     assert row["request"] == asdict(request)
     assert row["key"] == clients.key(request)
     assert clients.key(replace(request, system="changed")) != row["key"]

@@ -1,5 +1,6 @@
 """Request failures, unreadable replies and withdrawal have distinct outcomes."""
 
+import json
 from collections.abc import Callable
 from pathlib import Path
 from types import SimpleNamespace
@@ -12,10 +13,22 @@ from tests.test_run import runner as runner
 from zoon.pilot import clients, prices, run
 
 
+def valid_transport(*args: object) -> tuple[int, dict[str, object]]:
+    return 200, vertex_shape()
+
+
+def empty_transport(*args: object) -> tuple[int, dict[str, object]]:
+    return 200, {"candidates": []}
+
+
 @pytest.fixture
 def fast(monkeypatch: pytest.MonkeyPatch) -> None:
     original = clients.retry
-    monkeypatch.setattr(clients, "retry", lambda call: original(call, pause=lambda delay: None))
+
+    def retry(call: Callable[[], clients.Response]) -> clients.Response:
+        return original(call, pause=lambda delay: None)
+
+    monkeypatch.setattr(clients, "retry", retry)
     monkeypatch.setenv("ZOON_VERTEX_PROJECT", "fixture")
 
 
@@ -101,12 +114,24 @@ def test_missing_decision_version_retries_without_recording(tmp_path: Path) -> N
     assert clients.Session(tmp_path, []).spent == 0
 
 
+def test_transcript_rejects_non_string_version(tmp_path: Path) -> None:
+    session = clients.Session(tmp_path, [clients.StubClient("decision")])
+    session.ask_many("decision", [REQUEST])
+    path = session.transcripts["decision"].path
+    lines = path.read_text().splitlines()
+    row = json.loads(lines[1])
+    row["response"]["version"] = None
+    path.write_text(lines[0] + "\n" + json.dumps(row) + "\n")
+    with pytest.raises(clients.GuardRefusal):
+        clients.Session(tmp_path, [])
+
+
 @pytest.mark.usefixtures("fast")
 def test_metadata_fault_is_resumable(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ZOON_VERTEX_PROJECT", "gemini")
     session = clients.Session(
         tmp_path,
-        [clients.VertexClient(lambda: "fixture-token", lambda *args: (200, vertex_shape()))],
+        [clients.VertexClient(lambda: "fixture-token", valid_transport)],
     )
     with pytest.raises(clients.StepFailure):
         session.ask_many("second", [REQUEST])
@@ -119,7 +144,7 @@ def test_metadata_fault_is_resumable(tmp_path: Path, monkeypatch: pytest.MonkeyP
 def test_unreadable_reply_without_version_is_share_cause(tmp_path: Path) -> None:
     session = clients.Session(
         tmp_path,
-        [clients.VertexClient(lambda: "fixture-token", lambda *args: (200, {"candidates": []}))],
+        [clients.VertexClient(lambda: "fixture-token", empty_transport)],
     )
     with pytest.raises(clients.FamilyUnusable) as error:
         session.ask_many("second", [REQUEST])
@@ -140,7 +165,7 @@ def test_reader_program_fault_is_not_zero_share(
     monkeypatch.setattr(clients, "token_probabilities", fail)
     session = clients.Session(
         tmp_path,
-        [clients.VertexClient(lambda: "fixture-token", lambda *args: (200, vertex_shape()))],
+        [clients.VertexClient(lambda: "fixture-token", valid_transport)],
     )
     with pytest.raises(clients.StepFailure):
         session.ask_many("second", [REQUEST])

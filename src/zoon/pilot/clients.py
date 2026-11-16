@@ -646,7 +646,10 @@ def entry_document(entry: Entry) -> dict[str, object]:
 
 
 class Transcript:
-    def __init__(self, directory: Path, family: Family) -> None:
+    def __init__(
+        self, directory: Path, family: Family, identity: dict[str, str] | None = None
+    ) -> None:
+        self.identity = identity or {"registered_commit": "", "mode": "isolated"}
         self.family: Family = family
         self.path = directory / f"{family}.jsonl"
         self.entries: dict[str, Entry] = {}
@@ -657,14 +660,20 @@ class Transcript:
                     raise GuardRefusal(
                         "incomplete transcript line; restore the last complete line before resuming"
                     )
-                for line in raw.splitlines():
+                lines = raw.splitlines()
+                if not lines or json.loads(lines[0]) != self.identity:
+                    raise GuardRefusal("transcript identity does not match this run")
+                for line in lines[1:]:
                     row = obj(json.loads(line))
                     payload = obj(row["response"])
+                    text, version = payload["text"], payload["version"]
+                    if not isinstance(text, str) or not isinstance(version, str):
+                        raise GuardRefusal("invalid transcript response text or version")
                     response = Response(
                         cast(dict[str, float], payload["probabilities"]),
                         cast(float | None, payload["share"]),
-                        str(payload["text"]),
-                        str(payload["version"]),
+                        text,
+                        version,
                         int(number(payload["input_tokens"])),
                         int(number(payload["output_tokens"])),
                         cast(dict[str, float] | None, payload.get("returned_probabilities")),
@@ -686,13 +695,20 @@ class Transcript:
         return sum((cost(self.family, e.response) for e in self.entries.values()), Decimal(0))
 
     def append(self, request: Request, response: Response) -> None:
+        if not isinstance(cast(object, response.version), str) or not isinstance(
+            cast(object, response.text), str
+        ):
+            raise StepFailure("invalid response text or version")
         rendered = wire(request, self.family)
         digest = key(rendered)
         if digest in self.entries:
             return
         entry = Entry(digest, json.loads(canonical(rendered)), response)
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        new = not self.path.exists()
         with self.path.open("a") as handle:
+            if new:
+                handle.write(json.dumps(self.identity, sort_keys=True) + "\n")
             handle.write(
                 json.dumps(
                     entry_document(entry), sort_keys=True, ensure_ascii=False, allow_nan=False
@@ -709,13 +725,19 @@ class Transcript:
 
 class Session:
     def __init__(
-        self, directory: Path, clients: Sequence[Client], workers: int = 4, cap: Decimal = CAP
+        self,
+        directory: Path,
+        clients: Sequence[Client],
+        workers: int = 4,
+        cap: Decimal = CAP,
+        *,
+        identity: dict[str, str] | None = None,
     ) -> None:
         if workers < 1:
             raise ValueError("workers must be positive")
         self.clients = {c.family: c for c in clients}
         self.transcripts: dict[Family, Transcript] = {
-            f: Transcript(directory, f) for f in budget.FAMILIES
+            f: Transcript(directory, f, identity) for f in budget.FAMILIES
         }
         self.workers = workers
         self.cap = cap
@@ -776,6 +798,8 @@ class Session:
                     validate(request, response)
                     return response
                 except Exception as error:
+                    if isinstance(error, FamilyUnusable) and family == "decision":
+                        return StepFailure("unexpected decision-family exclusion")
                     return error
 
             with ThreadPoolExecutor(max_workers=self.workers) as pool:

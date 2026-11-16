@@ -65,6 +65,8 @@ def test_cap_wins_over_retryable_window_failure(runner: run.Run) -> None:
 
 @pytest.mark.parametrize("step", run.STEPS[:4])
 def test_every_step_checks_recorded_cap_before_work(runner: run.Run, step: str) -> None:
+    for earlier in run.STEPS[: run.STEPS.index(step)]:
+        runner.save(earlier, {})
     runner.session.transcripts["decision"].append(
         REQUEST, replace(response(), input_tokens=4_000_000_000)
     )
@@ -207,8 +209,7 @@ def test_interrupted_final_window_cannot_resume_past_cap(runner: run.Run) -> Non
     runner.session.clients["second"] = Expensive("second", recorded)
     assert "stopped" in runner.execute("judge-check")[0]
     assert len(runner.session.transcripts["second"].entries) == 25
-    for name in ("judge-check.json", "judge-check-values.json"):
-        (runner.directory / name).unlink()
+    (runner.directory / "judge-check.json").unlink()
     replay = run.Run(runner.root, synthetic=True, supplied_clients=[])
     assert "stopped" in replay.execute("judge-check")[0]
     assert "cap reached" in str(replay.state("judge-check")["reason"])
@@ -284,6 +285,8 @@ def test_small_session_cap_stops_before_any_step_work(
 ) -> None:
     from decimal import Decimal
 
+    for earlier in run.STEPS[: run.STEPS.index(step)]:
+        runner.save(earlier, {})
     runner.session.cap = Decimal("0.001")
     runner.session.transcripts["second"].append(
         REQUEST, replace(response("second"), input_tokens=36000, output_tokens=0)
@@ -313,7 +316,8 @@ def test_small_session_cap_overrides_completed_and_failed_state(runner: run.Run)
     assert "no verdict: spending cap reached" in result.render(runner, states)[0]
     assert "no verdict: spending cap reached" in runner.execute("report")[0]
     runner.save("judge-check", {}, status="failed", reason="interrupted")
-    assert "no verdict: spending cap reached" in runner.execute("report")[0]
+    with pytest.raises(clients.GuardRefusal, match="repeat step"):
+        runner.execute("report")
 
 
 def test_small_session_cap_report_without_any_saved_step(runner: run.Run) -> None:
