@@ -392,7 +392,7 @@ def test_held_out_checks_stopped_prerequisite_before_loader(
 ) -> None:
     runner.save("judge-check", {}, status="completed")
     runner.save("judge", {}, status="completed")
-    runner.save("calibrate", {}, status="stopped")
+    runner.save("calibrate", {}, status="stopped", reason=clients.StopReason.CAP.value)
     reached: list[bool] = []
 
     def loader(directory: Path) -> None:

@@ -1,7 +1,10 @@
 """Closed outcomes and exclusive readers are properties of the whole pilot."""
 
 import ast
+from collections.abc import Callable
 from pathlib import Path
+
+import pytest
 
 from zoon.pilot import clients, fetch
 
@@ -52,6 +55,7 @@ def test_only_execute_saves_stopped() -> None:
     for path, owner, name, node in functions():
         for call in calls(node, "save"):
             matched += 1
+            assert len(call.args) <= 2, (path.name, call.lineno)
             assert all(k.arg is not None for k in call.keywords), (path.name, call.lineno)
             status = next((k.value for k in call.keywords if k.arg == "status"), None)
             if status is not None and not (
@@ -141,10 +145,9 @@ def test_arbitrary_exceptions_never_become_closed_outcomes() -> None:
             )
             if caught & forbidden:
                 matched += 1
-                for child in ast.walk(node):
-                    if isinstance(child, ast.Raise) and child.exc is not None:
-                        assert not calls(child.exc, "TerminalStop")
-                        assert not calls(child.exc, "FamilyUnusable")
+                for statement in node.body:
+                    assert not calls(statement, "TerminalStop")
+                    assert not calls(statement, "FamilyUnusable")
     assert matched
 
 
@@ -190,8 +193,14 @@ def test_state_binding_and_transcript_readers_are_exclusive() -> None:
                 if isinstance(node, (ast.Assign, ast.AnnAssign)) and node.value is not None:
                     targets = node.targets if isinstance(node, ast.Assign) else [node.target]
                     for target in targets:
-                        if isinstance(target, ast.Name):
-                            aliases.setdefault(target.id, set()).update(kinds(node.value))
+                        names = (
+                            ast.walk(target)
+                            if isinstance(target, (ast.Tuple, ast.List))
+                            else [target]
+                        )
+                        for alias in names:
+                            if isinstance(alias, ast.Name):
+                                aliases.setdefault(alias.id, set()).update(kinds(node.value))
         for node in ast.walk(function):
             if not isinstance(node, ast.Call) or not isinstance(
                 node.func, (ast.Name, ast.Attribute)
@@ -284,3 +293,45 @@ def test_closed_reason_values_have_registered_sentences() -> None:
     assert [r.value for r in clients.FamilyCause] == [v for v, _ in families]
     for _, sentence in stops + families:
         assert sentence in registration
+
+
+@pytest.mark.parametrize("case", ["positional", "handler", "tuple"])
+def test_structure_checks_reject_indirect_bypasses(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: str
+) -> None:
+    cases: dict[str, tuple[str, Callable[[], None]]] = {
+        "positional": (
+            "class Run:\n"
+            "    def execute(self):\n"
+            "        self.save('judge', {}, status='stopped')\n"
+            "def other(run):\n"
+            "    run.save('judge', {}, 'stopped')\n",
+            test_only_execute_saves_stopped,
+        ),
+        "handler": (
+            "try:\n"
+            "    pass\n"
+            "except Exception:\n"
+            "    outcome = clients.TerminalStop(clients.StopReason.RECORDS)\n"
+            "    raise outcome\n",
+            test_arbitrary_exceptions_never_become_closed_outcomes,
+        ),
+        "tuple": (
+            "class Run:\n"
+            "    def state(self):\n"
+            "        return (self.directory / 'judge.json').read_text()\n"
+            "class Transcript:\n"
+            "    def read(self):\n"
+            "        return self.path.read_text()\n"
+            "def other(run):\n"
+            "    source, spare = (run.directory / 'judge.json', None)\n"
+            "    alias = source\n"
+            "    return alias.read_text()\n",
+            test_state_binding_and_transcript_readers_are_exclusive,
+        ),
+    }
+    source, check = cases[case]
+    (tmp_path / "run.py").write_text(source)
+    monkeypatch.setattr("tests.test_structure.PILOT", tmp_path)
+    with pytest.raises(AssertionError):
+        check()

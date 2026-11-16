@@ -36,7 +36,7 @@ def test_recognition_unreadable_is_local(runner: run.Run, fault: str) -> None:
     recognition = clients.obj(judged["recognition"])
     assert bool(recognition) == (fault == "limited")
     runner.session.check_family("second")
-    runner.save("calibrate", {}, status="stopped", reason="terminal stop")
+    runner.save("calibrate", {}, status="stopped", reason=clients.StopReason.CAP.value)
     lines = runner.execute("report")
     recognition_lines = [
         line for line in lines if line.startswith("[stub recognition]") and "reply and flag" in line

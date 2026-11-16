@@ -132,7 +132,7 @@ def reach(live: run.Run, monkeypatch: pytest.MonkeyPatch) -> list[str]:
 
     def stopped() -> run.State:
         reached.append("work")
-        return live.save("judge-check", {}, status="stopped", reason="fixture stop")
+        return live.save("judge-check", {}, status="stopped", reason=clients.StopReason.CAP.value)
 
     monkeypatch.setattr(live, "_judge_check", stopped)
     return reached
@@ -238,7 +238,12 @@ def test_one_guard_checks_prerequisites_before_materials(
 ) -> None:
     earlier = run.STEPS[: run.STEPS.index(step)]
     for previous in earlier:
-        live.save(previous, {}, status="stopped" if previous == earlier[-1] else "completed")
+        live.save(
+            previous,
+            {},
+            status="stopped" if previous == earlier[-1] else "completed",
+            reason=clients.StopReason.CAP.value if previous == earlier[-1] else "",
+        )
 
     def forbidden() -> None:
         raise AssertionError("materials reached before the prerequisite gate")

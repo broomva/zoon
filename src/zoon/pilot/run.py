@@ -365,6 +365,8 @@ class Run:
     def save(
         self, step: str, payload: State, *, status: str = "completed", reason: str = ""
     ) -> State:
+        if status == "stopped" and reason not in {member.value for member in clients.StopReason}:
+            raise ValueError("a registered stop reason is required")
         previous = {
             name: prior.get("_digest")
             for name in STEPS[: STEPS.index(step)]

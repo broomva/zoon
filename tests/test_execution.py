@@ -56,7 +56,12 @@ def test_cap_cannot_skip_prerequisite(runner: run.Run, step: str, status: str) -
     for previous in earlier[:-1]:
         runner.save(previous, {})
     if status != "unrun":
-        runner.save(earlier[-1], {}, status=status)
+        runner.save(
+            earlier[-1],
+            {},
+            status=status,
+            reason=clients.StopReason.CAP.value if status == "stopped" else "",
+        )
     over_cap(runner)
     before = {p.name: p.read_bytes() for p in runner.directory.glob("*")}
     with pytest.raises(clients.GuardRefusal):
@@ -187,3 +192,16 @@ def test_empty_transcript_recovers_by_repeating_command(runner: run.Run) -> None
     replay = clients.Transcript(transcript.path.parent, "decision", transcript.identity)
     assert len(replay.entries) == 25
     assert json.loads(transcript.path.read_text().splitlines()[0]) == transcript.identity
+
+
+@pytest.mark.parametrize("reason", ["", "unregistered", clients.FamilyCause.RECORDS.value])
+def test_save_rejects_unregistered_stop_reason(runner: run.Run, reason: str) -> None:
+    with pytest.raises(ValueError, match="registered stop reason"):
+        runner.save("judge-check", {}, status="stopped", reason=reason)
+    assert not runner.directory.exists()
+
+
+@pytest.mark.parametrize("reason", list(clients.StopReason))
+def test_save_accepts_registered_stop_reason(runner: run.Run, reason: clients.StopReason) -> None:
+    runner.save("judge-check", {}, status="stopped", reason=reason.value)
+    assert runner.state("judge-check")["reason"] == reason.value

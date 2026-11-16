@@ -106,7 +106,11 @@ def test_short_raw_row_only_stops_for_analysed_participants(
     with path.open("w", newline="", encoding="latin-1") as handle:
         csv.writer(handle, delimiter=source.delimiter).writerows(rows)
     monkeypatch.setattr(fetch, "load_registered_held_out", load_registered_held_out)
-    monkeypatch.setattr(runner, "guard", lambda *args: None)
+
+    def guarded(*args: object) -> None:
+        pass
+
+    monkeypatch.setattr(runner, "guard", guarded)
     monkeypatch.setattr(runner, "training", lambda: training)
     monkeypatch.setattr(
         run.budget,
@@ -122,3 +126,44 @@ def test_short_raw_row_only_stops_for_analysed_participants(
     else:
         assert "completed" in lines[0]
         assert state["reason"] == ""
+
+
+@pytest.mark.parametrize("step", ["calibrate", "held-out"])
+def test_training_record_fault_saves_failed(
+    runner: run.Run, monkeypatch: pytest.MonkeyPatch, step: str
+) -> None:
+    for earlier in run.STEPS[: run.STEPS.index(step)]:
+        assert "completed" in runner.execute(earlier)[0]
+
+    def broken() -> tuple[list[cohorts.Participant], cohorts.Cohorts]:
+        raise fetch.RecordFault("unreadable training record")
+
+    monkeypatch.setattr(runner, "training", broken)
+    assert "failed" in runner.execute(step, COMMIT)[0]
+    state = runner.state(step)
+    assert state["status"] == "failed"
+    assert state["reason"] == "RecordFault"
+
+
+@pytest.mark.parametrize("people", [20, 40])
+def test_synthetic_held_out_count_mismatch_stops(
+    runner: run.Run, monkeypatch: pytest.MonkeyPatch, people: int
+) -> None:
+    for earlier in run.STEPS[:3]:
+        assert "completed" in runner.execute(earlier)[0]
+    training = runner.training()
+    raw = runner.root / "data/raw"
+    write_raw(raw, people)
+    loaded = cohorts.participants(load_registered_held_out(raw))
+    assert loaded and len(loaded) != run.budget.HELD_OUT_PARTICIPANTS
+    assert all(len(person.trials) == 13 for person in loaded)
+    monkeypatch.setattr(fetch, "load_registered_held_out", load_registered_held_out)
+
+    def guarded(*args: object) -> None:
+        pass
+
+    monkeypatch.setattr(runner, "guard", guarded)
+    monkeypatch.setattr(runner, "training", lambda: training)
+    runner.synthetic = False
+    assert "stopped" in runner.execute("held-out", COMMIT)[0]
+    assert runner.state("held-out")["reason"] == clients.StopReason.RECORDS.value

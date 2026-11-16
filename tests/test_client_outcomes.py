@@ -222,3 +222,24 @@ def test_second_arm_record_failure_has_family_cause(
     assert "completed" in runner.execute("held-out", COMMIT)[0]
     unavailable = clients.obj(clients.obj(runner.state("held-out")["payload"])["unavailable"])
     assert unavailable["second"] == "second family complete-records failure"
+
+
+@pytest.mark.usefixtures("fast")
+def test_decision_connection_error_interrupts_without_withdrawal() -> None:
+    attempts: list[int] = []
+
+    class SDK:
+        def Choice(self, **kwargs: object) -> object:
+            return object()
+
+        def TypeSafeClient(self, **kwargs: object) -> object:
+            return self
+
+        def system_one(self, *args: object) -> object:
+            attempts.append(1)
+            raise ConnectionError("connection interrupted")
+
+    client = clients.DecisionClient(cast(clients.DecisionSDK, SDK()))
+    with pytest.raises(clients.StepFailure):
+        client.ask(REQUEST)
+    assert len(attempts) == 4

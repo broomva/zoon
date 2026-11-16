@@ -69,7 +69,12 @@ def test_closed_outcomes_reject_unregistered_reasons(outcome: type[Exception]) -
 def test_recorded_outcome_still_requires_guard(
     runner: run.Run, monkeypatch: pytest.MonkeyPatch, status: str
 ) -> None:
-    runner.save("judge-check", {}, status=status)
+    runner.save(
+        "judge-check",
+        {},
+        status=status,
+        reason=clients.StopReason.CAP.value if status == "stopped" else "",
+    )
     before = (runner.directory / "judge-check.json").read_bytes()
 
     def refuse(*args: object) -> None:
