@@ -268,7 +268,7 @@ def test_completed_order_and_cap_do_not_depend_on_worker_count(tmp_path: Path) -
 @pytest.mark.parametrize(
     "status,exception",
     [
-        (400, clients.FamilyUnusable),
+        (400, clients.StepFailure),
         (403, clients.StopRun),
         (404, clients.FamilyUnusable),
         (410, clients.FamilyUnusable),
@@ -545,7 +545,9 @@ def test_second_service_faults_are_isolated_or_operator_faults(
         return status, {}
 
     monkeypatch.setattr(clients, "retry", fast_retry)
-    expected = clients.StepFailure if status in (401, 403) else clients.FamilyUnusable
+    expected = (
+        clients.StepFailure if status in (400, 401, 403, 429, 500, 503) else clients.FamilyUnusable
+    )
     with pytest.raises(expected) as error:
         clients.VertexClient(lambda: "fixture-token", transport).ask(REQUEST)
     assert len(attempts) == (2 if status == 401 else 1 if status in (403, 404, 410) else 4)
@@ -665,3 +667,33 @@ def test_recorded_cost_is_checked_after_final_window_before_retryable_failure(
     with pytest.raises(clients.StopRun, match="cap reached"):
         session.ask_many("decision", [REQUEST])
     assert session.spent == Decimal("0.0042")
+
+
+def test_cap_precedes_terminal_failure_in_same_window(tmp_path: Path) -> None:
+    requests = sorted([REQUEST, replace(REQUEST, state="another")], key=clients.key)
+
+    class Expensive(clients.StubClient):
+        def ask(self, request: clients.Request) -> clients.Response:
+            if request == requests[0]:
+                raise clients.StopRun("decision model withdrawn; no verdict")
+            return replace(super().ask(request), input_tokens=4_000_000_000)
+
+    session = clients.Session(tmp_path, [Expensive("decision")])
+    with pytest.raises(clients.StopRun, match="cap reached"):
+        session.ask_many("decision", requests)
+
+
+def test_second_retry_exhaustion_is_resumable(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ZOON_VERTEX_PROJECT", "fixture")
+    original = clients.retry
+
+    def fast_retry(call: clients.Callable[[], clients.Response]) -> clients.Response:
+        return original(call, pause=lambda delay: None)
+
+    monkeypatch.setattr(clients, "retry", fast_retry)
+
+    def unavailable(*args: object) -> tuple[int, dict[str, object]]:
+        return 503, {}
+
+    with pytest.raises(clients.StepFailure, match="bounded retries"):
+        clients.VertexClient(lambda: "fixture-token", unavailable).ask(REQUEST)

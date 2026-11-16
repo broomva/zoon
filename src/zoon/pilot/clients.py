@@ -457,14 +457,9 @@ class VertexClient:
             except (StepFailure, FamilyUnusable, TransientError, TimeoutError):
                 raise
             except Exception:
-                raise FamilyUnusable("second-family response or transport invalid") from None
+                raise TransientError from None
 
-        try:
-            return retry(call)
-        except StepFailure as error:
-            if str(error) == "ZOON_VERTEX_PROJECT":
-                raise
-            raise FamilyUnusable("second-family service failure after bounded retries") from None
+        return retry(call)
 
     def read(self, request: Request, data: dict[str, object]) -> Response:
         project = os.environ.get("ZOON_VERTEX_PROJECT", "")
@@ -690,11 +685,7 @@ class Session:
                 except StopRun as error:
                     return error
                 except Exception:
-                    return (
-                        FamilyUnusable("second-family request failed")
-                        if family == "second"
-                        else StepFailure("decision request failed")
-                    )
+                    return StepFailure(f"{family} request failed")
 
             with ThreadPoolExecutor(max_workers=self.workers) as pool:
                 results = list(pool.map(call, window))
@@ -703,7 +694,11 @@ class Session:
                 if isinstance(result, StopRun):
                     if isinstance(result, ModelChanged):
                         transcript.append(request, result.response)
-                    failure = failure or result
+                    if failure is None or (
+                        isinstance(failure, (StepFailure, FamilyUnusable))
+                        and not isinstance(result, (StepFailure, FamilyUnusable))
+                    ):
+                        failure = result
                 else:
                     transcript.append(request, result)
             self.check_cap()
