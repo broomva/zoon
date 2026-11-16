@@ -258,12 +258,12 @@ def test_closed_reason_values_have_registered_sentences() -> None:
         (
             "second family version changed",
             "before the run ends, the run stops and gives no verdict. If the "
-            "second family does, its",
+            "second family does, at any",
         ),
         (
             "second family withdrawn",
-            "results are not given. A model counts as withdrawn when the "
-            "service answers that it does not",
+            "request including the recognition request, its numerical results are not given. "
+            "A model counts as withdrawn when the service answers that it does not",
         ),
         (
             "second family failed the stop rule",
