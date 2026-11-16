@@ -69,7 +69,7 @@ def test_partial_recognition_survives_unusable_second_family(runner: run.Run) ->
     class Withdrawn(clients.StubClient):
         def ask(self, request: clients.Request) -> clients.Response:
             if isinstance(request, str) and clients.key(request) == missing_key:
-                raise clients.FamilyUnusable("second family withdrawn")
+                raise clients.FamilyUnusable(clients.FamilyCause.WITHDRAWN)
             return original.ask(request)
 
     runner.session.clients["second"] = Withdrawn("second")

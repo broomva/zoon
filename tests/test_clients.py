@@ -80,7 +80,7 @@ def test_cap_prevents_sending_and_is_shared(tmp_path: Path) -> None:
     spent = session.spent
     next_request = replace(REQUEST, state="next")
     session.cap = spent + clients.estimate("decision", next_request) - Decimal("0.000000001")
-    with pytest.raises(clients.StopRun, match="cap reached"):
+    with pytest.raises(clients.TerminalStop, match="cap reached"):
         session.ask_many("decision", [next_request])
     assert len(session.transcripts["decision"].entries) == 1
     assert session.spent == spent
@@ -92,9 +92,15 @@ def test_cap_prevents_sending_and_is_shared(tmp_path: Path) -> None:
 def test_version_changes_survive_restart(tmp_path: Path, family: clients.Family) -> None:
     r = replace(response(family), version="other-version")
     session = clients.Session(tmp_path, [clients.StubClient(family, {clients.key(REQUEST): r})])
-    with pytest.raises(clients.StopRun, match="version changed"):
+    with pytest.raises(
+        clients.TerminalStop if family == "decision" else clients.FamilyUnusable,
+        match="version changed",
+    ):
         session.ask_many(family, [REQUEST])
-    with pytest.raises(clients.StopRun, match="version changed"):
+    with pytest.raises(
+        clients.TerminalStop if family == "decision" else clients.FamilyUnusable,
+        match="version changed",
+    ):
         clients.Session(tmp_path, []).ask_many(family, [REQUEST])
 
 
@@ -181,7 +187,7 @@ def test_transport_exception_is_redacted(monkeypatch: pytest.MonkeyPatch) -> Non
     def transport(url: str, headers: dict[str, str], body: bytes) -> tuple[int, dict[str, object]]:
         raise ValueError("private-marker secret-token " + url)
 
-    with pytest.raises(clients.StopRun) as error:
+    with pytest.raises(clients.StepFailure) as error:
         clients.VertexClient(lambda: "secret-token", transport).ask(REQUEST)
     assert "private-marker" not in str(error.value)
     assert "secret-token" not in str(error.value)
@@ -228,14 +234,14 @@ def test_bounded_retry_and_delays() -> None:
     assert clients.retry(call, pause=delays.append) == response()
     assert len(calls) == 3 and delays == [1, 2]
     calls.clear()
-    with pytest.raises(clients.StopRun, match="bounded retries"):
+    with pytest.raises(clients.StepFailure, match="bounded retries"):
         clients.retry(call, attempts=2, pause=delays.append)
     assert len(calls) == 2
 
 
 @pytest.mark.parametrize("bad", [float("nan"), float("inf"), -0.1, 1.1])
 def test_invalid_probability_is_rejected(bad: float) -> None:
-    with pytest.raises(clients.StopRun, match="invalid"):
+    with pytest.raises(clients.StepFailure, match="invalid"):
         clients.validate(REQUEST, replace(response(), probabilities={"Yes": bad, "No": 0}))
 
 
@@ -259,7 +265,7 @@ def test_completed_order_and_cap_do_not_depend_on_worker_count(tmp_path: Path) -
             workers,
             cap=clients.estimate("decision", requests[0]) * 10,
         )
-        with pytest.raises(clients.StopRun, match="cap reached"):
+        with pytest.raises(clients.TerminalStop, match="cap reached"):
             session.ask_many("decision", requests)
         digests.append(session.transcripts["decision"].digest())
     assert len(set(digests)) == 1
@@ -269,7 +275,7 @@ def test_completed_order_and_cap_do_not_depend_on_worker_count(tmp_path: Path) -
     "status,exception",
     [
         (400, clients.StepFailure),
-        (403, clients.StopRun),
+        (403, clients.StepFailure),
         (404, clients.FamilyUnusable),
         (410, clients.FamilyUnusable),
     ],
@@ -310,7 +316,7 @@ def test_tokens_are_cached_until_rejected(monkeypatch: pytest.MonkeyPatch) -> No
 def test_corrupt_and_partial_transcripts_refuse(tmp_path: Path) -> None:
     path = tmp_path / "decision.jsonl"
     path.write_text('{"key":')
-    with pytest.raises(clients.StopRun, match="incomplete"):
+    with pytest.raises(clients.GuardRefusal, match="incomplete"):
         clients.Transcript(tmp_path, "decision")
     path.unlink()
     transcript = clients.Transcript(tmp_path, "decision")
@@ -318,7 +324,7 @@ def test_corrupt_and_partial_transcripts_refuse(tmp_path: Path) -> None:
     row = json.loads(path.read_text())
     row["key"] = "wrong"
     path.write_text(json.dumps(row) + "\n")
-    with pytest.raises(clients.StopRun, match="invalid"):
+    with pytest.raises(clients.GuardRefusal, match="invalid"):
         clients.Transcript(tmp_path, "decision")
 
 
@@ -333,7 +339,7 @@ def test_private_metadata_in_reply_is_never_transcribed(
         return 200, shape
 
     session = clients.Session(tmp_path, [clients.VertexClient(lambda: "token-marker", transport)])
-    with pytest.raises(clients.StopRun, match="connection metadata"):
+    with pytest.raises(clients.FamilyUnusable, match="connection metadata"):
         session.ask_many("second", ["recognition"], recognition=True)
     assert not session.transcripts["second"].path.exists()
 
@@ -357,7 +363,7 @@ def test_transient_http_and_timeout_backoff(
         return int(failure), {}
 
     monkeypatch.setattr(clients, "retry", fast_retry)
-    with pytest.raises(clients.StopRun, match="bounded retries"):
+    with pytest.raises(clients.StepFailure, match="bounded retries"):
         clients.VertexClient(lambda: "token-marker", transport).ask(REQUEST)
     assert len(calls) == 4 and delays == [1, 2, 4]
 
@@ -366,7 +372,7 @@ def test_both_families_share_the_same_cap(tmp_path: Path) -> None:
     session = clients.Session(tmp_path, [clients.StubClient(f) for f in clients.budget.FAMILIES])
     session.ask_many("decision", [REQUEST])
     session.cap = session.spent + clients.estimate("second", REQUEST) - Decimal("0.000000001")
-    with pytest.raises(clients.StopRun, match="cap reached"):
+    with pytest.raises(clients.TerminalStop, match="cap reached"):
         session.ask_many("second", [REQUEST])
     assert not session.transcripts["second"].entries
 
@@ -594,7 +600,7 @@ def test_other_unreadable_second_replies_record_zero(
     )
 
 
-def test_malformed_json_is_an_unreadable_reply(
+def test_malformed_json_is_a_resumable_transport_fault(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     import io
@@ -608,14 +614,9 @@ def test_malformed_json_is_an_unreadable_reply(
     monkeypatch.setenv("ZOON_VERTEX_PROJECT", "fixture")
     monkeypatch.setattr(clients.urllib.request, "urlopen", opened)
     session = clients.Session(tmp_path, [clients.VertexClient(lambda: "fixture-token")])
-    with pytest.raises(clients.FamilyUnusable):
+    with pytest.raises(clients.StepFailure):
         session.ask_many("second", [REQUEST])
-    assert (
-        session.transcripts["second"]
-        .entries[clients.key(prompts.second_request(REQUEST))]
-        .response.share
-        == 0
-    )
+    assert not session.transcripts["second"].entries
 
 
 def test_preflight_uses_non_generating_metadata_route(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -647,12 +648,12 @@ def test_changed_decision_version_is_recorded_before_terminal_stop(tmp_path: Pat
             )
 
     session = clients.Session(tmp_path, [clients.DecisionClient(cast(clients.DecisionSDK, SDK()))])
-    with pytest.raises(clients.StopRun, match="version changed"):
+    with pytest.raises(clients.TerminalStop, match="version changed"):
         session.ask_many("decision", [REQUEST])
     recorded = session.transcripts["decision"].entries[clients.key(REQUEST)].response
     assert recorded.version == "changed-version"
     assert (recorded.input_tokens, recorded.output_tokens) == (2, 0)
-    with pytest.raises(clients.StopRun, match="version changed"):
+    with pytest.raises(clients.TerminalStop, match="version changed"):
         clients.Session(tmp_path, []).ask_many("decision", [REQUEST])
 
 
@@ -664,7 +665,7 @@ def test_recorded_cost_is_checked_after_final_window_before_retryable_failure(
             return replace(super().ask(request), input_tokens=100000, output_tokens=0)
 
     session = clients.Session(tmp_path, [Expensive("decision")], cap=Decimal("0.003"))
-    with pytest.raises(clients.StopRun, match="cap reached"):
+    with pytest.raises(clients.TerminalStop, match="cap reached"):
         session.ask_many("decision", [REQUEST])
     assert session.spent == Decimal("0.0042")
 
@@ -675,11 +676,11 @@ def test_cap_precedes_terminal_failure_in_same_window(tmp_path: Path) -> None:
     class Expensive(clients.StubClient):
         def ask(self, request: clients.Request) -> clients.Response:
             if request == requests[0]:
-                raise clients.StopRun("decision model withdrawn; no verdict")
+                raise clients.TerminalStop(clients.StopReason.WITHDRAWN)
             return replace(super().ask(request), input_tokens=4_000_000_000)
 
     session = clients.Session(tmp_path, [Expensive("decision")])
-    with pytest.raises(clients.StopRun, match="cap reached"):
+    with pytest.raises(clients.TerminalStop, match="cap reached"):
         session.ask_many("decision", requests)
 
 

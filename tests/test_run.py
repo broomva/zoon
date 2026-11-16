@@ -11,6 +11,7 @@ import numpy as np
 import pytest
 
 from tests.synthetic import write_raw
+from tests.tracked import copy_tracked
 from zoon.pilot import clients, cohorts, fetch, prompts, result, run, split, stub
 
 COMMIT = "b" * 40
@@ -18,16 +19,7 @@ COMMIT = "b" * 40
 
 @pytest.fixture
 def runner(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> run.Run:
-    for directory in ("pilot", "prereg", "src"):
-        shutil.copytree(fetch.REPO / directory, tmp_path / directory)
-    for name in (
-        "pyproject.toml",
-        "uv.lock",
-        "data-manifest.json",
-        "data-manifest-outside.json",
-        "data-manifest-materials.json",
-    ):
-        shutil.copyfile(fetch.REPO / name, tmp_path / name)
+    copy_tracked(tmp_path)
 
     def git(root: Path, *arguments: str) -> str:
         return (
@@ -88,7 +80,7 @@ def test_full_synthetic_sequence_restart_and_constructed_verdicts(runner: run.Ru
     del clients.obj(clients.obj(broken["held-out"]["payload"])["logs"])["decision/prompted"]
     assert (
         result.render(runner, broken)[0]
-        == "[stub verdict] outcome = no verdict: complete-records failure"
+        == "[stub verdict] outcome = no verdict: complete-records failure; no verdict"
     )
     for label in (
         "H1-strict",
@@ -128,7 +120,7 @@ def test_full_synthetic_sequence_restart_and_constructed_verdicts(runner: run.Ru
 
 @pytest.mark.parametrize("step", ["judge", "calibrate", "held-out", "report"])
 def test_out_of_order_refuses(runner: run.Run, step: str) -> None:
-    with pytest.raises(clients.StopRun, match="has not completed"):
+    with pytest.raises(clients.GuardRefusal, match="has not completed"):
         runner.execute(step, COMMIT)
     assert not runner.session.transcripts["decision"].entries
 
@@ -147,7 +139,7 @@ def test_changed_transcript_and_previous_state_refuse(runner: run.Run) -> None:
     rows = [json.loads(line) for line in path.read_text().splitlines()]
     rows[0]["response"]["input_tokens"] = 50
     path.write_text("".join(json.dumps(row) + "\n" for row in rows))
-    with pytest.raises(clients.StopRun, match="checkpoint changed"):
+    with pytest.raises(clients.GuardRefusal, match="checkpoint changed"):
         runner.execute("judge")
 
 
@@ -161,7 +153,7 @@ def test_stop_rule_reports_and_never_unseals(runner: run.Run) -> None:
     }
     runner.session.clients["decision"] = clients.StubClient("decision", recorded)
     assert "status = stopped" in runner.execute("judge-check")[0]
-    with pytest.raises(clients.StopRun, match="did not pass"):
+    with pytest.raises(clients.GuardRefusal, match="did not pass"):
         runner.execute("judge")
     assert (
         runner.execute("report")[0] == "[stub verdict] outcome = the judge could not be calibrated"
@@ -252,7 +244,7 @@ def test_complete_record_failure_in_scoring_stops_decision_only(
 def test_bad_registration_flag_does_not_write_failed_state(runner: run.Run) -> None:
     for step in run.STEPS[:3]:
         runner.execute(step)
-    with pytest.raises(clients.StopRun, match="must match"):
+    with pytest.raises(clients.GuardRefusal, match="must match"):
         runner.execute("held-out", "wrong")
     assert not (runner.directory / "held-out.json").exists()
 
@@ -271,7 +263,7 @@ def test_manifest_is_checked_without_loading_records(tmp_path: Path) -> None:
     run.verify_data(raw, manifest)
     changed = raw / fetch.SOURCES[1].filename
     changed.write_bytes(changed.read_bytes() + b"\n")
-    with pytest.raises(clients.StopRun, match="manifest"):
+    with pytest.raises(clients.GuardRefusal, match="manifest"):
         run.verify_data(raw, manifest)
 
 
@@ -279,7 +271,7 @@ def test_changed_step_output_refuses(runner: run.Run) -> None:
     runner.execute("judge-check")
     path = runner.directory / "judge-check-values.json"
     path.write_bytes(path.read_bytes() + b"\n")
-    with pytest.raises(clients.StopRun, match="output digest"):
+    with pytest.raises(clients.GuardRefusal, match="output digest"):
         runner.execute("judge")
 
 
@@ -289,14 +281,14 @@ def test_withdrawn_second_family_still_attempts_recognition(runner: run.Run) -> 
     class Unavailable(clients.StubClient):
         def ask(self, request: clients.Request) -> clients.Response:
             attempts.append(isinstance(request, str))
-            raise clients.FamilyUnusable("second family model is unavailable")
+            raise clients.FamilyUnusable(clients.FamilyCause.WITHDRAWN)
 
     runner.session.clients["second"] = Unavailable("second")
     finish(runner)
     assert sum(attempts) == 13
     lines = runner.execute("report")
     assert "no verdict" not in lines[0]
-    assert any("second family model is unavailable" in line for line in lines)
+    assert any("second family withdrawn" in line for line in lines)
     assert all(
         "not estimable" in line for line in lines if line.startswith("[stub recognition filtered]")
     )
@@ -320,7 +312,7 @@ def test_failed_step_can_resume_without_resending_answers(runner: run.Run) -> No
     assert "status = failed" in runner.execute("judge-check")[0]
     answered = set(runner.session.transcripts["decision"].entries)
     assert answered
-    with pytest.raises(clients.StopRun, match="did not pass"):
+    with pytest.raises(clients.GuardRefusal, match="did not pass"):
         runner.execute("judge")
     assert "status = completed" in runner.execute("judge-check")[0]
     assert all(counts[digest] == 1 for digest in answered)
@@ -387,7 +379,7 @@ def test_preflight_operator_fault_precedes_every_step_request(
         token, transport, preflight_transport=transport
     )
     assert "status = failed" in runner.execute(step, COMMIT)[0]
-    assert runner.state(step)["reason"] == "ZOON_VERTEX_PROJECT"
+    assert runner.state(step)["reason"] == "StepFailure"
     assert recorded == {family: t.digest() for family, t in runner.session.transcripts.items()}
     assert len(calls) == (0 if status == "missing" else 2 if status == 401 else 1)
     assert len(refreshes) == len(calls)
@@ -405,7 +397,7 @@ def test_held_out_checks_stopped_prerequisite_before_loader(
         reached.append(True)
 
     monkeypatch.setattr(fetch, "load_registered_held_out", loader)
-    with pytest.raises(clients.StopRun, match="calibrate did not pass"):
+    with pytest.raises(clients.GuardRefusal, match="calibrate did not pass"):
         runner.execute("held-out", COMMIT)
     assert not reached
 

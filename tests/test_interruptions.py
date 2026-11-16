@@ -23,8 +23,10 @@ def test_terminal_window_failure_wins_in_both_orders(
         def ask(self, request: clients.Request) -> clients.Response:
             if clients.key(request) == terminal_key:
                 if changed:
-                    raise clients.ModelChanged(replace(response(), version="changed"))
-                raise clients.StopRun("decision model withdrawn; no verdict")
+                    raise clients.TerminalStop(
+                        clients.StopReason.VERSION, response=replace(response(), version="changed")
+                    )
+                raise clients.TerminalStop(clients.StopReason.WITHDRAWN)
             raise clients.StepFailure("try again")
 
     runner.session.clients["decision"] = Interrupted("decision")
@@ -79,9 +81,9 @@ def test_authentication_interrupts_even_beside_a_family_exclusion(
             if key == authentication:
                 raise clients.StepFailure("authentication fault")
             if key in keys:
-                raise clients.FamilyUnusable("second family withdrawn")
+                raise clients.FamilyUnusable(clients.FamilyCause.WITHDRAWN)
             return original.ask(request)
 
     runner.session.clients["second"] = Interrupted("second")
     assert "failed" in runner.execute("judge")[0]
-    assert runner.state("judge")["reason"] == "authentication fault"
+    assert runner.state("judge")["reason"] == "StepFailure"

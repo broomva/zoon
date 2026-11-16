@@ -1,12 +1,12 @@
 """Every live step compares disk bytes with the same registered commit."""
 
 import json
-import shutil
 import subprocess
 from pathlib import Path
 
 import pytest
 
+from tests.tracked import copy_tracked
 from zoon.pilot import clients, fetch, run
 
 
@@ -33,15 +33,7 @@ def commit(root: Path) -> str:
 
 @pytest.fixture
 def live(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> run.Run:
-    for directory in ("src", "prereg", "pilot"):
-        shutil.copytree(fetch.REPO / directory, tmp_path / directory)
-    for name in (
-        "pyproject.toml",
-        "uv.lock",
-        *[p.name for p in fetch.REPO.glob("data-manifest*.json")],
-    ):
-        shutil.copyfile(fetch.REPO / name, tmp_path / name)
-    (tmp_path / ".gitignore").write_text("data/\n__pycache__/\n")
+    copy_tracked(tmp_path)
     git(tmp_path, "init", "-q")
     commit(tmp_path)
     git(tmp_path, "tag", "registered")
@@ -75,7 +67,7 @@ def change(live: run.Run, name: str, *, hidden: bool = False) -> None:
         ("wrong-tag", "tag"),
         ("unrelated", "ancestor"),
         ("registered", "registered files"),
-        ("hidden-registered", "registered files"),
+        ("hidden-registered", "clean work tree"),
         ("table", "registered files"),
         ("code", "repair"),
         ("init", "repair"),
@@ -116,7 +108,6 @@ def test_every_live_step_refuses_before_requests_or_loader(
             commit(live.root)
         else:
             change(live, names[fault], hidden=fault.startswith("hidden"))
-    live = restart(live, monkeypatch)
     reached: list[str] = []
 
     def loader(directory: Path) -> None:
@@ -130,7 +121,7 @@ def test_every_live_step_refuses_before_requests_or_loader(
     # A mismatching explicit commit matters only to held-out; other steps need a missing tag.
     if fault == "wrong-tag" and step != "held-out":
         git(live.root, "tag", "-d", "registered")
-    with pytest.raises(clients.StopRun, match=pattern):
+    with pytest.raises(clients.GuardRefusal, match=pattern):
         live.execute(step, tagged, repair="Restore operation" if "registered" in fault else None)
     assert not reached
     assert not any(t.entries for t in live.session.transcripts.values())
@@ -154,6 +145,10 @@ def test_equal_tag_and_matching_repair_snapshot_go_on(
     live.execute("judge-check")
     assert reached == ["work"]
     change(live, "src/zoon/pilot/score.py")
+    live.guard("report", None, "Restore scoring")
+    assert live.pending_binding is not None
+    live.binding(live.pending_binding)
+    live.pending_binding = None
     live.execute("judge-check", repair="Restore scoring")
     live.execute("judge-check")
     restarted = run.Run(live.root, supplied_clients=[])
@@ -175,12 +170,12 @@ def test_two_commits_require_the_full_difference_and_report_it(
     change(live, first)
     live = restart(live, monkeypatch)
     reach(live, monkeypatch)
-    with pytest.raises(clients.StopRun, match=r"score\.py"):
+    with pytest.raises(clients.GuardRefusal, match=r"score\.py"):
         live.execute("judge-check")
     change(live, second)
     live = restart(live, monkeypatch)
     reach(live, monkeypatch)
-    with pytest.raises(clients.StopRun, match=r"score\.py"):
+    with pytest.raises(clients.GuardRefusal, match=r"score\.py"):
         live.execute("judge-check")
     live.execute("judge-check", repair="Restore scoring and requests")
     repair = clients.obj(clients.items(live.binding()["repairs"])[0])
@@ -189,7 +184,7 @@ def test_two_commits_require_the_full_difference_and_report_it(
     assert set(clients.obj(repair["code"])) == {first, second}
     (live.root / "note.txt").write_text("Reporting note")
     commit(live.root)
-    lines = live.execute("report")
+    lines = live.execute("report", repair="Restore reporting")
     assert any("difference from registered" in line and "note.txt" in line for line in lines)
     assert any(
         "Repairs" in line
@@ -204,8 +199,14 @@ def test_two_commits_require_the_full_difference_and_report_it(
     (live.directory / "binding.json").write_bytes(run.encoded(binding))
     assert any(
         "difference from registered" in line and first in line and second in line
-        for line in live.execute("report")
+        for line in run_result(live)
     )
+
+
+def run_result(live: run.Run) -> list[str]:
+    from zoon.pilot.result import render
+
+    return render(live, {"judge-check": live.state("judge-check")})
 
 
 @pytest.mark.parametrize("changed", ["src/zoon/pilot/clients.py", "src/zoon/pilot/score.py"])
@@ -217,8 +218,8 @@ def test_previous_repair_does_not_cover_later_code(
     live.execute("judge-check", repair="Restore scoring")
     change(live, changed)
     live = restart(live, monkeypatch)
-    with pytest.raises(clients.StopRun, match="repair"):
-        live.execute("judge-check")
+    with pytest.raises(clients.GuardRefusal, match="repair"):
+        live.execute("report")
 
 
 def test_report_without_repairs_says_none(live: run.Run, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -226,7 +227,8 @@ def test_report_without_repairs_says_none(live: run.Run, monkeypatch: pytest.Mon
     live.execute("judge-check")
     assert "[Repairs] history = none" in live.execute("report")
     saved = json.loads((live.directory / "judge-check.json").read_text())
-    assert saved["registered_files"] and saved["code_files"]
+    assert saved["registered_commit"] == live.registered_commit
+    assert saved["code_snapshot"] == {}
 
 
 @pytest.mark.parametrize("step", ["judge", "calibrate", "held-out"])
@@ -243,7 +245,7 @@ def test_one_guard_checks_prerequisites_before_materials(
 
     monkeypatch.setattr(live, "verify_materials", forbidden)
     registered = git(live.root, "rev-parse", "HEAD")
-    with pytest.raises(clients.StopRun, match="did not pass"):
+    with pytest.raises(clients.GuardRefusal, match="did not pass"):
         if entry == "guard":
             live.guard(step, registered, None)
         else:
@@ -258,7 +260,7 @@ def test_deleted_code_inputs_can_be_declared_as_repairs(
     commit(live.root)
     live = restart(live, monkeypatch)
     reach(live, monkeypatch)
-    with pytest.raises(clients.StopRun, match="repair"):
+    with pytest.raises(clients.GuardRefusal, match="repair"):
         live.execute("judge-check")
     live.execute("judge-check", repair="Restore the execution environment")
     repair = clients.obj(clients.items(live.binding()["repairs"])[0])
@@ -271,5 +273,185 @@ def test_malformed_registered_material_is_refused_by_the_guard_before_parsing(
     next((live.root / "pilot" / "rewrites").glob("*.json")).write_text("{")
     commit(live.root)
     live = restart(live, monkeypatch)
-    with pytest.raises(clients.StopRun, match="registered files"):
+    with pytest.raises(clients.GuardRefusal, match="registered files"):
         live.execute("judge-check", repair="Restore operation")
+
+
+def test_new_registration_has_new_state_and_transcript_identity(
+    live: run.Run, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    old = live.directory
+    live.save("judge-check", {})
+    live.session.transcripts["decision"].append(
+        "old recognition", clients.Response({}, None, "unknown", "old", 1, 1)
+    )
+    (live.root / "docs" / "new.md").write_text("A new registration.\n")
+    commit(live.root)
+    git(live.root, "tag", "-f", "registered")
+    fresh = restart(live, monkeypatch)
+    assert fresh.directory != old
+    assert fresh.directory.name == "live-" + git(live.root, "rev-parse", "HEAD")
+    assert not fresh.state("judge-check", required=False)
+    assert not any(t.entries for t in fresh.session.transcripts.values())
+    calls: list[int] = []
+
+    def complete() -> run.State:
+        calls.append(1)
+        return fresh.save("judge-check", {})
+
+    monkeypatch.setattr(fresh, "_judge_check", complete)
+    assert "completed" in fresh.execute("judge-check")[0]
+    assert calls == [1]
+    assert old.exists()
+
+
+@pytest.mark.parametrize("field", ["registered_commit", "code_snapshot"])
+def test_state_refuses_unbound_identity(live: run.Run, field: str) -> None:
+    live.save("judge-check", {})
+    path = live.directory / "judge-check.json"
+    document = json.loads(path.read_text())
+    document[field] = "different" if field == "registered_commit" else {"example.py": "different"}
+    path.write_bytes(run.encoded(document))
+    with pytest.raises(clients.GuardRefusal, match=r"registered commit|snapshot"):
+        live.state("judge-check")
+
+
+def test_return_from_abandoned_repair_requires_its_own_declaration(
+    live: run.Run, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    tagged = git(live.root, "rev-parse", "HEAD")
+    change(live, "src/zoon/pilot/clients.py")
+
+    def complete() -> run.State:
+        return live.save("judge-check", {})
+
+    monkeypatch.setattr(live, "_judge_check", complete)
+    live.execute("judge-check", repair="Restore request handling")
+    saved = live.state("judge-check")["code_snapshot"]
+    assert saved
+    git(live.root, "checkout", "-q", tagged)
+    fresh = restart(live, monkeypatch)
+    with pytest.raises(clients.GuardRefusal, match="repair"):
+        fresh.state("judge-check")
+    with pytest.raises(clients.GuardRefusal, match="repair"):
+        fresh.execute("judge")
+    fresh.guard("judge", None, "Return to the registered implementation")
+    assert fresh.pending_binding is not None
+    fresh.binding(fresh.pending_binding)
+    fresh.guard("judge", None, None)
+    assert clients.obj(clients.items(fresh.binding()["repairs"])[-1])["code"] == {}
+
+
+@pytest.mark.parametrize("name", ["src/zoon/extra.py", "untracked.txt"])
+@pytest.mark.parametrize("repair", [None, "Restore operation"])
+def test_untracked_files_anywhere_refuse_without_writing(
+    live: run.Run, name: str, repair: str | None
+) -> None:
+    (live.root / name).write_text("unexpected\n")
+    with pytest.raises(clients.GuardRefusal, match="clean work tree"):
+        live.execute("judge-check", repair=repair)
+    assert not live.directory.exists()
+
+
+@pytest.mark.parametrize("flag", ["--skip-worktree", "--assume-unchanged"])
+@pytest.mark.parametrize("repair", [None, "Restore request handling"])
+def test_hidden_disk_edits_cannot_be_declared_as_repairs(
+    live: run.Run, flag: str, repair: str | None
+) -> None:
+    name = "src/zoon/pilot/clients.py"
+    git(live.root, "update-index", flag, name)
+    (live.root / name).write_text("changed\n")
+    assert git(live.root, "status", "--porcelain", "--untracked-files=all") == ""
+    with pytest.raises(clients.GuardRefusal, match="matching HEAD"):
+        live.execute("judge-check", repair=repair)
+    assert not live.directory.exists()
+
+
+def test_root_level_tracked_code_requires_repair_and_is_reported(
+    live: run.Run, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (live.root / "settings.toml").write_text("enabled = true\n")
+    commit(live.root)
+    with pytest.raises(clients.GuardRefusal, match="repair"):
+        live.execute("judge-check")
+
+    def stop() -> run.State:
+        raise clients.TerminalStop(clients.StopReason.CALIBRATION)
+
+    monkeypatch.setattr(live, "_judge_check", stop)
+    live.execute("judge-check", repair="Restore configuration")
+    repair = clients.obj(clients.items(live.binding()["repairs"])[0])
+    assert repair["files"] == ["settings.toml"]
+    assert set(clients.obj(repair["code"])) == {"settings.toml"}
+    assert any(
+        "difference from registered" in line and "settings.toml" in line
+        for line in live.execute("report")
+    )
+
+
+@pytest.mark.parametrize("folder", ["raw", "outside"])
+def test_missing_dataset_refuses_before_state_or_requests_then_resumes(
+    live: run.Run, monkeypatch: pytest.MonkeyPatch, folder: str
+) -> None:
+    from tests.synthetic import write_outside, write_raw
+    from zoon.pilot import outside
+
+    raw, external = live.root / "data" / "raw", live.root / "data" / "outside"
+    write_raw(raw, 3)
+    write_outside(external)
+    (live.root / "data-manifest.json").unlink()
+    (live.root / "data-manifest-outside.json").unlink()
+    fetch.fetch(raw, live.root / "data-manifest.json")
+    outside.fetch(external, live.root / "data-manifest-outside.json")
+    commit(live.root)
+    git(live.root, "tag", "-f", "registered")
+    fresh = run.Run(live.root, supplied_clients=[])
+    original = run.Run.verify_materials
+    reached: list[str] = []
+
+    def training() -> tuple[list[run.cohorts.Participant], run.cohorts.Cohorts]:
+        reached.append("training")
+        people = run.stub.people(48, 41)
+        return people, run.cohorts.generate(people, calibration_size=8)
+
+    monkeypatch.setattr(fresh, "training", training)
+    # Regenerate only synthetic fixtures; no held-out loader is reachable.
+    people, document = training()
+    (live.root / "prereg" / "cohorts.json").write_bytes(run.cohorts.serialise(document))
+    records = run.rewrites.load(live.root / "pilot" / "rewrites")
+    target = live.root / "prereg" / "requests"
+    for path in target.iterdir():
+        if path.name != "README.md":
+            path.unlink()
+    for name, value in run.prompts.fixtures(
+        people, document, run.materials.load(), records
+    ).items():
+        (target / name).write_bytes(value)
+    commit(live.root)
+    git(live.root, "tag", "-f", "registered")
+    fresh = run.Run(live.root, supplied_clients=[])
+    monkeypatch.setattr(fresh, "training", training)
+
+    def accept(*args: object) -> None:
+        pass
+
+    monkeypatch.setattr(outside, "check_against_paper", accept)
+    monkeypatch.setattr(fresh, "verify_materials", lambda: original(fresh))
+    path = next((live.root / "data" / folder).iterdir())
+    content = path.read_bytes()
+    path.unlink()
+    reached.clear()
+    with pytest.raises(clients.GuardRefusal, match="manifest"):
+        fresh.execute("judge-check")
+    assert not fresh.directory.exists()
+    assert not reached
+    path.write_bytes(content)
+
+    def complete() -> run.State:
+        reached.append("body")
+        return fresh.save("judge-check", {})
+
+    monkeypatch.setattr(fresh, "_judge_check", complete)
+    assert "completed" in fresh.execute("judge-check")[0]
+    assert reached == ["training", "body"]
+    assert not any(t.entries for t in fresh.session.transcripts.values())

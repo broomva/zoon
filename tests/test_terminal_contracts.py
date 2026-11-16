@@ -84,7 +84,7 @@ def test_cap_report_overrides_completed_state(runner: run.Run) -> None:
 
 def test_failed_step_report_refuses_without_result(runner: run.Run) -> None:
     runner.save("judge-check", {}, status="failed", reason="interrupted")
-    with pytest.raises(clients.StopRun, match=r"repeat.*judge-check"):
+    with pytest.raises(clients.GuardRefusal, match=r"repeat.*judge-check"):
         runner.execute("report")
     assert not (runner.directory / "result.md").exists()
 
@@ -140,9 +140,18 @@ def test_live_material_guards_precede_any_request(
     runner.synthetic = False
 
     def guarded(*args: object) -> None:
+        runner.verify_materials()
+
+    def ignore(*args: object) -> None:
         pass
 
-    monkeypatch.setattr(runner, "guard", guarded)
+    def ratings(*args: object) -> dict[str, object]:
+        return {}
+
+    monkeypatch.setattr(runner, "_guard", guarded)
+    monkeypatch.setattr(run, "verify_data", ignore)
+    monkeypatch.setattr(run.outside, "ratings", ratings)
+    monkeypatch.setattr(run.outside, "check_against_paper", ignore)
     people = run.stub.people(48, 41)
     document = cohorts.generate(people, calibration_size=8)
     monkeypatch.setattr(runner, "training", lambda: (people, document))
@@ -162,8 +171,7 @@ def test_live_material_guards_precede_any_request(
         (runner.root / "prereg" / "cohorts.json").write_text("{}\n")
     else:
         (target / next(iter(made))).write_bytes(b"wrong")
-    runner.deps = run.dependencies(runner.root)
-    with pytest.raises(clients.StopRun, match=r"materials|cohorts|fixtures|digest"):
+    with pytest.raises(clients.GuardRefusal, match=r"materials|cohorts|fixtures|digest"):
         runner.execute(step, COMMIT)
     assert not runner.session.transcripts["decision"].entries
 
@@ -225,9 +233,18 @@ def test_live_material_guards_accept_regenerated_inputs(
     runner: run.Run, monkeypatch: pytest.MonkeyPatch, step: str
 ) -> None:
     def guarded(*args: object) -> None:
+        runner.verify_materials()
+
+    def ignore(*args: object) -> None:
         pass
 
-    monkeypatch.setattr(runner, "guard", guarded)
+    def ratings(*args: object) -> dict[str, object]:
+        return {}
+
+    monkeypatch.setattr(runner, "_guard", guarded)
+    monkeypatch.setattr(run, "verify_data", ignore)
+    monkeypatch.setattr(run.outside, "ratings", ratings)
+    monkeypatch.setattr(run.outside, "check_against_paper", ignore)
     people = run.stub.people(48, 41)
     document = cohorts.generate(people, calibration_size=8)
     monkeypatch.setattr(runner, "training", lambda: (people, document))
@@ -240,7 +257,6 @@ def test_live_material_guards_accept_regenerated_inputs(
     ).items():
         (target / name).write_bytes(content)
     (runner.root / "prereg" / "cohorts.json").write_bytes(cohorts.serialise(document))
-    runner.deps = run.dependencies(runner.root)
     for earlier in run.STEPS[: run.STEPS.index(step)]:
         runner.save(earlier, {})
 

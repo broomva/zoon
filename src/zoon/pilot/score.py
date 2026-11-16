@@ -37,9 +37,9 @@ def verdict(comparisons: Sequence[Comparison]) -> str:
 def complete(data: Sequences) -> None:
     shape = data.choice.shape
     if len(shape) != 2 or shape[0] == 0 or shape[1] != len(fetch.DILEMMAS):
-        raise clients.StopRun("complete-records failure; no verdict")
+        raise clients.TerminalStop(clients.StopReason.RECORDS)
     if data.feedback.shape != shape or data.dilemma.shape != shape:
-        raise clients.StopRun("complete-records failure; no verdict")
+        raise clients.TerminalStop(clients.StopReason.RECORDS)
     expected = np.arange(len(fetch.DILEMMAS))
     if (
         not np.isin(data.choice, [0, 1]).all()
@@ -47,14 +47,14 @@ def complete(data: Sequences) -> None:
         or not (np.sort(data.dilemma, axis=1) == expected).all()
         or (np.abs(data.feedback) > 1).any()
     ):
-        raise clients.StopRun("complete-records failure; no verdict")
+        raise clients.TerminalStop(clients.StopReason.RECORDS)
 
 
 def rotation_logs(probabilities: Sequence[Floats], data: Sequences) -> Floats:
     complete(data)
     rotations = power.held_out_sets(True, len(fetch.DILEMMAS))
     if len(probabilities) != len(rotations):
-        raise clients.StopRun("complete-records failure: missing rotations; no verdict")
+        raise clients.TerminalStop(clients.StopReason.RECORDS)
     total = np.zeros(data.choice.shape)
     count = np.zeros(data.choice.shape, dtype=np.int64)
     for pair, p in zip(rotations, probabilities, strict=True):
@@ -64,14 +64,12 @@ def rotation_logs(probabilities: Sequence[Floats], data: Sequences) -> Floats:
             or not np.isfinite(p[target]).all()
             or ((p[target] < 0) | (p[target] > 1)).any()
         ):
-            raise clients.StopRun("complete-records failure: invalid probability; no verdict")
+            raise clients.TerminalStop(clients.StopReason.RECORDS)
         chosen = np.where(data.choice == 1, p, 1 - p)
         total[target] += np.log(np.clip(chosen[target], PROBABILITY_FLOOR, 1 - PROBABILITY_FLOOR))
         count += target
     if not (count == 2).all():
-        raise clients.StopRun(
-            "complete-records failure: each trial needs two rotations; no verdict"
-        )
+        raise clients.TerminalStop(clients.StopReason.RECORDS)
     return total / count
 
 
@@ -90,9 +88,9 @@ def compare(
         or first.shape != dilemma.shape
         or first.shape[0] != len(identities)
     ):
-        raise clients.StopRun("score shapes differ; no verdict")
+        raise clients.TerminalStop(clients.StopReason.RECORDS)
     if len(set(identities)) != len(identities):
-        raise clients.StopRun("duplicate participant identities; no verdict")
+        raise clients.TerminalStop(clients.StopReason.RECORDS)
     ordered = sorted(range(len(identities)), key=lambda i: identities[i])
     means: list[float] = []
     for i in ordered:
@@ -107,7 +105,7 @@ def compare(
             continue
         values = first[i, targets] - second[i, targets]
         if not np.isfinite(values).all():
-            raise clients.StopRun("nonfinite score; no verdict")
+            raise clients.TerminalStop(clients.StopReason.RECORDS)
         means.append(float(values.mean()))
     if not means:
         return None
@@ -124,5 +122,5 @@ def dilemma_interval(
     gain = first - second
     means = np.array([float(gain[dilemma == d].mean()) for d in retained])
     if not np.isfinite(means).all():
-        raise clients.StopRun("nonfinite dilemma score; no verdict")
+        raise clients.TerminalStop(clients.StopReason.RECORDS)
     return power.bootstrap_interval(means)

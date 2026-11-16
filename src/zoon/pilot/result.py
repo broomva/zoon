@@ -52,14 +52,14 @@ def render(run: "Run", states: "dict[str, State]") -> list[str]:
                 unavailable[family] = state["reason"]
         try:
             run.session.check_family(family)
-        except clients.StopRun as error:
+        except (clients.TerminalStop, clients.FamilyUnusable) as error:
             unavailable[family] = str(error)
     if "second" in unavailable:
         logs = {name: value for name, value in logs.items() if not name.startswith("second/")}
     cap_exceeded = run.session.spent > run.session.cap
     if cap_exceeded:
         completed = False
-        add("verdict", "outcome", "no verdict: spending cap reached; no verdict")
+        add("verdict", "outcome", "no verdict: " + clients.StopReason.CAP.value)
     elif completed:
         required = [
             "decision/zoon-evaluative",
@@ -82,7 +82,7 @@ def render(run: "Run", states: "dict[str, State]") -> list[str]:
             v.shape != dilemma.shape or not np.isfinite(v).all() for v in logs.values()
         ):
             completed = False
-            add("verdict", "outcome", "no verdict: complete-records failure")
+            add("verdict", "outcome", "no verdict: " + clients.StopReason.RECORDS.value)
         else:
             primary = [
                 cast(
@@ -412,14 +412,7 @@ def render(run: "Run", states: "dict[str, State]") -> list[str]:
         )
     from zoon.pilot.run import changed_files, git
 
-    registered = payload.get("registered_commit")
-    if not registered:
-        try:
-            registered = git(
-                run.root, "rev-parse", "HEAD" if run.synthetic else "refs/tags/registered^{commit}"
-            )
-        except clients.StopRun:
-            registered = "not recorded"
+    registered = run.registered_commit
     add("run", "registered commit", registered)
     add("run", "report commit", git(run.root, "rev-parse", "HEAD"))
     for step, state in states.items():
@@ -445,3 +438,23 @@ def json_reply(value: object) -> str:
     import json
 
     return json.dumps(value, sort_keys=True, ensure_ascii=False, allow_nan=False)
+
+
+def write_report(run: "Run", lines: list[str]) -> None:
+    target = (
+        run.directory / "result.md" if run.synthetic else run.root / "docs" / "pilot" / "result.md"
+    )
+    target.parent.mkdir(parents=True, exist_ok=True)
+    preamble = (
+        "This is a synthetic stub run. It is not the pilot result."
+        if run.synthetic
+        else "This is the registered pilot result. The command output is reproduced below."
+    )
+    repairs = [line for line in lines if line.startswith(("[Repairs]", "[stub Repairs]"))]
+    target.write_text(
+        f"{preamble}\n\n```text\n"
+        + "\n".join(lines)
+        + "\n```\n\n## Repairs\n\n```text\n"
+        + "\n".join(repairs)
+        + "\n```\n"
+    )

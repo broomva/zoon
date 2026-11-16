@@ -38,7 +38,7 @@ def test_rotation_standardising_population_spread_and_sign_afterwards() -> None:
     np.testing.assert_array_equal(
         judge.standardise(np.array([2.0, 2.0 + 1e-10, 7.0]), [2]), [0, 0, 0]
     )
-    with pytest.raises(clients.StopRun):
+    with pytest.raises(clients.StepFailure):
         judge.standardise(np.array([math.nan, 2.0, 3.0]), [2])
 
 
@@ -135,11 +135,11 @@ def test_rotations_average_logs_not_probabilities_and_clamp() -> None:
         score.rotation_logs(certain, data), np.log(np.where(data.choice, 0.999, 0.001))
     )
     p[0][0, np.flatnonzero(data.dilemma[0] == 0)[0]] = math.nan
-    with pytest.raises(clients.StopRun, match="complete-records"):
+    with pytest.raises(clients.TerminalStop, match="complete-records"):
         score.rotation_logs(p, data)
-    with pytest.raises(clients.StopRun, match="complete-records"):
+    with pytest.raises(clients.TerminalStop, match="complete-records"):
         score.rotation_logs(certain[:-1], data)
-    with pytest.raises(clients.StopRun, match="complete-records"):
+    with pytest.raises(clients.TerminalStop, match="complete-records"):
         score.complete(replace(data, choice=data.choice[:, :-1]))
 
 

@@ -53,7 +53,7 @@ def calibration(ratings: Floats, human: Floats) -> Calibration:
 def standardise(ratings: Floats, held_out: Sequence[int]) -> Floats:
     rest = ratings[~np.isin(np.arange(len(ratings)), held_out)]
     if not np.isfinite(ratings).all() or rest.size == 0:
-        raise clients.StopRun("invalid judge ratings")
+        raise clients.StepFailure("invalid judge ratings")
     spread = float(rest.std(ddof=0))
     return np.zeros_like(ratings) if spread < 1e-9 else (ratings - rest.mean()) / spread
 

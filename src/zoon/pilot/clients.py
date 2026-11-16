@@ -1,6 +1,7 @@
 """Probability clients and resumable, budgeted transcripts."""
 
 import hashlib
+import http.client
 import importlib
 import json
 import math
@@ -13,6 +14,7 @@ from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass
 from decimal import Decimal
+from enum import Enum
 from pathlib import Path
 from threading import Lock
 from typing import Protocol, cast
@@ -29,16 +31,52 @@ SAFETY_SETTINGS = [
 ]
 
 
-class StopRun(ValueError):
+class GuardRefusal(Exception):
     pass
 
 
-class FamilyUnusable(StopRun):
+class StepFailure(Exception):
     pass
 
 
-class StepFailure(StopRun):
-    pass
+class FamilyCause(Enum):
+    SHARE = "second family declared-answer share below one half"
+    VERSION = "second family version changed"
+    WITHDRAWN = "second family withdrawn"
+    CALIBRATION = "second family failed the stop rule"
+    METADATA = "connection metadata in response; no transcript was written"
+
+
+class StopReason(Enum):
+    WITHDRAWN = "decision model withdrawn; no verdict"
+    VERSION = "decision model version changed; no verdict"
+    CAP = "spending cap reached; no verdict"
+    RECORDS = "complete-records failure; no verdict"
+    CALIBRATION = "the judge could not be calibrated"
+
+
+class FamilyUnusable(Exception):
+    def __init__(self, cause: FamilyCause) -> None:
+        if not isinstance(cast(object, cause), FamilyCause):
+            raise TypeError("a registered family cause is required")
+        self.cause = cause
+        super().__init__(cause.value)
+
+
+class TerminalStop(Exception):
+    def __init__(
+        self,
+        reason: StopReason,
+        *,
+        response: "Response | None" = None,
+        payload: dict[str, object] | None = None,
+    ) -> None:
+        if not isinstance(cast(object, reason), StopReason):
+            raise TypeError("a registered stop reason is required")
+        self.reason = reason
+        self.response = response
+        self.payload = payload or {}
+        super().__init__(reason.value)
 
 
 class TransientError(Exception):
@@ -54,12 +92,6 @@ class Response:
     input_tokens: int
     output_tokens: int
     returned_probabilities: dict[str, float] | None = None
-
-
-class ModelChanged(StopRun):
-    def __init__(self, response: Response) -> None:
-        super().__init__("decision model version changed; no verdict")
-        self.response = response
 
 
 class Client(Protocol):
@@ -102,27 +134,27 @@ def validate(request: Request, response: Response) -> None:
         or response.input_tokens < 0
         or response.output_tokens < 0
     ):
-        raise StopRun("invalid reported version or token usage")
+        raise StepFailure("invalid reported version or token usage")
     if isinstance(request, str):
         if response.probabilities:
-            raise StopRun("recognition returned unexpected probabilities")
+            raise StepFailure("recognition returned unexpected probabilities")
         return
     labels = {a.answer for a in request.answers}
     values = response.probabilities
     if set(values) != labels or any(
         not math.isfinite(p) or not 0 <= p <= 1 for p in values.values()
     ):
-        raise StopRun("invalid declared-answer probabilities")
+        raise StepFailure("invalid declared-answer probabilities")
     empty = response.share == 0 and sum(values.values()) == 0
     if not empty and not math.isclose(sum(values.values()), 1, abs_tol=1e-7):
-        raise StopRun("declared-answer probabilities do not sum to one")
+        raise StepFailure("declared-answer probabilities do not sum to one")
     if response.share is not None and (
         not math.isfinite(response.share)
         or not 0
         <= response.share
         <= (1.05 + 1e-12 if response.returned_probabilities else 1 + 1e-7)
     ):
-        raise StopRun("invalid declared-answer share")
+        raise StepFailure("invalid declared-answer share")
 
 
 def retry(
@@ -131,11 +163,17 @@ def retry(
     for attempt in range(attempts):
         try:
             return call()
-        except (TransientError, TimeoutError):
+        except (
+            TransientError,
+            TimeoutError,
+            ConnectionError,
+            urllib.error.URLError,
+            http.client.IncompleteRead,
+        ):
             if attempt + 1 == attempts:
                 raise StepFailure("transient request failure after bounded retries") from None
             pause(2.0**attempt)
-    raise StopRun("request attempts must be positive")
+    raise StepFailure("request attempts must be positive")
 
 
 class _Usage(Protocol):
@@ -169,7 +207,7 @@ class DecisionClient:
 
     def ask(self, request: Request) -> Response:
         if not isinstance(request, prompts.Decision):
-            raise StopRun("decision family cannot answer recognition")
+            raise StepFailure("decision family cannot answer recognition")
 
         def call() -> Response:
             try:
@@ -191,15 +229,16 @@ class DecisionClient:
                     usage = cast(object, getattr(result, "usage", None))
                     incoming = cast(object, getattr(usage, "input_tokens", 0))
                     outgoing = cast(object, getattr(usage, "output_tokens", 0))
-                    raise ModelChanged(
-                        Response(
+                    raise TerminalStop(
+                        StopReason.VERSION,
+                        response=Response(
                             {},
                             None,
                             "",
                             result.model,
                             incoming if isinstance(incoming, int) and incoming >= 0 else 0,
                             outgoing if isinstance(outgoing, int) and outgoing >= 0 else 0,
-                        )
+                        ),
                     )
                 raw = result.answers["q"].probabilities
                 returned = {str(label): float(p) for label, p in raw.items()}
@@ -225,10 +264,10 @@ class DecisionClient:
                 )
                 try:
                     validate(request, response)
-                except StopRun:
+                except StepFailure:
                     raise TransientError from None
                 return response
-            except (StopRun, TransientError, TimeoutError):
+            except (StepFailure, TerminalStop, TransientError, TimeoutError):
                 raise
             except Exception as error:
                 status = getattr(error, "status_code", None)
@@ -236,28 +275,30 @@ class DecisionClient:
                     raise TransientError from None
                 if "timeout" in type(error).__name__.lower():
                     raise TimeoutError from None
-                if status in (404, 410):
-                    raise StopRun("decision model withdrawn; no verdict") from None
-                raise TransientError from None
+            if status in (404, 410):
+                raise TerminalStop(StopReason.WITHDRAWN) from None
+            if status in (401, 403):
+                raise StepFailure("decision authentication failed") from None
+            raise TransientError from None
 
         return retry(call)
 
 
 def obj(value: object) -> dict[str, object]:
     if not isinstance(value, dict):
-        raise StopRun("invalid response object")
+        raise StepFailure("invalid response object")
     return cast(dict[str, object], value)
 
 
 def items(value: object) -> list[object]:
     if not isinstance(value, list):
-        raise StopRun("invalid response list")
+        raise StepFailure("invalid response list")
     return cast(list[object], value)
 
 
 def number(value: object) -> float:
     if not isinstance(value, (int, float)):
-        raise StopRun("invalid response number")
+        raise StepFailure("invalid response number")
     return float(value)
 
 
@@ -272,16 +313,16 @@ def token_probabilities(
     for candidate in candidates:
         token = candidate["token"]
         if not isinstance(token, str):
-            raise StopRun("invalid candidate token")
+            raise StepFailure("invalid candidate token")
         if token in seen:
-            raise StopRun("duplicate token in top candidates")
+            raise StepFailure("duplicate token in top candidates")
         seen.add(token)
         logp = number(candidate["logProbability"])
         if not math.isfinite(logp) or logp > 0:
-            raise StopRun("invalid token log probability")
+            raise StepFailure("invalid token log probability")
         total += math.exp(logp)
         if total > 1 + 1e-7:
-            raise StopRun("invalid top-candidate probability mass")
+            raise StepFailure("invalid top-candidate probability mass")
         for label, expected in zip(labels, tokens, strict=True):
             if token in (expected, " " + expected):
                 mass[label] += math.exp(logp)
@@ -299,13 +340,15 @@ def post(url: str, headers: dict[str, str], body: bytes) -> tuple[int, dict[str,
             try:
                 return reply.status, obj(json.loads(reply.read()))
             except (ValueError, TypeError):
+                raise TransientError from None
+            except StepFailure:
                 return reply.status, {}
     except urllib.error.HTTPError as error:
         return error.code, {}
     except (TimeoutError, urllib.error.URLError):
         raise TimeoutError from None
-    except Exception:
-        raise FamilyUnusable("second-family transport failed") from None
+    except (ConnectionError, http.client.IncompleteRead, OSError):
+        raise TransientError from None
 
 
 def get(url: str, headers: dict[str, str], body: bytes) -> tuple[int, dict[str, object]]:
@@ -397,8 +440,10 @@ class VertexClient:
             or (400 <= status < 500 and status not in (404, 410))
         ):
             raise TransientError
+        if status in (404, 410):
+            raise FamilyUnusable(FamilyCause.WITHDRAWN)
         if status != 200:
-            raise FamilyUnusable("second-family service unavailable")
+            raise StepFailure("unexpected response status")
         return data
 
     def preflight(self) -> None:
@@ -464,7 +509,7 @@ class VertexClient:
     def read(self, request: Request, data: dict[str, object]) -> Response:
         project = os.environ.get("ZOON_VERTEX_PROJECT", "")
         if any(secret and secret in json.dumps(data) for secret in (project, self._bearer)):
-            raise FamilyUnusable("connection metadata in response; no transcript was written")
+            raise FamilyUnusable(FamilyCause.METADATA)
         version = str(data.get("modelVersion") or "")
         input_tokens = output_tokens = 0
         try:
@@ -505,7 +550,7 @@ class VertexClient:
             )
             validate(request, response)
             return response
-        except (ValueError, KeyError, IndexError, OverflowError, TypeError):
+        except (StepFailure, ValueError, KeyError, IndexError, OverflowError, TypeError):
             return Response(
                 {a.answer: 0.0 for a in request.answers}
                 if isinstance(request, prompts.Decision)
@@ -558,31 +603,36 @@ class Transcript:
         self.family: Family = family
         self.path = directory / f"{family}.jsonl"
         self.entries: dict[str, Entry] = {}
-        if self.path.exists():
-            raw = self.path.read_bytes()
-            if raw and not raw.endswith(b"\n"):
-                raise StopRun(
-                    "incomplete transcript line; restore the last complete line before resuming"
-                )
-            for line in raw.splitlines():
-                row = obj(json.loads(line))
-                payload = obj(row["response"])
-                response = Response(
-                    cast(dict[str, float], payload["probabilities"]),
-                    cast(float | None, payload["share"]),
-                    str(payload["text"]),
-                    str(payload["version"]),
-                    int(number(payload["input_tokens"])),
-                    int(number(payload["output_tokens"])),
-                    cast(dict[str, float] | None, payload.get("returned_probabilities")),
-                )
-                digest = str(row["key"])
-                encoded = json.dumps(
-                    row["request"], sort_keys=True, ensure_ascii=False, separators=(",", ":")
-                ).encode()
-                if hashlib.sha256(encoded).hexdigest() != digest or digest in self.entries:
-                    raise StopRun("invalid or duplicate transcript key")
-                self.entries[digest] = Entry(digest, row["request"], response)
+        try:
+            if self.path.exists():
+                raw = self.path.read_bytes()
+                if raw and not raw.endswith(b"\n"):
+                    raise GuardRefusal(
+                        "incomplete transcript line; restore the last complete line before resuming"
+                    )
+                for line in raw.splitlines():
+                    row = obj(json.loads(line))
+                    payload = obj(row["response"])
+                    response = Response(
+                        cast(dict[str, float], payload["probabilities"]),
+                        cast(float | None, payload["share"]),
+                        str(payload["text"]),
+                        str(payload["version"]),
+                        int(number(payload["input_tokens"])),
+                        int(number(payload["output_tokens"])),
+                        cast(dict[str, float] | None, payload.get("returned_probabilities")),
+                    )
+                    digest = str(row["key"])
+                    encoded = json.dumps(
+                        row["request"], sort_keys=True, ensure_ascii=False, separators=(",", ":")
+                    ).encode()
+                    if hashlib.sha256(encoded).hexdigest() != digest or digest in self.entries:
+                        raise GuardRefusal("invalid or duplicate transcript key")
+                    self.entries[digest] = Entry(digest, row["request"], response)
+        except GuardRefusal:
+            raise
+        except Exception as error:
+            raise GuardRefusal("invalid transcript: " + type(error).__name__) from None
 
     @property
     def spent(self) -> Decimal:
@@ -629,14 +679,14 @@ class Session:
 
     def check_cap(self) -> None:
         if self.spent > self.cap:
-            raise StopRun("spending cap reached; no verdict")
+            raise TerminalStop(StopReason.CAP)
 
     def check_family(self, family: Family) -> None:
         entries = list(self.transcripts[family].entries.values())
         probabilities = [e for e in entries if not isinstance(e.request, str)]
         if family == "decision":
             if any(e.response.version != prices.DECISION.model for e in entries):
-                raise StopRun("decision model version changed; no verdict")
+                raise TerminalStop(StopReason.VERSION)
         else:
             versions = {
                 e.response.version
@@ -644,9 +694,9 @@ class Session:
                 if not isinstance(e.request, str) or e.response.version
             }
             if len(versions) > 1 or any(not v.startswith(prices.SECOND.model) for v in versions):
-                raise FamilyUnusable("second family version changed")
+                raise FamilyUnusable(FamilyCause.VERSION)
             if any(e.response.share is None or e.response.share < 0.5 for e in probabilities):
-                raise FamilyUnusable("second family declared-answer share below one half")
+                raise FamilyUnusable(FamilyCause.SHARE)
 
     def ask_many(
         self, family: Family, requests: Sequence[Request], *, recognition: bool = False
@@ -673,38 +723,36 @@ class Session:
                 reserved += addition
 
             if not window:
-                raise StopRun("spending cap reached; no verdict")
+                raise TerminalStop(StopReason.CAP)
 
             # Admission and recording use a fixed window and canonical order, independent of
             # the number of workers or the order in which requests complete.
-            def call(request: Request) -> Response | StopRun:
+            def call(request: Request) -> Response | Exception:
                 try:
                     response = self.clients[family].ask(request)
                     validate(request, response)
                     return response
-                except StopRun as error:
+                except Exception as error:
                     return error
-                except Exception:
-                    return StepFailure(f"{family} request failed")
 
             with ThreadPoolExecutor(max_workers=self.workers) as pool:
                 results = list(pool.map(call, window))
-            failure: StopRun | None = None
+            failure: Exception | None = None
             for request, result in zip(window, results, strict=True):
-                if isinstance(result, StopRun):
-                    if isinstance(result, ModelChanged):
+                if isinstance(result, Exception):
+                    if isinstance(result, TerminalStop) and result.response is not None:
                         transcript.append(request, result.response)
-                    if (
-                        failure is None
-                        or (
-                            isinstance(failure, FamilyUnusable)
-                            and not isinstance(result, FamilyUnusable)
+
+                    def priority(error: Exception) -> int:
+                        return (
+                            2
+                            if isinstance(error, TerminalStop)
+                            else 0
+                            if isinstance(error, FamilyUnusable)
+                            else 1
                         )
-                        or (
-                            isinstance(failure, StepFailure)
-                            and not isinstance(result, (StepFailure, FamilyUnusable))
-                        )
-                    ):
+
+                    if failure is None or priority(result) > priority(failure):
                         failure = result
                 else:
                     transcript.append(request, result)

@@ -5,6 +5,7 @@ import fcntl
 import hashlib
 import json
 import math
+import os
 import subprocess
 import sys
 from collections.abc import Sequence
@@ -48,17 +49,6 @@ def digest(value: bytes) -> str:
     return hashlib.sha256(value).hexdigest()
 
 
-def dependencies(root: Path) -> dict[str, str]:
-    paths = sorted(
-        p
-        for folder in ("src", "prereg", "pilot")
-        for p in (root / folder).rglob("*")
-        if p.is_file() and "__pycache__" not in p.parts and p.suffix != ".pyc"
-    )
-    paths += [root / "pyproject.toml", root / "uv.lock", *sorted(root.glob("data-manifest*.json"))]
-    return {str(p.relative_to(root)): digest(p.read_bytes()) for p in paths}
-
-
 def verify_data(directory: Path, manifest: Path) -> None:
     try:
         files = clients.obj(clients.obj(json.loads(manifest.read_text()))["files"])
@@ -68,9 +58,9 @@ def verify_data(directory: Path, manifest: Path) -> None:
             with path.open("rb") as handle:
                 found = hashlib.file_digest(handle, "sha256").hexdigest()
             if path.stat().st_size != expected["size"] or found != expected["sha256"]:
-                raise clients.StopRun("dataset does not match its registered manifest")
+                raise clients.GuardRefusal("dataset does not match its registered manifest")
     except (OSError, ValueError, KeyError):
-        raise clients.StopRun(
+        raise clients.GuardRefusal(
             "dataset unavailable or inconsistent with its registered manifest"
         ) from None
 
@@ -81,7 +71,7 @@ def git(root: Path, *arguments: str) -> str:
             ["git", *arguments], cwd=root, capture_output=True, text=True, check=True
         ).stdout.strip()
     except Exception:
-        raise clients.StopRun("could not verify the registered checkout") from None
+        raise clients.GuardRefusal("could not verify the registered tag or checkout") from None
 
 
 def split_dependencies(deps: dict[str, str]) -> tuple[dict[str, str], dict[str, str]]:
@@ -95,21 +85,25 @@ def split_dependencies(deps: dict[str, str]) -> tuple[dict[str, str], dict[str, 
 
 
 def tree(root: Path, commit: str) -> dict[str, str]:
-    entries = git(root, "ls-tree", "-r", commit).splitlines()
-    return {
-        name: metadata.split()[2]
-        for line in entries
-        for metadata, name in [line.split("\t", 1)]
-        if name.startswith(("src/", "prereg/", "pilot/"))
-        or name in ("pyproject.toml", "uv.lock")
-        or (name.startswith("data-manifest") and name.endswith(".json") and "/" not in name)
-    }
+    import io
 
-
-def blob(root: Path, object_id: str) -> bytes:
-    return subprocess.run(
-        ["git", "cat-file", "blob", object_id], cwd=root, capture_output=True, check=True
-    ).stdout
+    entries = [line.split("\t", 1) for line in git(root, "ls-tree", "-r", commit).splitlines()]
+    objects = [metadata.split()[2] for metadata, _ in entries]
+    stream = io.BytesIO(
+        subprocess.run(
+            ["git", "cat-file", "--batch"],
+            cwd=root,
+            input=("\n".join(objects) + "\n").encode(),
+            capture_output=True,
+            check=True,
+        ).stdout
+    )
+    result: dict[str, str] = {}
+    for _, name in entries:
+        size = int(stream.readline().split()[2])
+        result[name] = digest(stream.read(size))
+        stream.read(1)
+    return result
 
 
 def changed_files(root: Path, registered: str, current: str) -> list[str]:
@@ -154,11 +148,8 @@ def read_fits(value: object) -> list[arms.Rotation]:
                 cast(float | None, fit["alpha"]),
                 cast(float | None, fit["beta"]),
             )
-        result.append(
-            arms.Rotation(
-                tuple(int(clients.number(i)) for i in clients.items(row["held_out"])), fitted
-            )
-        )
+        held_out = tuple(int(clients.number(i)) for i in clients.items(row["held_out"]))
+        result.append(arms.Rotation(held_out, fitted))
     return result
 
 
@@ -166,7 +157,7 @@ def checkpoint(transcript: clients.Transcript, count: int | None = None) -> dict
     entries = list(transcript.entries.values())
     if count is not None:
         if len(entries) < count:
-            raise clients.StopRun("transcript checkpoint is missing requests")
+            raise clients.GuardRefusal("transcript checkpoint is missing requests")
         entries = entries[:count]
     return {
         "calls": len(entries),
@@ -186,10 +177,14 @@ class Run:
     ) -> None:
         self.root = root
         self.synthetic = synthetic
-        self.mode = "stub" if synthetic else "live"
+        self.registered_commit = git(
+            root, "rev-parse", "HEAD" if synthetic else "refs/tags/registered^{commit}"
+        )
+        self.mode = "stub" if synthetic else "live-" + self.registered_commit
+        self.code: dict[str, str] = {}
+        self.pending_binding: State | None = None
         self.directory = root / "data" / "run" / self.mode
         self.records = rewrites.load(root / "pilot" / "rewrites") if synthetic else []
-        self.deps = dependencies(root) if synthetic else {}
         available = (
             supplied_clients
             if supplied_clients is not None
@@ -204,129 +199,159 @@ class Run:
     def line(self, tag: str, key: str, value: object) -> str:
         return f"[{'stub ' if self.synthetic else ''}{tag}] {key} = {value}"
 
-    def binding(self) -> State:
+    def binding(self, value: State | None = None) -> State:
         path = self.directory / "binding.json"
-        if path.exists():
-            return clients.obj(json.loads(path.read_text()))
-        return {"repairs": []}
+        if value is not None:
+            self.directory.mkdir(parents=True, exist_ok=True)
+            temporary = path.with_suffix(".tmp")
+            temporary.write_bytes(encoded(value))
+            temporary.replace(path)
+        return clients.obj(json.loads(path.read_text())) if path.exists() else {"repairs": []}
 
     def guard(self, step: str, registered: str | None, repair: str | None) -> None:
-        self.session.transcripts = {
-            family: clients.Transcript(transcript.path.parent, family)
-            for family, transcript in self.session.transcripts.items()
-        }
+        try:
+            self._guard(step, registered, repair)
+        except clients.GuardRefusal:
+            raise
+        except Exception as error:
+            raise clients.GuardRefusal(
+                "guard could not verify inputs: " + type(error).__name__
+            ) from None
+
+    def _guard(self, step: str, registered: str | None, repair: str | None) -> None:
+        if step not in STEPS:
+            raise clients.GuardRefusal("unknown step")
         if not self.synthetic:
-            try:
-                tagged = git(self.root, "rev-parse", "refs/tags/registered^{commit}")
-            except clients.StopRun:
-                raise clients.StopRun("registered tag is required") from None
+            tagged = git(self.root, "rev-parse", "refs/tags/registered^{commit}")
+            if tagged != self.registered_commit:
+                raise clients.GuardRefusal("registered tag changed; start with its run identity")
             if step == "held-out" and registered != tagged:
-                raise clients.StopRun("--registered-commit must match the registered tag")
+                raise clients.GuardRefusal("--registered-commit must match the registered tag")
             try:
                 git(self.root, "merge-base", "--is-ancestor", tagged, "HEAD")
-            except clients.StopRun:
-                raise clients.StopRun("registered commit must be an ancestor of HEAD") from None
-            original = tree(self.root, tagged)
-            head = tree(self.root, "HEAD")
+            except clients.GuardRefusal:
+                raise clients.GuardRefusal(
+                    "registered commit must be an ancestor of HEAD"
+                ) from None
+            original, head = tree(self.root, tagged), tree(self.root, "HEAD")
             names = original.keys() | head.keys()
-            current = {
-                name: digest((self.root / name).read_bytes())
-                if (self.root / name).is_file()
-                else "deleted"
+            if git(self.root, "status", "--porcelain", "--untracked-files=all") or any(
+                (digest(path.read_bytes()) if (path := self.root / name).is_file() else "deleted")
+                != head.get(name, "deleted")
                 for name in names
-            }
+            ):
+                raise clients.GuardRefusal("requires a clean work tree matching HEAD")
             difference = {
-                name: value
-                for name, value in current.items()
-                if name not in original
-                or name not in head
-                or digest(blob(self.root, original[name])) != value
+                name: head.get(name, "deleted")
+                for name in names
+                if original.get(name) != head.get(name)
             }
             fixed, code = split_dependencies(difference)
             if fixed:
-                raise clients.StopRun(
+                raise clients.GuardRefusal(
                     "registered files differ from the registered commit: "
                     + ", ".join(sorted(fixed))
                 )
-            if git(self.root, "status", "--porcelain", "--untracked-files=no"):
-                raise clients.StopRun("requires a clean work tree")
+            self.code = {
+                name: value
+                for name, value in code.items()
+                if not name.startswith(("docs/", "tests/"))
+            }
             binding = self.binding()
             repairs = clients.items(binding["repairs"])
-            if code and not any(clients.obj(r).get("code") == code for r in repairs):
+            if (self.code or repairs) and not any(
+                clients.obj(r).get("code") == self.code for r in repairs
+            ):
                 if not repair or not repair.strip():
-                    raise clients.StopRun(
-                        "code requires --repair with a reason: " + ", ".join(sorted(code))
+                    raise clients.GuardRefusal(
+                        "code requires --repair with a reason: " + ", ".join(sorted(self.code))
                     )
                 repairs.append(
                     {
                         "reason": repair,
                         "commit": git(self.root, "rev-parse", "HEAD"),
-                        "files": sorted(code),
-                        "code": code,
+                        "files": sorted(self.code),
+                        "code": self.code,
                     }
                 )
-                self.directory.mkdir(parents=True, exist_ok=True)
-                temporary = self.directory / "binding.tmp"
-                temporary.write_bytes(encoded(binding))
-                temporary.replace(self.directory / "binding.json")
-            self.deps = current
-        elif step == "held-out" and registered != git(self.root, "rev-parse", "HEAD"):
-            raise clients.StopRun(
+                self.pending_binding = binding
+        elif step == "held-out" and registered != self.registered_commit:
+            raise clients.GuardRefusal(
                 "--registered-commit must match the current full commit for a stub run"
             )
-        if self.session.spent > self.session.cap and step != "report":
-            raise clients.StopRun("spending cap reached; no verdict")
         if step != "report":
             for earlier in STEPS[: STEPS.index(step)]:
                 if self.state(earlier)["status"] != "completed":
-                    raise clients.StopRun(f"step {earlier} did not pass its gate")
-        if step == "held-out":
-            checked = clients.obj(self.state("judge-check")["payload"])
-            if "decision" not in checked or not clients.obj(checked["decision"])["passed"]:
-                raise clients.StopRun("the judge could not be calibrated")
-            self.session.check_family("decision")
+                    raise clients.GuardRefusal(f"step {earlier} did not pass its gate")
+        if not self.synthetic:
+            self.records = rewrites.load(self.root / "pilot" / "rewrites")
+            self.verify_materials()
+        if step == "report" and self.session.spent <= self.session.cap:
+            for earlier in STEPS[:-1]:
+                state = self.state(earlier)
+                if state["status"] == "failed":
+                    raise clients.GuardRefusal(f"repeat step {earlier} before report")
+                if state["status"] == "stopped":
+                    break
 
-    def state(self, step: str) -> State:
-        path = self.directory / f"{step}.json"
-        if not path.exists():
-            raise clients.StopRun(f"step {step} has not completed")
-        state = clients.obj(json.loads(path.read_text()))
-        if state["mode"] != self.mode:
-            raise clients.StopRun("previous state has another mode")
-        for earlier, expected in clients.obj(state["previous"]).items():
-            previous = self.directory / f"{earlier}.json"
-            if not previous.exists() or digest(previous.read_bytes()) != expected:
-                raise clients.StopRun("previous step changed")
-        payload_path = self.directory / f"{step}-values.json"
-        if (
-            not payload_path.exists()
-            or digest(payload_path.read_bytes()) != state["payload_digest"]
-        ):
-            raise clients.StopRun("step output digest changed")
-        state["payload"] = clients.obj(json.loads(payload_path.read_text()))
-        for family in budget.FAMILIES:
-            expected = clients.obj(clients.obj(state["transcripts"])[family])
-            found = checkpoint(
-                self.session.transcripts[family], int(clients.number(expected["calls"]))
-            )
-            if found != expected:
-                raise clients.StopRun("transcript checkpoint changed")
-        return state
+    def state(self, step: str, *, required: bool = True) -> State:
+        try:
+            path = self.directory / f"{step}.json"
+            if not path.exists():
+                if not required:
+                    return {}
+                raise clients.GuardRefusal(f"step {step} has not completed")
+            raw = path.read_bytes()
+            state = clients.obj(json.loads(raw))
+            if state.get("registered_commit") != self.registered_commit:
+                raise clients.GuardRefusal("state belongs to another registered commit")
+            snapshot = clients.obj(state["code_snapshot"])
+            repairs = clients.items((self.pending_binding or self.binding())["repairs"])
+            if (
+                not self.synthetic
+                and repairs
+                and git(self.root, "rev-parse", "HEAD") == self.registered_commit
+                and not any(clients.obj(r).get("code") == {} for r in repairs)
+            ):
+                raise clients.GuardRefusal("return to registered code requires a declared repair")
+            if snapshot != {} and not any(clients.obj(r).get("code") == snapshot for r in repairs):
+                raise clients.GuardRefusal("state has an unbound code snapshot")
+            for earlier, expected in clients.obj(state["previous"]).items():
+                previous = self.directory / f"{earlier}.json"
+                if not previous.exists() or digest(previous.read_bytes()) != expected:
+                    raise clients.GuardRefusal("previous step changed")
+            payload_path = self.directory / f"{step}-values.json"
+            if (
+                not payload_path.exists()
+                or digest(payload_path.read_bytes()) != state["payload_digest"]
+            ):
+                raise clients.GuardRefusal("step output digest changed")
+            state["payload"] = clients.obj(json.loads(payload_path.read_text()))
+            for family in budget.FAMILIES:
+                expected = clients.obj(clients.obj(state["transcripts"])[family])
+                found = checkpoint(
+                    self.session.transcripts[family], int(clients.number(expected["calls"]))
+                )
+                if found != expected:
+                    raise clients.GuardRefusal("transcript checkpoint changed")
+            state["_digest"] = digest(raw)
+            return state
+        except clients.GuardRefusal:
+            raise
+        except Exception as error:
+            raise clients.GuardRefusal("invalid state: " + type(error).__name__) from None
 
     def save(
         self, step: str, payload: State, *, status: str = "completed", reason: str = ""
     ) -> State:
         previous = {
-            name: digest((self.directory / f"{name}.json").read_bytes())
+            name: prior["_digest"]
             for name in STEPS[: STEPS.index(step)]
-            if (self.directory / f"{name}.json").exists()
+            if (prior := self.state(name, required=False))
         }
         state: State = {
-            "step": step,
-            "mode": self.mode,
-            "dependencies": self.deps,
-            "registered_files": split_dependencies(self.deps)[0],
-            "code_files": split_dependencies(self.deps)[1],
+            "registered_commit": self.registered_commit,
+            "code_snapshot": self.code,
             "previous": previous,
             "status": status,
             "reason": reason,
@@ -352,12 +377,8 @@ class Run:
         if self.synthetic:
             people = stub.people(48, 41)
             return people, cohorts.generate(people, calibration_size=8)
-        verify_data(self.root / "data" / "raw", self.root / "data-manifest.json")
         people = cohorts.participants(fetch.load(self.root / "data" / "raw"))
-        document = cohorts.load(self.root / "prereg" / "cohorts.json")
-        if cohorts.serialise(cohorts.generate(people)) != cohorts.serialise(document):
-            raise clients.StopRun("training data do not regenerate registered cohorts")
-        return people, document
+        return people, cohorts.generate(people)
 
     def request(
         self,
@@ -370,40 +391,32 @@ class Run:
 
     def _judge_check(self) -> State:
         records = [r for r in self.records if r["set"] == "outside"]
-        if self.synthetic:
-            means = judge.human_ratings()
-        else:
-            try:
-                verify_data(
-                    self.root / "data" / "outside", self.root / "data-manifest-outside.json"
-                )
-                rated = outside.ratings(self.root / "data" / "outside")
-                outside.check_against_paper(rated, outside.published())
-                means = {name: rating.mean for name, rating in rated[2].items()}
-            except (ValueError, OSError):
-                raise clients.StopRun(
-                    "outside US ratings are unavailable or disagree with the paper"
-                ) from None
+        means = (
+            judge.human_ratings()
+            if self.synthetic
+            else {
+                name: rating.mean
+                for name, rating in outside.ratings(self.root / "data" / "outside")[2].items()
+            }
+        )
         human = np.array([means[str(r["id"])] for r in records])
         result: State = {"human": means}
         for family in budget.FAMILIES:
             try:
                 responses = self.request(family, [prompts.evaluative(r) for r in records])
                 check = judge.calibration(np.array([judge.evaluative(r) for r in responses]), human)
+                reason = (
+                    clients.StopReason if family == "decision" else clients.FamilyCause
+                ).CALIBRATION.value
                 result[family] = {
                     **asdict(check),
-                    "reason": "" if check.passed else "evaluative calibration failed",
+                    "reason": "" if check.passed else reason,
                 }
             except clients.FamilyUnusable as error:
                 result[family] = {"correlation": None, "passed": False, "reason": str(error)}
-        decision = clients.obj(result["decision"])
-        passed = bool(decision["passed"])
-        return self.save(
-            "judge-check",
-            result,
-            status="completed" if passed else "stopped",
-            reason="" if passed else "the judge could not be calibrated",
-        )
+        if not clients.obj(result["decision"])["passed"]:
+            raise clients.TerminalStop(clients.StopReason.CALIBRATION, payload=result)
+        return self.save("judge-check", result)
 
     def _judge_all(self) -> State:
         checked = clients.obj(self.state("judge-check")["payload"])
@@ -569,11 +582,8 @@ class Run:
         return self.save("calibrate", result)
 
     def _held_out(self, registered: str | None) -> State:
-        commit = registered
-        self.preflight()
+        self.session.check_family("decision")
         calibrated = clients.obj(self.state("calibrate")["payload"])
-        if not self.synthetic:
-            verify_data(self.root / "data" / "raw", self.root / "data-manifest.json")
         # The synthetic branch has no route through the real held-out loader.
         people = (
             stub.people(12, 83)
@@ -581,9 +591,7 @@ class Run:
             else cohorts.participants(fetch.load_registered_held_out(self.root / "data" / "raw"))
         )
         if not self.synthetic and len(people) != budget.HELD_OUT_PARTICIPANTS:
-            raise clients.StopRun(
-                "complete-records failure: registered participant total differs; no verdict"
-            )
+            raise clients.TerminalStop(clients.StopReason.RECORDS)
         data = arms.sequences(people)
         training, document = self.training()
         tasks = materials.load(self.root / "pilot" / "task-texts.json")
@@ -625,10 +633,10 @@ class Run:
                 continue
             try:
                 logs[name] = score.rotation_logs(probabilities, data).tolist()
-            except clients.StopRun:
-                if family != "second":
+            except clients.TerminalStop as error:
+                if family != "second" or error.reason is not clients.StopReason.RECORDS:
                     raise
-                unavailable["second"] = "complete-records failure"
+                unavailable["second"] = clients.StopReason.RECORDS.value
         if "second" in unavailable:
             logs = {name: values for name, values in logs.items() if not name.startswith("second/")}
         return self.save(
@@ -638,25 +646,32 @@ class Run:
                 "identities": [[p.experiment, p.participant] for p in people],
                 "dilemma": data.dilemma.tolist(),
                 "unavailable": unavailable,
-                "registered_commit": commit,
             },
         )
 
     def verify_materials(self) -> None:
+        for folder, manifest in (
+            ("raw", "data-manifest.json"),
+            ("outside", "data-manifest-outside.json"),
+        ):
+            verify_data(self.root / "data" / folder, self.root / manifest)
+        outside.check_against_paper(
+            outside.ratings(self.root / "data" / "outside"), outside.published()
+        )
         if (
             rewrites.digest(self.records)
             != (self.root / "pilot" / "rewrites.sha256").read_text().strip()
         ):
-            raise clients.StopRun("rewrite digest differs from computed materials")
+            raise clients.GuardRefusal("rewrite digest differs from computed materials")
         texts = self.root / "pilot" / "task-texts.json"
         if (
             digest(texts.read_bytes())
             != (self.root / "pilot" / "task-texts.sha256").read_text().strip()
         ):
-            raise clients.StopRun("task-text digest differs from computed materials")
+            raise clients.GuardRefusal("task-text digest differs from computed materials")
         people, document = self.training()
         if cohorts.serialise(document) != (self.root / "prereg" / "cohorts.json").read_bytes():
-            raise clients.StopRun("training data do not regenerate registered cohorts")
+            raise clients.GuardRefusal("training data do not regenerate registered cohorts")
         expected = prompts.fixtures(people, document, materials.load(texts), self.records)
         found = {
             path.name: path.read_bytes()
@@ -664,7 +679,7 @@ class Run:
             if path.name != "README.md"
         }
         if expected != found:
-            raise clients.StopRun("request fixtures differ from regenerated materials")
+            raise clients.GuardRefusal("request fixtures differ from regenerated materials")
 
     def preflight(self) -> None:
         second = self.session.clients.get("second")
@@ -678,108 +693,76 @@ class Run:
         *,
         repair: str | None = None,
     ) -> list[str]:
-        self.directory.mkdir(parents=True, exist_ok=True)
-        with (self.directory / "execution.lock").open("w") as lock:
+        lock = os.open(self.root, os.O_RDONLY)
+        try:
             try:
                 fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError:
-                raise clients.StopRun("another command is using this run") from None
+                raise clients.GuardRefusal("another command is using this run") from None
+            self.session.transcripts = {
+                f: clients.Transcript(t.path.parent, f) for f, t in self.session.transcripts.items()
+            }
+            if step == "report" and self.session.spent > self.session.cap:
+                return self._report(record=False)
             try:
-                self.guard(step, registered, repair)
-            except clients.StopRun as error:
-                if str(error) != "spending cap reached; no verdict":
+                state = self.state(step, required=False)
+            except clients.GuardRefusal:
+                if not repair:
                     raise
-                state = self.save(step, {}, status="stopped", reason=str(error))
-                return [
-                    self.line(step, "status", state["status"]),
-                    self.line(step, "reason", state["reason"]),
-                ]
-            if not self.synthetic and step != "report":
-                self.records = rewrites.load(self.root / "pilot" / "rewrites")
-                self.verify_materials()
-            if step == "report":
-                return self._report()
-            path = self.directory / f"{step}.json"
-            if path.exists():
-                state = self.state(step)
-                if state["status"] != "failed":
-                    return [
-                        self.line(step, "status", state["status"]),
-                        self.line(step, "reason", state["reason"] or "none"),
-                    ]
+                self.guard(step, registered, repair)
+                self.binding(self.pending_binding)
+                self.pending_binding = None
+                state = self.state(step, required=False)
+            if state.get("status") in ("completed", "stopped"):
+                if step != "report":
+                    return self.status_lines(step, state)
+                return cast(list[str], clients.obj(state["payload"])["lines"])
+            over_cap = step != "report" and self.session.spent > self.session.cap
+            if not over_cap:
+                self.guard(step, registered, repair)
+                self.binding(self.pending_binding)
+                self.pending_binding = None
             try:
-                if step != "held-out":
-                    self.preflight()
+                if over_cap:
+                    raise clients.TerminalStop(clients.StopReason.CAP)
+                if step == "report":
+                    return self._report()
+                self.preflight()
                 if step == "judge-check":
                     state = self._judge_check()
                 elif step == "judge":
                     state = self._judge_all()
                 elif step == "calibrate":
                     state = self._calibrate()
-                elif step == "held-out":
-                    state = self._held_out(registered)
                 else:
-                    raise clients.StopRun("unknown step")
-            except clients.StepFailure as error:
-                state = self.save(step, {}, status="failed", reason=str(error))
-            except clients.StopRun as error:
-                state = self.save(step, {}, status="stopped", reason=str(error))
-            except (ValueError, KeyError, IndexError):
-                state = self.save(
-                    step,
-                    {},
-                    status="stopped",
-                    reason="complete-records or response-data failure; no verdict",
-                )
-            return [
-                self.line(step, "status", state["status"]),
-                self.line(step, "reason", state["reason"] or "none"),
-            ]
+                    state = self._held_out(registered)
+            except clients.TerminalStop as error:
+                state = self.save(step, error.payload, status="stopped", reason=error.reason.value)
+            except BaseException as error:
+                state = self.save(step, {}, status="failed", reason=type(error).__name__)
+            return self.status_lines(step, state)
+        finally:
+            os.close(lock)
 
-    def _report(self) -> list[str]:
-        from zoon.pilot.result import render
+    def status_lines(self, step: str, state: State) -> list[str]:
+        return [self.line(step, key, state[key] or "none") for key in ("status", "reason")]
 
-        if self.session.spent <= self.session.cap:
-            for step in STEPS[:-1]:
-                if (self.directory / f"{step}.json").exists() and self.state(step)[
-                    "status"
-                ] == "failed":
-                    raise clients.StopRun(f"repeat step {step} before report")
+    def _report(self, *, record: bool = True) -> list[str]:
+        from zoon.pilot.result import render, write_report
+
         states: dict[str, State] = {}
-        stopped = False
         for step in STEPS[:-1]:
-            if stopped:
+            state = self.state(step, required=self.session.spent <= self.session.cap)
+            if not state:
                 break
-            if (
-                not (self.directory / f"{step}.json").exists()
-                and self.session.spent > self.session.cap
-            ):
+            states[step] = state
+            if state["status"] != "completed":
                 break
-            states[step] = self.state(step)
-            stopped = states[step]["status"] != "completed"
         lines = render(self, states)
-        target = (
-            self.directory / "result.md"
-            if self.synthetic
-            else self.root / "docs" / "pilot" / "result.md"
-        )
-        target.parent.mkdir(parents=True, exist_ok=True)
-        preamble = (
-            "This is a synthetic stub run. It is not the pilot result."
-            if self.synthetic
-            else "This is the registered pilot result. The command output is reproduced below."
-        )
-        repairs = [line for line in lines if line.startswith(("[Repairs]", "[stub Repairs]"))]
-        target.write_text(
-            preamble
-            + "\n\n```text\n"
-            + "\n".join(lines)
-            + "\n```\n"
-            + "\n## Repairs\n\n```text\n"
-            + "\n".join(repairs)
-            + "\n```\n"
-        )
-        self.save("report", {"result_digest": digest(target.read_bytes())})
+        if not record:
+            return lines
+        write_report(self, lines)
+        self.save("report", {"lines": lines})
         return lines
 
 
@@ -849,7 +832,7 @@ def main(arguments: Sequence[str] | None = None) -> None:
         )
         for line in lines:
             print(line)
-    except clients.StopRun as error:
+    except clients.GuardRefusal as error:
         print(f"[{'stub ' if options.stub else ''}run] refused = {error}")
         sys.exit(1)
 

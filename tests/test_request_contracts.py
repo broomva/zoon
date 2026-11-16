@@ -147,5 +147,5 @@ def test_cap_replay_checks_even_without_pending(tmp_path: Path, recognition: boo
     session = clients.Session(tmp_path, [])
     request = "recognition" if recognition else REQUEST
     session.transcripts["decision"].append(request, replace(response(), input_tokens=4_000_000_000))
-    with pytest.raises(clients.StopRun, match="cap reached"):
+    with pytest.raises(clients.TerminalStop, match="cap reached"):
         clients.Session(tmp_path, []).ask_many("decision", [request], recognition=recognition)
