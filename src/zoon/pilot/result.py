@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, cast
 
 import numpy as np
 
-from zoon.pilot import budget, clients, fetch, lean, score
+from zoon.pilot import budget, clients, fetch, lean, prompts, score
 
 if TYPE_CHECKING:
     from zoon.pilot.run import Run, State
@@ -334,21 +334,37 @@ def render(run: "Run", states: "dict[str, State]") -> list[str]:
             f"{family} availability",
             reason or ("usable" if check.get("passed") else "not assessed"),
         )
-    shares = [
-        e.response.share
-        for e in run.session.transcripts["second"].entries.values()
-        if e.response.share is not None
-    ]
-    add(
-        "declared answers",
-        "second share count/min/mean/max/below half",
-        (
-            f"{len(shares)}/{min(shares):.8f}/{np.mean(shares):.8f}/"
-            f"{max(shares):.8f}/{sum(s < 0.5 for s in shares)}"
-        )
-        if shares
-        else "not available",
-    )
+    for family, transcript in run.session.transcripts.items():
+        grouped: dict[str, list[float]] = {
+            kind: [] for kind in ("evaluative", "strict", "prompted")
+        }
+        for entry in transcript.entries.values():
+            if isinstance(entry.request, str):
+                continue
+            question = str(clients.obj(entry.request)["question"])
+            kind = (
+                "prompted"
+                if question == prompts.PREDICT
+                else "evaluative"
+                if question.startswith("How appropriate")
+                else "strict"
+            )
+            share = entry.response.share
+            if share is None and family == "decision":
+                share = sum(entry.response.probabilities.values())
+            if share is not None:
+                grouped[kind].append(share)
+        for kind, shares in grouped.items():
+            add(
+                "declared answers",
+                f"{family} {kind} share count/min/mean/max/below half",
+                (
+                    f"{len(shares)}/{min(shares):.8f}/{np.mean(shares):.8f}/"
+                    f"{max(shares):.8f}/{sum(s < 0.5 for s in shares)}"
+                )
+                if shares
+                else "not available",
+            )
     accounting()
     for family, transcript in run.session.transcripts.items():
         add("transcript", f"{family} SHA-256", transcript.digest())
@@ -359,7 +375,18 @@ def render(run: "Run", states: "dict[str, State]") -> list[str]:
         )
     from zoon.pilot.run import git
 
-    add("run", "commit", payload.get("registered_commit") or git(run.root, "rev-parse", "HEAD"))
+    add("run", "registered commit", payload.get("registered_commit") or "not recorded")
+    add("run", "report commit", git(run.root, "rev-parse", "HEAD"))
+    for step, state in states.items():
+        add("run", f"{step} commit", state["commit"])
+    repairs = clients.items(run.binding()["repairs"])
+    if not repairs:
+        add("Repairs", "history", "none")
+    for index, raw in enumerate(repairs, 1):
+        repair = clients.obj(raw)
+        add(
+            "Repairs", str(index), json_reply({k: repair[k] for k in ("reason", "commit", "files")})
+        )
     return lines
 
 

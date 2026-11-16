@@ -30,7 +30,11 @@ def runner(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> run.Run:
         shutil.copyfile(fetch.REPO / name, tmp_path / name)
 
     def git(root: Path, *arguments: str) -> str:
-        return COMMIT if arguments == ("rev-parse", "HEAD") else ""
+        return (
+            COMMIT
+            if arguments in (("rev-parse", "HEAD"), ("rev-parse", "refs/tags/registered^{commit}"))
+            else ""
+        )
 
     def sealed(raw_dir: Path) -> object:
         raise AssertionError("the real held-out loader is unreachable in a stub run")
@@ -339,3 +343,182 @@ def test_failed_step_can_resume_without_resending_answers(runner: run.Run) -> No
     assert "status = completed" in runner.execute("judge-check")[0]
     assert all(counts[digest] == 1 for digest in answered)
     assert len(runner.session.transcripts["decision"].entries) == 25
+
+
+@pytest.mark.parametrize("fault_step", run.STEPS[:4])
+def test_malformed_second_transport_preserves_decision_results(
+    runner: run.Run, monkeypatch: pytest.MonkeyPatch, fault_step: str
+) -> None:
+    baseline = finish(runner)
+    expected = runner.session.transcripts["decision"].path.read_bytes()
+    verdict = runner.execute("report")[0]
+    shutil.rmtree(runner.root / "data")
+    replay = run.Run(runner.root, synthetic=True)
+    monkeypatch.setenv("ZOON_VERTEX_PROJECT", "fixture")
+
+    def transport(*args: object) -> tuple[int, dict[str, object]]:
+        return 200, {"candidates": []}
+
+    class RecordedTransport(clients.VertexClient):
+        def preflight(self) -> None:
+            pass
+
+    for step in run.STEPS[:4]:
+        if step == fault_step:
+            replay.session.clients["second"] = RecordedTransport(lambda: "fixture-token", transport)
+        assert "status = completed" in replay.execute(step, COMMIT)[0]
+        assert clients.obj(replay.state(step)["payload"]).get("decision") == clients.obj(
+            baseline[step]["payload"]
+        ).get("decision")
+    assert replay.session.transcripts["decision"].path.read_bytes() == expected
+    actual = clients.obj(clients.obj(replay.state("held-out")["payload"])["logs"])
+    original = clients.obj(clients.obj(baseline["held-out"]["payload"])["logs"])
+    assert {k: v for k, v in actual.items() if k.startswith("decision/")} == {
+        k: v for k, v in original.items() if k.startswith("decision/")
+    }
+    assert replay.execute("report")[0] == verdict
+
+
+@pytest.mark.parametrize("status", [401, 403, "missing"])
+@pytest.mark.parametrize("step", run.STEPS[:4])
+def test_preflight_operator_fault_precedes_every_step_request(
+    runner: run.Run, monkeypatch: pytest.MonkeyPatch, status: int | str, step: str
+) -> None:
+    for earlier in run.STEPS[: run.STEPS.index(step)]:
+        runner.execute(earlier)
+    recorded = {family: t.digest() for family, t in runner.session.transcripts.items()}
+    monkeypatch.setenv("ZOON_VERTEX_PROJECT", "fixture")
+    if status == "missing":
+        monkeypatch.delenv("ZOON_VERTEX_PROJECT")
+    calls: list[int] = []
+    refreshes: list[int] = []
+
+    def token() -> str:
+        refreshes.append(1)
+        return "fixture-token"
+
+    def transport(*args: object) -> tuple[int, dict[str, object]]:
+        calls.append(1)
+        return int(status), {}
+
+    runner.session.clients["second"] = clients.VertexClient(
+        token, transport, preflight_transport=transport
+    )
+    assert "status = failed" in runner.execute(step, COMMIT)[0]
+    assert runner.state(step)["reason"] == "ZOON_VERTEX_PROJECT"
+    assert recorded == {family: t.digest() for family, t in runner.session.transcripts.items()}
+    assert len(calls) == (0 if status == "missing" else 2 if status == 401 else 1)
+    assert len(refreshes) == len(calls)
+
+
+def test_direct_held_out_checks_stopped_prerequisite_before_loader(
+    runner: run.Run,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runner.save("judge-check", {}, status="completed")
+    runner.save("judge", {}, status="completed")
+    runner.save("calibrate", {}, status="stopped")
+    runner.synthetic = False
+
+    def verified(*args: object) -> None:
+        pass
+
+    def registered(*args: object, **kwargs: object) -> str:
+        return COMMIT
+
+    monkeypatch.setattr(run, "verify_data", verified)
+    monkeypatch.setattr(run, "registration_guard", registered)
+    with pytest.raises(clients.StopRun, match="calibrate did not pass"):
+        runner.held_out(COMMIT)
+
+
+def test_smoke_covers_seven_and_nine_answers_without_materials() -> None:
+    lines = run.smoke(True)
+    assert len(lines) == 6
+    for family in clients.budget.FAMILIES:
+        selected = [line for line in lines if f"smoke {family}]" in line]
+        assert len(selected) == 3
+        assert any("answers = 7" in line for line in selected)
+        assert any("answers = 9" in line for line in selected)
+        assert all("sum before division = " in line and "share = " in line for line in selected)
+
+
+def test_report_share_summary_by_family_and_kind(runner: run.Run) -> None:
+    finish(runner)
+    lines = runner.execute("report")
+    for family in clients.budget.FAMILIES:
+        for kind in ("evaluative", "strict", "prompted"):
+            assert any(
+                f"{family} {kind} share count/min/mean/max/below half" in line for line in lines
+            )
+
+
+def test_norm_agreement_uses_reflected_ratings(runner: run.Run) -> None:
+    states = finish(runner)
+    judged = clients.obj(clients.obj(states["judge"]["payload"])["decision"])
+    means = clients.obj(clients.obj(states["judge-check"]["payload"])["human"])
+    from zoon.pilot import judge, outside
+
+    expected = np.array(
+        [
+            8 - float(str(means[original]))
+            if outside.action_reversed()[name]
+            else float(str(means[original]))
+            for name, original in outside.originals().items()
+        ]
+    )
+    assert judged["norm_correlation_evaluative"] == judge.correlation(
+        run.floats(judged["evaluative"]), expected
+    )
+
+
+def test_smoke_preflights_before_any_question(monkeypatch: pytest.MonkeyPatch) -> None:
+    questions: list[int] = []
+
+    class Decision(clients.StubClient):
+        def ask(self, request: clients.Request) -> clients.Response:
+            questions.append(1)
+            return super().ask(request)
+
+    class Second(clients.VertexClient):
+        def preflight(self) -> None:
+            raise clients.StepFailure("ZOON_VERTEX_PROJECT")
+
+    monkeypatch.setattr(clients, "DecisionClient", lambda: Decision("decision"))
+    monkeypatch.setattr(clients, "VertexClient", Second)
+    with pytest.raises(clients.StepFailure, match="ZOON_VERTEX_PROJECT"):
+        run.smoke(False)
+    assert not questions
+
+
+def test_share_summary_uses_exact_groups_and_omits_recognition(runner: run.Run) -> None:
+    from zoon.pilot import prices
+
+    state = runner.save("judge-check", {}, status="failed", reason="interrupted")
+    for family in clients.budget.FAMILIES:
+        transcript = runner.session.transcripts[family]
+        version = prices.DECISION.model if family == "decision" else prices.SECOND.model
+        for i, (question, share) in enumerate(
+            [
+                ("How appropriate is it?", 0.2),
+                ("How appropriate is it?", 0.8),
+                (prompts.STRICT[0], 0.5),
+                (prompts.PREDICT, 0.9),
+            ]
+        ):
+            request = prompts.Decision(str(i), question, prompts.declared(("Yes", "No")))
+            transcript.append(
+                request, clients.Response({"Yes": 0.5, "No": 0.5}, share, "", version, 1, 1)
+            )
+        transcript.append("recognition", clients.Response({}, 0.01, "unknown", version, 1, 1))
+    lines = result.render(runner, {"judge-check": state})
+    for family in clients.budget.FAMILIES:
+        for kind, summary in (
+            ("evaluative", "2/0.20000000/0.50000000/0.80000000/1"),
+            ("strict", "1/0.50000000/0.50000000/0.50000000/0"),
+            ("prompted", "1/0.90000000/0.90000000/0.90000000/0"),
+        ):
+            assert (
+                f"[stub declared answers] {family} {kind} "
+                f"share count/min/mean/max/below half = {summary}"
+            ) in lines

@@ -100,13 +100,67 @@ def git(root: Path, *arguments: str) -> str:
         raise clients.StopRun("could not verify the registered checkout") from None
 
 
-def registration_guard(root: Path, registered: str | None) -> str:
-    current = git(root, "rev-parse", "HEAD")
-    if not registered or registered != current:
-        raise clients.StopRun("--registered-commit must match the current full commit")
+def split_dependencies(deps: dict[str, str]) -> tuple[dict[str, str], dict[str, str]]:
+    registered = {
+        name: value
+        for name, value in deps.items()
+        if name.startswith(("prereg/", "pilot/", "data-manifest"))
+    }
+    return registered, {name: value for name, value in deps.items() if name not in registered}
+
+
+def clean_tree(root: Path) -> None:
     if git(root, "status", "--porcelain", "--untracked-files=normal"):
-        raise clients.StopRun("held-out requires a clean work tree")
-    return current
+        raise clients.StopRun("requires a clean work tree")
+
+
+def registration_guard(
+    root: Path,
+    registered: str | None,
+    *,
+    synthetic: bool = False,
+    binding: State | None = None,
+) -> str:
+    current = git(root, "rev-parse", "HEAD")
+    if not registered:
+        raise clients.StopRun("--registered-commit must match the registered tag")
+    clean_tree(root)
+    if synthetic:
+        if registered != current:
+            raise clients.StopRun(
+                "--registered-commit must match the current full commit for a stub run"
+            )
+        return registered
+    try:
+        tagged = git(root, "rev-parse", "refs/tags/registered^{commit}")
+    except clients.StopRun:
+        raise clients.StopRun("registered tag is required") from None
+    if registered != tagged:
+        raise clients.StopRun("--registered-commit must match the registered tag")
+    try:
+        git(root, "merge-base", "--is-ancestor", registered, "HEAD")
+    except clients.StopRun:
+        raise clients.StopRun("registered commit must be an ancestor of HEAD") from None
+    _, code_files = split_dependencies(dependencies(root))
+    fixed_inputs = (
+        "prereg/h1.md",
+        "prereg/cohorts.json",
+        "prereg/requests",
+        "pilot/rewrites",
+        "pilot/rewrites.sha256",
+        "pilot/task-texts.json",
+        "pilot/task-texts.sha256",
+        "data-manifest.json",
+        "data-manifest-outside.json",
+        "data-manifest-materials.json",
+    )
+    if git(root, "diff", "--name-only", registered, "HEAD", "--", *fixed_inputs):
+        raise clients.StopRun("registered files differ from the registered commit")
+    if current != registered and (
+        binding is None or not binding.get("repairs") or binding.get("code") != code_files
+    ):
+        raise clients.StopRun("current code requires a recorded repair")
+    return registered
 
 
 def floats(value: object) -> models.Floats:
@@ -161,7 +215,10 @@ def checkpoint(transcript: clients.Transcript, count: int | None = None) -> dict
         if len(entries) < count:
             raise clients.StopRun("transcript checkpoint is missing requests")
         entries = entries[:count]
-    return {"calls": len(entries), "digest": digest(encoded([asdict(e) for e in entries]))}
+    return {
+        "calls": len(entries),
+        "digest": digest(encoded([clients.entry_document(e) for e in entries])),
+    }
 
 
 class Run:
@@ -194,12 +251,68 @@ class Run:
     def line(self, tag: str, key: str, value: object) -> str:
         return f"[{'stub ' if self.synthetic else ''}{tag}] {key} = {value}"
 
+    def binding(self) -> State:
+        path = self.directory / "binding.json"
+        if path.exists():
+            return clients.obj(json.loads(path.read_text()))
+        deps = self.deps
+        for step in STEPS:
+            state_path = self.directory / f"{step}.json"
+            if state_path.exists():
+                deps = cast(
+                    dict[str, str], clients.obj(json.loads(state_path.read_text()))["dependencies"]
+                )
+                break
+        registered, code = split_dependencies(deps)
+        return {"registered": registered, "code": code, "repairs": []}
+
+    def bind(self, repair: str | None) -> None:
+        binding = self.binding()
+        registered, code = split_dependencies(self.deps)
+        if binding["registered"] != registered:
+            raise clients.StopRun("registered file digests changed; continuation refused")
+        if binding["code"] != code:
+            if not repair or not repair.strip():
+                raise clients.StopRun("code digests changed; --repair requires a reason")
+            clean_tree(self.root)
+            previous = clients.obj(binding["code"])
+            changed = sorted(
+                name for name in set(previous) | set(code) if previous.get(name) != code.get(name)
+            )
+            repairs = clients.items(binding["repairs"])
+            repairs.append(
+                {
+                    "reason": repair,
+                    "commit": git(self.root, "rev-parse", "HEAD"),
+                    "files": changed,
+                    "before": previous,
+                    "code": code,
+                }
+            )
+            binding["code"] = code
+        self.directory.mkdir(parents=True, exist_ok=True)
+        temporary = self.directory / "binding.tmp"
+        temporary.write_bytes(encoded(binding))
+        temporary.replace(self.directory / "binding.json")
+
     def state(self, step: str) -> State:
         path = self.directory / f"{step}.json"
         if not path.exists():
             raise clients.StopRun(f"step {step} has not completed")
         state = clients.obj(json.loads(path.read_text()))
-        if state["dependencies"] != self.deps or state["mode"] != self.mode:
+        registered, code = split_dependencies(cast(dict[str, str], state["dependencies"]))
+        current_registered, current_code = split_dependencies(self.deps)
+        binding = self.binding()
+        accepted = [
+            binding["code"],
+            *[clients.obj(r)["before"] for r in clients.items(binding["repairs"])],
+        ]
+        if (
+            registered != current_registered
+            or state["mode"] != self.mode
+            or binding["code"] != current_code
+            or code not in accepted
+        ):
             raise clients.StopRun("registration digests changed; previous state cannot be used")
         for earlier, expected in clients.obj(state["previous"]).items():
             previous = self.directory / f"{earlier}.json"
@@ -233,6 +346,8 @@ class Run:
             "step": step,
             "mode": self.mode,
             "dependencies": self.deps,
+            "registered_files": split_dependencies(self.deps)[0],
+            "code_files": split_dependencies(self.deps)[1],
             "previous": previous,
             "status": status,
             "reason": reason,
@@ -468,7 +583,17 @@ class Run:
         return self.save("calibrate", result)
 
     def held_out(self, registered: str | None) -> State:
-        commit = registration_guard(self.root, registered)
+        for step in STEPS[:3]:
+            if self.state(step)["status"] != "completed":
+                raise clients.StopRun(f"step {step} did not pass its gate")
+        checked = clients.obj(self.state("judge-check")["payload"])
+        if "decision" not in checked or not clients.obj(checked["decision"])["passed"]:
+            raise clients.StopRun("the judge could not be calibrated")
+        self.session.check_family("decision")
+        commit = registration_guard(
+            self.root, registered, synthetic=self.synthetic, binding=self.binding()
+        )
+        self.preflight()
         calibrated = clients.obj(self.state("calibrate")["payload"])
         if not self.synthetic:
             verify_data(self.root / "data" / "raw", self.root / "data-manifest.json")
@@ -540,7 +665,18 @@ class Run:
             },
         )
 
-    def execute(self, step: str, registered: str | None = None) -> list[str]:
+    def preflight(self) -> None:
+        second = self.session.clients.get("second")
+        if isinstance(second, clients.VertexClient):
+            second.preflight()
+
+    def execute(
+        self,
+        step: str,
+        registered: str | None = None,
+        *,
+        repair: str | None = None,
+    ) -> list[str]:
         if dependencies(self.root) != self.deps:
             raise clients.StopRun("registration digests changed during the command sequence")
         self.directory.mkdir(parents=True, exist_ok=True)
@@ -553,6 +689,7 @@ class Run:
                 family: clients.Transcript(transcript.path.parent, family)
                 for family, transcript in self.session.transcripts.items()
             }
+            self.bind(repair)
             if step == "report":
                 return self.report()
             for earlier in STEPS[: STEPS.index(step)]:
@@ -561,7 +698,9 @@ class Run:
                     raise clients.StopRun(f"step {earlier} did not pass its gate")
             if step == "held-out":
                 self.session.check_family("decision")
-                registration_guard(self.root, registered)
+                registration_guard(
+                    self.root, registered, synthetic=self.synthetic, binding=self.binding()
+                )
             path = self.directory / f"{step}.json"
             if path.exists():
                 state = self.state(step)
@@ -571,6 +710,8 @@ class Run:
                         self.line(step, "reason", state["reason"]),
                     ]
             try:
+                if step != "held-out":
+                    self.preflight()
                 if step == "judge-check":
                     state = self.judge_check()
                 elif step == "judge":
@@ -619,7 +760,16 @@ class Run:
             if self.synthetic
             else "This is the registered pilot result. The command output is reproduced below."
         )
-        target.write_text(preamble + "\n\n```text\n" + "\n".join(lines) + "\n```\n")
+        repairs = [line for line in lines if line.startswith(("[Repairs]", "[stub Repairs]"))]
+        target.write_text(
+            preamble
+            + "\n\n```text\n"
+            + "\n".join(lines)
+            + "\n```\n"
+            + "\n## Repairs\n\n```text\n"
+            + "\n".join(repairs)
+            + "\n```\n"
+        )
         self.save("report", {"result_digest": digest(target.read_bytes())})
         return lines
 
@@ -637,14 +787,36 @@ def smoke(synthetic: bool) -> list[str]:
     )
     result: list[str] = []
     for client in available:
-        response = client.ask(request)
-        result.append(
-            f"[{'stub ' if synthetic else ''}smoke {client.family}] "
-            f"version = {response.version} | probabilities = {response.probabilities} | "
-            f"share = {response.share} | input tokens = {response.input_tokens} | "
-            f"output tokens = {response.output_tokens} | "
-            f"USD = {clients.cost(client.family, response):.8f}"
+        if isinstance(client, clients.VertexClient):
+            client.preflight()
+    for client in available:
+        seven = prompts.Decision(
+            "A bag contains seven numbered balls, one of each number from one to seven.",
+            "Which number will be drawn uniformly at random?",
+            prompts.declared(tuple(map(str, range(1, 8)))),
         )
+        nine = prompts.Decision(
+            "Nine equally likely labelled boxes are available; their labels have no meaning.",
+            "Which label will be drawn uniformly at random?",
+            prompts.declared(prompts.contexts()),
+        )
+        for question in (request, seven, nine):
+            response = client.ask(question)
+            total = (
+                sum(response.returned_probabilities.values())
+                if response.returned_probabilities is not None
+                else response.share
+                if response.share is not None
+                else sum(response.probabilities.values())
+            )
+            result.append(
+                f"[{'stub ' if synthetic else ''}smoke {client.family}] "
+                f"answers = {len(question.answers)} | version = {response.version} | "
+                f"probabilities = {response.probabilities} | sum before division = {total} | "
+                f"share = {response.share} | input tokens = {response.input_tokens} | "
+                f"output tokens = {response.output_tokens} | "
+                f"USD = {clients.cost(client.family, response):.8f}"
+            )
     return result
 
 
@@ -654,13 +826,16 @@ def main(arguments: Sequence[str] | None = None) -> None:
     parser.add_argument("--stub", action="store_true")
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--registered-commit")
+    parser.add_argument("--repair")
     options = parser.parse_args(arguments)
     try:
         lines = (
             smoke(bool(options.stub))
             if options.step == "smoke"
             else Run(synthetic=bool(options.stub), workers=int(options.workers)).execute(
-                str(options.step), cast(str | None, options.registered_commit)
+                str(options.step),
+                cast(str | None, options.registered_commit),
+                repair=cast(str | None, options.repair),
             )
         )
         for line in lines:
