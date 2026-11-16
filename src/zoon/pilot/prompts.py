@@ -1,7 +1,8 @@
 """Stable, pure request renderers; requests are data and never sent by this module.
 
 Decision requests contain state, one question and declared answers with descriptions.
-Second-family requests are a single text. Recognition has only the second-family form.
+Second-family probability requests contain separate system and user text.
+Recognition has only the second-family form.
 """
 
 import json
@@ -25,6 +26,9 @@ RECOGNITION = (
     "This describes a real case with the details removed. Name the case, its place and its "
     "year, or answer unknown."
 )
+SECOND_SYSTEM = (
+    "Reply with the answer only: a single digit, word or letter, with nothing before or after it."
+)
 PREDICT = "Which answer does this person give to the current dilemma?"
 YES_NO = "Answer with one word: Yes or No."
 SCALE = "Answer with one digit from 1 (completely inappropriate) to 7 (completely appropriate)."
@@ -47,6 +51,16 @@ class Decision:
     state: str
     question: str
     answers: tuple[Answer, ...]
+
+
+@dataclass(frozen=True)
+class Second:
+    system: str
+    text: str
+
+
+def second_request(request: Decision) -> Second:
+    return Second(SECOND_SYSTEM, second(request))
 
 
 def contexts() -> tuple[str, ...]:
@@ -204,7 +218,9 @@ def fixtures(
     result: dict[str, bytes] = {}
     for name, request in requests.items():
         result[f"decision-{name}.json"] = decision_bytes(request)
-        result[f"second-{name}.txt"] = second(request).encode()
+        result[f"second-{name}.json"] = (
+            json.dumps(asdict(second_request(request)), indent=2, ensure_ascii=False) + "\n"
+        ).encode()
     result["second-recognition.txt"] = recognition(record).encode()
     return result
 

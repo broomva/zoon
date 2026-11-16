@@ -4,8 +4,9 @@ training examples; every participant here is from the training loader. The histo
 fixture uses the fifth trial, and the empty fixture uses the first.
 
 Decision requests are JSON data with a state, question, and declared answers and
-descriptions. Second-family requests are the exact text bytes, with no trailing
-newline. Recognition is second-family only, as the pre-registration specifies.
+descriptions. Second-family probability requests are JSON with separate `system` and `text`
+fields. The system field is the registered answer-only instruction; text is the exact
+user text. Recognition remains exact user text bytes, with no trailing newline. Recognition is second-family only, as the pre-registration specifies.
 The recognition request includes the full rewrite; judge states omit its final
 question. Context labels use a letter, a period, and a space. Person labels are
 followed by a newline; trials and the other prompt parts have one blank line

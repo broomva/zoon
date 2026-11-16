@@ -39,7 +39,28 @@ def render(run: "Run", states: "dict[str, State]") -> list[str]:
     dilemma = np.array(cast(list[list[int]], payload.get("dilemma", [])), dtype=np.int64)
     comparisons: dict[str, tuple[str, str]] = {}
     primary: list[score.Comparison] = []
-    if completed:
+    for family in budget.FAMILIES:
+        for state in states.values():
+            family_result = clients.obj(clients.obj(state["payload"]).get(family, {}))
+            if family_result.get("usable") is False or family_result.get("passed") is False:
+                unavailable[family] = family_result.get("reason") or "not usable"
+            if (
+                family == "decision"
+                and state["status"] == "stopped"
+                and str(state["reason"]).startswith("decision model")
+            ):
+                unavailable[family] = state["reason"]
+        try:
+            run.session.check_family(family)
+        except clients.StopRun as error:
+            unavailable[family] = str(error)
+    if "second" in unavailable:
+        logs = {name: value for name, value in logs.items() if not name.startswith("second/")}
+    cap_exceeded = run.session.spent > clients.CAP
+    if cap_exceeded:
+        completed = False
+        add("verdict", "outcome", "no verdict: spending cap reached; no verdict")
+    elif completed:
         required = [
             "decision/zoon-evaluative",
             "decision/no-state-evaluative",
@@ -239,7 +260,7 @@ def render(run: "Run", states: "dict[str, State]") -> list[str]:
         add(
             "recognition",
             f"{name} reply and flag",
-            json_reply(record) if record is not None else "not available",
+            json_reply(record) if record is not None else "not run",
         )
     keep = [
         i
@@ -287,8 +308,11 @@ def render(run: "Run", states: "dict[str, State]") -> list[str]:
                 continue
             add("fitted", f"rotation {index + 1} {name}", json_reply(raw_fit))
     for family in budget.FAMILIES:
-        check = clients.obj(clients.obj(states["judge-check"]["payload"]).get(family, {}))
-        add("judge calibration", f"{family} correlation and gate", json_reply(check))
+        check = clients.obj(
+            clients.obj(states.get("judge-check", {}).get("payload", {})).get(family, {})
+        )
+        if family not in unavailable:
+            add("judge calibration", f"{family} correlation and gate", json_reply(check))
         one = clients.obj(judged.get(family, {}))
         if one.get("usable") and family not in unavailable:
             penalty = one["penalty"]
@@ -341,7 +365,11 @@ def render(run: "Run", states: "dict[str, State]") -> list[str]:
         for entry in transcript.entries.values():
             if isinstance(entry.request, str):
                 continue
-            question = str(clients.obj(entry.request)["question"])
+            document = clients.obj(entry.request)
+            question = str(
+                document.get("question")
+                or str(document["text"]).rsplit("\n\n", 1)[-1].splitlines()[0]
+            )
             kind = (
                 "prompted"
                 if question == prompts.PREDICT

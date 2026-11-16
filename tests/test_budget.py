@@ -95,13 +95,13 @@ def test_call_accounting_and_sealed_run(
         for rotation in document["rotations"]:
             examples = prompts.examples(rotation, people, tasks)
             bound = budget.held_out_request(examples, tasks)
-            as_family = bound if family == "decision" else prompts.second(bound)
+            as_family = bound if family == "decision" else prompts.second_request(bound)
             bounded += 680 * 2 * budget.input_tokens(as_family, family)
             for spec in document["calibration"]:
                 person = lookup[spec["experiment"], spec["participant"]]
                 for i, trial in enumerate(person.trials, 1):
                     request = prompts.prompted(person, i, examples, tasks)
-                    rendered = request if family == "decision" else prompts.second(request)
+                    rendered = request if family == "decision" else prompts.second_request(request)
                     assert budget.input_tokens(rendered, family) <= budget.input_tokens(
                         as_family, family
                     )

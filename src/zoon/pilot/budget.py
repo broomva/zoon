@@ -43,9 +43,13 @@ class Cost:
         return price.dollars(self.input_tokens, self.output_tokens)
 
 
-def input_tokens(request: prompts.Decision | str, family: Family) -> int:
+def input_tokens(request: prompts.Decision | prompts.Second | str, family: Family) -> int:
+    if isinstance(request, prompts.Decision) and family == "second":
+        request = prompts.second_request(request)
     text = (
-        prompts.decision_bytes(request).decode()
+        request.system + request.text
+        if isinstance(request, prompts.Second)
+        else prompts.decision_bytes(request).decode()
         if isinstance(request, prompts.Decision)
         else request
     )
@@ -83,7 +87,7 @@ def estimate(
     def add(
         family: Family,
         step: str,
-        request: prompts.Decision | str,
+        request: prompts.Decision | prompts.Second | str,
         *,
         calls: int = 1,
         output: int = 1,
@@ -95,7 +99,7 @@ def estimate(
 
     def both(step: str, request: prompts.Decision, *, calls: int = 1) -> None:
         add("decision", step, request, calls=calls)
-        add("second", step, prompts.second(request), calls=calls)
+        add("second", step, prompts.second_request(request), calls=calls)
 
     for record in records:
         if record["set"] == "outside":
@@ -142,6 +146,9 @@ def run() -> None:
     print(f"[budget] held-out participants, fixed by registration = {HELD_OUT_PARTICIPANTS}")
     print("[budget] input estimate = ceil(characters / 3); decision adds 400 per call")
     print("[budget] decision characters = canonical request JSON, including descriptions")
+    print(
+        "[budget] second characters = system instruction plus user text; recognition is user text"
+    )
     print("[budget] reversal questions = evaluative only, all committed reversed rewrites")
     for family, price in (("decision", prices.DECISION), ("second", prices.SECOND)):
         print(f"[{family} price] model = {price.model} | read = {price.read} | page = {price.page}")

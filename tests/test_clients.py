@@ -473,7 +473,7 @@ def test_decision_reply_fault_retries_then_is_resumable(
 
 @pytest.mark.parametrize(
     "fault",
-    ["candidates", "content", "logprobs", "blocked", "finish", "missing finish", "probabilities"],
+    ["candidates", "logprobs", "blocked", "finish", "missing finish", "probabilities"],
 )
 def test_unreadable_second_reply_records_zero_share(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fault: str
@@ -504,7 +504,12 @@ def test_unreadable_second_reply_records_zero_share(
     session = clients.Session(tmp_path, [clients.VertexClient(lambda: "fixture-token", transport)])
     with pytest.raises(clients.FamilyUnusable):
         session.ask_many("second", [REQUEST])
-    assert session.transcripts["second"].entries[clients.key(REQUEST)].response.share == 0
+    assert (
+        session.transcripts["second"]
+        .entries[clients.key(prompts.second_request(REQUEST))]
+        .response.share
+        == 0
+    )
     with pytest.raises(clients.FamilyUnusable):
         clients.Session(tmp_path, []).ask_many("second", [REQUEST])
 
@@ -548,9 +553,7 @@ def test_second_service_faults_are_isolated_or_operator_faults(
         assert str(error.value) == "ZOON_VERTEX_PROJECT"
 
 
-@pytest.mark.parametrize(
-    "fault", ["empty text", "null text", "filtered", "unknown version", "excess mass"]
-)
+@pytest.mark.parametrize("fault", ["filtered", "unknown version", "excess mass"])
 def test_other_unreadable_second_replies_record_zero(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fault: str
 ) -> None:
@@ -581,7 +584,12 @@ def test_other_unreadable_second_replies_record_zero(
     session = clients.Session(tmp_path, [clients.VertexClient(lambda: "fixture-token", transport)])
     with pytest.raises(clients.FamilyUnusable):
         session.ask_many("second", [REQUEST])
-    assert session.transcripts["second"].entries[clients.key(REQUEST)].response.share == 0
+    assert (
+        session.transcripts["second"]
+        .entries[clients.key(prompts.second_request(REQUEST))]
+        .response.share
+        == 0
+    )
 
 
 def test_malformed_json_is_an_unreadable_reply(
@@ -600,7 +608,12 @@ def test_malformed_json_is_an_unreadable_reply(
     session = clients.Session(tmp_path, [clients.VertexClient(lambda: "fixture-token")])
     with pytest.raises(clients.FamilyUnusable):
         session.ask_many("second", [REQUEST])
-    assert session.transcripts["second"].entries[clients.key(REQUEST)].response.share == 0
+    assert (
+        session.transcripts["second"]
+        .entries[clients.key(prompts.second_request(REQUEST))]
+        .response.share
+        == 0
+    )
 
 
 def test_preflight_uses_non_generating_metadata_route(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -68,12 +68,12 @@ class Client(Protocol):
     def ask(self, request: Request) -> Response: ...
 
 
-def canonical(request: Request) -> bytes:
-    value = asdict(request) if isinstance(request, prompts.Decision) else request
+def canonical(request: Request | prompts.Second) -> bytes:
+    value = asdict(request) if isinstance(request, (prompts.Decision, prompts.Second)) else request
     return json.dumps(value, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode()
 
 
-def key(request: Request) -> str:
+def key(request: Request | prompts.Second) -> str:
     return hashlib.sha256(canonical(request)).hexdigest()
 
 
@@ -88,9 +88,9 @@ def estimate(family: Family, request: Request) -> Decimal:
     return price.dollars(budget.input_tokens(wire(request, family), family), output)
 
 
-def wire(request: Request, family: Family) -> Request:
+def wire(request: Request, family: Family) -> Request | prompts.Second:
     return (
-        prompts.second(request)
+        prompts.second_request(request)
         if family == "second" and isinstance(request, prompts.Decision)
         else request
     )
@@ -184,6 +184,9 @@ class DecisionClient:
                         )
                     },
                 )
+                secret = os.environ.get("TYPESAFE_API_KEY", "")
+                if secret and secret in repr((result.model, result.answers, result.usage)):
+                    raise StepFailure("connection metadata in response; no transcript was written")
                 if result.model != prices.DECISION.model:
                     usage = cast(object, getattr(result, "usage", None))
                     incoming = cast(object, getattr(usage, "input_tokens", 0))
@@ -198,19 +201,19 @@ class DecisionClient:
                             outgoing if isinstance(outgoing, int) and outgoing >= 0 else 0,
                         )
                     )
-                returned = {
-                    str(label): float(p) for label, p in result.answers["q"].probabilities.items()
-                }
+                raw = result.answers["q"].probabilities
+                returned = {str(label): float(p) for label, p in raw.items()}
                 total = sum(returned.values())
                 if (
-                    set(returned) != {a.answer for a in request.answers}
+                    len(returned) != len(raw)
+                    or set(returned) != {a.answer for a in request.answers}
                     or any(not math.isfinite(p) or not 0 <= p <= 1 for p in returned.values())
                     or total <= 0
                     or abs(total - 1) > 0.05 + 1e-12
                 ):
                     raise TransientError
                 probabilities = {label: p / total for label, p in returned.items()}
-                output = cast(int, getattr(result.usage, "output_tokens", 0))
+                output = cast(int, getattr(result.usage, "output_tokens", 0) or 0)
                 response = Response(
                     probabilities,
                     total,
@@ -429,15 +432,26 @@ class VertexClient:
                 }
                 if isinstance(request, prompts.Decision):
                     config.update(responseLogprobs=True, logprobs=20)
-                body = json.dumps(
-                    {
-                        "contents": [
-                            {"role": "user", "parts": [{"text": wire(request, self.family)}]}
-                        ],
-                        "generationConfig": config,
-                        "safetySettings": SAFETY_SETTINGS,
-                    }
-                ).encode()
+                rendered = wire(request, self.family)
+                payload: dict[str, object] = {
+                    "contents": [
+                        {
+                            "role": "user",
+                            "parts": [
+                                {
+                                    "text": rendered.text
+                                    if isinstance(rendered, prompts.Second)
+                                    else rendered
+                                }
+                            ],
+                        }
+                    ],
+                    "generationConfig": config,
+                    "safetySettings": SAFETY_SETTINGS,
+                }
+                if isinstance(rendered, prompts.Second):
+                    payload["systemInstruction"] = {"parts": [{"text": rendered.system}]}
+                body = json.dumps(payload).encode()
                 data = self.send(self._transport, endpoint + ":generateContent", body)
                 return self.read(request, data)
             except (StepFailure, FamilyUnusable, TransientError, TimeoutError):
@@ -473,9 +487,11 @@ class VertexClient:
                     for rating in items(obj(source).get("safetyRatings", []))
                 ):
                     raise ValueError
-            reply = obj(items(obj(candidate["content"])["parts"])[0])["text"]
-            if not isinstance(reply, str) or not reply.strip():
-                raise ValueError
+            reply = ""
+            if isinstance(request, str):
+                reply = obj(items(obj(candidate["content"])["parts"])[0])["text"]
+                if not isinstance(reply, str) or not reply.strip():
+                    raise ValueError
             probabilities: dict[str, float] = {}
             share = None
             if isinstance(request, prompts.Decision):
@@ -572,19 +588,17 @@ class Transcript:
                 if hashlib.sha256(encoded).hexdigest() != digest or digest in self.entries:
                     raise StopRun("invalid or duplicate transcript key")
                 self.entries[digest] = Entry(digest, row["request"], response)
-        self._spent = sum(
-            (cost(self.family, e.response) for e in self.entries.values()), Decimal(0)
-        )
 
     @property
     def spent(self) -> Decimal:
-        return self._spent
+        return sum((cost(self.family, e.response) for e in self.entries.values()), Decimal(0))
 
     def append(self, request: Request, response: Response) -> None:
-        digest = key(request)
+        rendered = wire(request, self.family)
+        digest = key(rendered)
         if digest in self.entries:
             return
-        entry = Entry(digest, json.loads(canonical(request)), response)
+        entry = Entry(digest, json.loads(canonical(rendered)), response)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self.path.open("a") as handle:
             handle.write(
@@ -596,7 +610,6 @@ class Transcript:
             handle.flush()
             os.fsync(handle.fileno())
         self.entries[digest] = entry
-        self._spent += cost(self.family, response)
 
     def digest(self) -> str:
         return hashlib.sha256(self.path.read_bytes() if self.path.exists() else b"").hexdigest()
@@ -619,6 +632,10 @@ class Session:
     def spent(self) -> Decimal:
         return sum((t.spent for t in self.transcripts.values()), Decimal(0))
 
+    def check_cap(self) -> None:
+        if self.spent > self.cap:
+            raise StopRun("spending cap reached; no verdict")
+
     def check_family(self, family: Family) -> None:
         entries = list(self.transcripts[family].entries.values())
         probabilities = [e for e in entries if not isinstance(e.request, str)]
@@ -626,21 +643,28 @@ class Session:
             if any(e.response.version != prices.DECISION.model for e in entries):
                 raise StopRun("decision model version changed; no verdict")
         else:
-            versions = {e.response.version for e in entries}
+            versions = {
+                e.response.version
+                for e in entries
+                if not isinstance(e.request, str) or e.response.version
+            }
             if len(versions) > 1 or any(not v.startswith(prices.SECOND.model) for v in versions):
                 raise FamilyUnusable("second family version changed")
-            if any(
-                e.response.share is None or e.response.share < 0.5 for e in probabilities
-            ) or any(e.response.share == 0 for e in entries):
+            if any(e.response.share is None or e.response.share < 0.5 for e in probabilities):
                 raise FamilyUnusable("second family declared-answer share below one half")
 
     def ask_many(
         self, family: Family, requests: Sequence[Request], *, recognition: bool = False
     ) -> list[Response]:
+        self.check_cap()
         transcript = self.transcripts[family]
+
+        def request_key(request: Request) -> str:
+            return key(wire(request, family))
+
         if not recognition:
             self.check_family(family)
-        unique = {key(r): r for r in requests if key(r) not in transcript.entries}
+        unique = {request_key(r): r for r in requests if request_key(r) not in transcript.entries}
         pending = [unique[k] for k in sorted(unique)]
         start = 0
         while start < len(pending):
@@ -682,13 +706,13 @@ class Session:
                     failure = failure or result
                 else:
                     transcript.append(request, result)
+            self.check_cap()
             if failure:
                 raise failure
-            if self.spent > self.cap:
-                raise StopRun("spending cap reached; no verdict")
             if not recognition:
                 self.check_family(family)
             start += len(window)
         if not recognition:
             self.check_family(family)
-        return [transcript.entries[key(r)].response for r in requests]
+        self.check_cap()
+        return [transcript.entries[request_key(r)].response for r in requests]
