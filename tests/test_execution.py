@@ -26,6 +26,8 @@ def over_cap(runner: run.Run) -> None:
 @pytest.mark.parametrize("step", run.STEPS)
 @pytest.mark.parametrize("fault", ["dirty", "registration"])
 def test_over_cap_still_refuses_changed_inputs(live: run.Run, step: str, fault: str) -> None:
+    result = live.root / "docs/pilot/result.md"
+    before = result.read_bytes() if result.exists() else None
     over_cap(live)
     if fault == "dirty":
         (live.root / "notes.txt").write_text("pending")
@@ -34,7 +36,7 @@ def test_over_cap_still_refuses_changed_inputs(live: run.Run, step: str, fault: 
     with pytest.raises(clients.GuardRefusal):
         live.execute(step, live.registered_commit)
     assert not live.directory.exists()
-    assert not (live.root / "docs/pilot/result.md").exists()
+    assert (result.read_bytes() if result.exists() else None) == before
 
 
 @pytest.mark.parametrize("step", run.STEPS[:4])
