@@ -45,13 +45,15 @@ def finish(runner: run.Run) -> dict[str, run.State]:
 
 
 def test_full_synthetic_sequence_restart_and_constructed_verdicts(runner: run.Run) -> None:
+    live_result = runner.root / "docs" / "pilot" / "result.md"
+    live_before = live_result.read_bytes() if live_result.exists() else None
     states = finish(runner)
     lines = runner.execute("report")
     assert lines[0].startswith("[stub verdict] outcome = ")
     assert all(line.startswith("[stub ") for line in lines)
     target = runner.directory / "result.md"
     assert "\n".join(lines) in target.read_text()
-    assert not (runner.root / "docs" / "pilot" / "result.md").exists()
+    assert (live_result.read_bytes() if live_result.exists() else None) == live_before
     before = {f: t.digest() for f, t in runner.session.transcripts.items()}
     for step in run.STEPS:
         runner.execute(step, COMMIT)

@@ -11,12 +11,12 @@ state.
 ## Status
 
 The simulator is not built yet. This repository holds the design, and a pilot that tests the
-design's first hypothesis: its notes, its pre-registration and its analysis code.
+design's first hypothesis: its notes, its pre-registration, its analysis code and its result.
 
 | What | State |
 |---|---|
 | Design | Accepted as the basis for the pilot, in [docs/design.md](docs/design.md). Reviewed by models, not yet by people outside the project |
-| Pilot (hypothesis H1) | Pre-registered in [prereg/h1.md](prereg/h1.md), with the analysis code and the files it fixes. The notes behind it are in [docs/pilot](docs/pilot), and the commands that run it in [docs/pilot/running.md](docs/pilot/running.md). At registration no judge had been called and no held-out participant read. The result is published whether it passes or fails |
+| Pilot (hypothesis H1) | Run as registered. The verdict defined in [prereg/h1.md](prereg/h1.md) is a pass: the evaluative zoon predicted held-out choices better than its three reduced versions. The strict hypothesis, the one the design first wrote, failed, and the second model family was excluded. The full output is in [docs/pilot/result.md](docs/pilot/result.md); how it was run, and what should be read with the verdict, is in [docs/pilot/run-log.md](docs/pilot/run-log.md) |
 | Kernel and social simulation | Not started, and not started at all if the pilot fails |
 | Licence | [Apache-2.0](LICENSE) |
 
