@@ -1,6 +1,6 @@
 """Selection, fair scores and complete runs on groups made through the kernel."""
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import replace
 from pathlib import Path
 
@@ -596,11 +596,20 @@ def test_report_recomputes_every_entry_and_main_only_prints_it(
         else:
             rendered.append(f"{label} = {value:{fmt}}")
 
-    def built(*args: object, **kwargs: object) -> list[compare.Entry]:
+    def built(
+        reported_groups: Sequence[Group],
+        held: Mapping[str, int],
+        *,
+        simulations: int,
+        resamples: int,
+    ) -> list[compare.Entry]:
+        assert list(reported_groups) == groups
+        assert held == {cell: 3 for cell in GAMES}
+        assert simulations == 3 and resamples == 101
         return report
 
     monkeypatch.setattr(compare, "report", built)
-    compare.main(simulations=2, resamples=100)
+    compare.main(simulations=3, resamples=101)
     assert (
         capsys.readouterr().out
         == "zoon interaction: candidates on training groups\n" + "\n".join(rendered) + "\n"
