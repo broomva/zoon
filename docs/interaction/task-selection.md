@@ -13,7 +13,8 @@ Both are also run with language-model agents prompted to play the game, since th
 simulated societies are usually built.
 
 **Recommendation: the linear public goods games of Wang, Hilbe and Zhang (2026), first
-session only.** The held-out groups are sealed in code by the change that adds this note.
+session only.** The change that adds this note also splits the groups, and keeps the held-out
+ones out of the file the analysis reads.
 Nothing about any group's behaviour has been computed yet.
 
 Verification key: **[me]** fetched and read, or computed from the files, by the author;
@@ -88,22 +89,25 @@ pinned by hash in `interaction/data-manifest.json`, so the assignment cannot mov
 | `4-MI` | 16 | 11 |
 | Total | 210 | 143 |
 
-`uv run --extra groups python -m zoon.interaction.data` downloads the two files, checks them
-against the manifest and prints this table. The training loader returns the training groups
-and a count of the held-out ones. No function of the module returns a held-out
-contribution, the opened spreadsheet or the decoded table; a test calls every function,
-private ones included, and checks what comes back. Both loaders refuse files that differ
-from the manifest, because the ranking depends on which groups are in the file. The seal is
-on the module: it cannot stop anyone from opening the public files with other code.
+`uv run --extra groups python -m zoon.interaction.data` downloads the two raw files, checks
+them against the manifest, writes the training file and prints this table.
 
-How far the seal goes differs by file, and `tests/test_interaction_data.py` checks each:
+How the held-out groups are kept out of the analysis:
 
-- The spreadsheet of pairs is read one range of cells at a time. The loader asks for the
-  identifier columns, and then for the 20 round cells of the two first-session rows of each
-  training pair. A test wraps the spreadsheet library and records every range asked for.
-- The file for groups of four is a MATLAB table that its reader library decodes whole. The
-  loader keeps the first-session rows of training groups and nothing else. A test fills
-  every other contribution with text and loads without error.
+- One function, `seal`, is the only code that opens the raw files. It writes
+  `data/groups/training.json`: the training groups, and a count of held-out groups per game.
+- Everything else, the measurement included, reads only that file. A test deletes the raw
+  files, disables the libraries that read them, and loads.
+- Both raw files and the training file are pinned by hash in the manifest. A changed raw
+  file could change which groups rank as held out, so each function that opens one checks
+  it first; the loader checks the training file.
+- For the spreadsheet of pairs, `seal` asks only for the identifier columns and the round
+  cells of training pairs; a test records every range asked for. The file for groups of
+  four is decoded whole by its reader library, and `seal` keeps training rows only.
+
+This guards against reading a held-out group by accident. It is not a defence against the
+person running the code: the raw files are public and can be opened with other code, or
+with this module's private functions.
 
 Two fifths is more than the pilot held out. The comparisons here are between groups, there
 are few groups, and the models will have few fitted numbers, so precision at evaluation is
@@ -134,12 +138,13 @@ relative to each other.
 
 From the files themselves, only structure was read before the split: sheet and column names,
 identifiers, counts of rows, groups and rounds, and whether cells were empty. No contribution
-of any group was printed or summarised. Since the split, only training groups can be loaded.
+of any group was printed or summarised. Since the split, the analysis has read training groups
+only.
 
 ## Risks, in order of seriousness
 
 1. **Few independent groups.** 143 held-out groups, 32 of them of four. Whether that can
-   detect what a law about other people adds must be computed on training groups before
+   detect what the others' history adds must be computed on training groups before
    anything is registered.
 2. **There may be little for a language model to read.** The eight games differ by four
    numbers. A coded model that takes those numbers as input may predict a game it has not

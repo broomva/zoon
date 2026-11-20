@@ -202,16 +202,31 @@ def test_a_strong_shared_tendency_is_caught_in_the_first_round() -> None:
     assert not _grows(groups)
 
 
-def test_a_weak_shared_tendency_is_not_excluded_only_bounded() -> None:
-    """THE LIMIT of the check. A weak shared tendency is too small to stand out in one
-    round: the first round's range includes zero. What the check still shows is that the
-    closeness does not grow: the later blocks sit inside the first round's range. So a first
-    round at chance bounds a shared tendency; it does not exclude one."""
+def test_a_weak_shared_tendency_passes_the_first_round_unnoticed() -> None:
+    """A LIMIT of the check. A weak shared tendency is too small to stand out in one round:
+    the first round's range includes zero, as it would with no shared tendency at all."""
     groups = _static(count=40, seed=1, low=0.35, high=0.65)
-    mean, low, high = _closer(groups)
-    assert low[0] < 0 < high[0], "one round cannot see it"
-    assert all(low[0] < later < high[0] for later in mean[1:])
-    assert not _grows(groups)
+    _, low, high = _closer(groups)
+    assert low[0] < 0 < high[0]
+    assert low[2] > 0, "ten rounds can see what one round cannot"
+
+
+def test_a_shared_target_that_settles_looks_exactly_like_influence() -> None:
+    """THE LIMIT that matters. Every group has a target share, a third or two thirds, fixed
+    from the start. In the first round each member gives everything with that probability
+    and nothing otherwise; afterwards each gives exactly the target. Nobody looks at anybody,
+    yet members are near chance in the first round and far closer later. So the check
+    describes when closeness arises and cannot say why."""
+    rng = np.random.default_rng(9)
+    groups: list[Group] = []
+    for cell in sorted(GAMES):
+        game = GAMES[cell]
+        for g in range(40):
+            third = 1 if rng.random() < 0.5 else 2
+            settled = tuple(e * third // 3 for e in game.endowments)
+            first = tuple(e if rng.random() < third / 3 else 0 for e in game.endowments)
+            groups.append(Group(cell, f"{cell}-{g}", (first, *[settled] * (ROUNDS - 1))))
+    assert _grows(groups)
 
 
 def test_the_check_uses_contributions_not_bands() -> None:
@@ -261,3 +276,39 @@ def test_a_group_is_scored_by_a_model_that_never_saw_it() -> None:
     others_in_fold = same_fold & (d.group != target)
     assert before[others_in_fold] == pytest.approx(after[others_in_fold])
     assert not np.allclose(before[~same_fold], after[~same_fold])
+
+
+def _zeroed(groups: list[Group], target: int) -> list[Group]:
+    changed = list(groups)
+    nothing = tuple(tuple(0 for _ in row) for row in groups[target].rounds)
+    changed[target] = Group(groups[target].cell, groups[target].index, nothing)
+    return changed
+
+
+def test_a_left_out_game_is_scored_by_a_model_that_saw_none_of_it() -> None:
+    """Changing one group changes nothing for the other groups of its game when the game is
+    left out of the fit, and changes the scores of the other games, whose fits include it."""
+    groups = _groups(others=1.0, count=6, seed=24)
+    name = "pooled, own and others"
+    before = measure.out_of_sample(groups, name, leave_out_game=True)
+    after = measure.out_of_sample(_zeroed(groups, 0), name, leave_out_game=True)
+    d = measure.decisions(groups)
+    same_game = np.array([groups[int(g)].cell == groups[0].cell for g in d.group])
+    assert before[same_game & (d.group != 0)] == pytest.approx(after[same_game & (d.group != 0)])
+    assert not np.allclose(before[~same_game], after[~same_game])
+    left_in = measure.out_of_sample(groups, name, leave_out_game=False)
+    assert not np.allclose(before, left_in), "leaving a game out is a different fit"
+
+
+def test_a_group_is_compared_with_simulations_from_a_model_that_never_saw_it() -> None:
+    """In the closed loop, changing one group changes nothing for the other groups of its
+    fold, and changes the scores of groups in the other folds, whose models were fitted on
+    it."""
+    groups = _groups(others=1.0, count=6, seed=25)
+    before = np.hstack(measure.closed_loop(groups))
+    after = np.hstack(measure.closed_loop(_zeroed(groups, 0)))
+    fold = np.array([measure.fold_of(group) for group in groups])
+    same = fold == fold[0]
+    same[0] = False
+    assert before[same] == pytest.approx(after[same])
+    assert not np.allclose(before[fold != fold[0]], after[fold != fold[0]])

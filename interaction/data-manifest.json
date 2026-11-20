@@ -12,5 +12,9 @@
       "url": "https://zenodo.org/api/records/16918146/files/LinearPGG_ExperimentalData.xlsx/content"
     }
   },
-  "licence": "CC BY 4.0"
+  "licence": "CC BY 4.0",
+  "training": {
+    "groups": 210,
+    "sha256": "1ed1f81ae169ae556e8bd7ba69434fe0abde954e566be6efb80972150b69db26"
+  }
 }

@@ -12,14 +12,14 @@ Four questions are answered before anything is designed or registered:
    people re-formed into groups at random, and were they already closer in the first round,
    before anyone had seen anyone else?
 
-A gain in prediction is not by itself evidence that people influence each other. Members who
-never looked at each other but shared a tendency from the start would produce one too. The
-fourth question is the check on that: a shared tendency shows in the first round, influence
-does not.
+None of this identifies a cause. A gain in prediction, and closeness that grows after the
+first round, would both follow from members who respond to each other, and both can be
+produced without any response by members who share a tendency. The case against a shared
+tendency is the experimenters' random matching, not anything computed here.
 
 Every model here is an ordered logit over five bands of the share contributed. The models are
-measuring sticks, not the person model that will be registered. Held-out groups are never
-loaded: `data.load` returns training groups only.
+measuring sticks, not the person model that will be registered. Held-out groups are absent
+from the training file, which is all that `data.load` reads.
 """
 
 import hashlib
@@ -170,6 +170,7 @@ def _social(d: Decisions) -> Floats:
 DESIGNS: dict[str, Design] = {
     "per game, no history": _strata,
     "per game, own history": lambda d: np.column_stack([_strata(d), _own(d)]),
+    "per game, others' history": lambda d: np.column_stack([_strata(d), d.first, d.others]),
     "per game, own and others": lambda d: np.column_stack([_strata(d), _social(d)]),
     "pooled, own and others": lambda d: np.column_stack([_one(d), _social(d)]),
     "game numbers, own and others": lambda d: np.column_stack([_one(d), d.traits, _social(d)]),
@@ -408,11 +409,10 @@ def against_chance(groups: Sequence[Group]) -> tuple[Floats, Floats]:
 
     What it can and cannot show. If the people of a game and seat are exchangeable when the
     groups are formed, a re-forming is a draw from what the groups would look like had their
-    members never met. A tendency shared from the start makes real members closer by the
-    same expected amount in every round. Members who respond to each other start no closer
-    than chance and become closer. So the comparison is between the first round's excess and
-    the later ones. It cannot rule out a shared tendency smaller than the first round's range
-    of chance, and it does not say what kind of response draws members together.
+    members' sessions not depended on whom they were grouped with. The result describes when
+    members are closer than that. It does not identify why: members who respond to each
+    other, and members who share a tendency that shows only weakly or noisily in the first
+    round, can give the same table.
     """
     rng = np.random.default_rng(SEED)
     real = np.zeros(len(BLOCKS))
@@ -458,10 +458,17 @@ def main() -> None:
     for name, scores in left.items():
         print(f"[open loop, groups left out] {name} = {scores.mean():+.4f} nats per decision")
     own, both = left["per game, own history"], left["per game, own and others"]
-    gain("[open loop] own history adds", own - left["per game, no history"], d.group)
-    others_add = gain("[open loop] others' history adds", both - own, d.group)
+    none, others = left["per game, no history"], left["per game, others' history"]
+    gain("[open loop] own history adds, entered first", own - none, d.group)
+    others_add = gain("[open loop] others' history adds, entered second", both - own, d.group)
+    gain("[open loop] others' history adds, entered first", others - none, d.group)
+    gain("[open loop] own history adds, entered second", both - others, d.group)
     later = d.first == 0
-    gain("[open loop, rounds 2 to 20] others' history adds", (both - own)[later], d.group[later])
+    gain(
+        "[open loop, rounds 2 to 20] others' history adds, entered second",
+        (both - own)[later],
+        d.group[later],
+    )
 
     pooled, numbers = "pooled, own and others", "game numbers, own and others"
     out = {name: out_of_sample(groups, name, leave_out_game=True) for name in (pooled, numbers)}
@@ -503,7 +510,12 @@ def main() -> None:
 
     sealed = sum(data.held_out_counts().values())
     print(f"[power] held-out groups = {sealed}")
-    for label, found in (("open loop", others_add), ("closed loop", loop_gain)):
+    apart_gain = interval((alone - together)[:, SUMMARIES.index("members apart")])
+    for label, found in (
+        ("open loop", others_add),
+        ("closed loop, all three", loop_gain),
+        ("closed loop, members apart", apart_gain),
+    ):
         full, half = power(found, count, sealed)
         print(f"[power] {label}: at the training effect = {full:.3f}; at half of it = {half:.3f}")
 
