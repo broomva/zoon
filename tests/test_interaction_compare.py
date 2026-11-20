@@ -464,12 +464,13 @@ def test_report_entries_selection_refits_and_main_rendering(
             assert list(train) == (list(reversed(groups)) if reversed_order else groups)
             assert start_nudge == (0.0 if reversed_order else 1e-6)
             refits.append((c.name, reversed_order, start_nudge))
-        # Opposite perturbations dominate for the two chosen forms.
-        change = (-0.03 if c.twin else 0.01) if reversed_order else 0.0
-        if start_nudge:
-            change = 0.02 if c.twin else -0.04
+        # Different numbers move in opposite directions; each form has a different
+        # dominant sign, so neither direction of signed subtraction gives both maxima.
         numbers = p.numbers + shift + index / 100 + c.twin / 1000
-        numbers[0] += change
+        if reversed_order:
+            numbers[0] -= 0.03 if c.twin else 0.01
+        if start_nudge:
+            numbers[1] += 0.02 if c.twin else 0.04
         return replace(p, numbers=numbers)
 
     def evaluated(
@@ -627,12 +628,13 @@ def test_report_entries_selection_refits_and_main_rendering(
     ]
     for arm, name in (("candidate", "B"), ("twin", "E twin")):
         c = next(c for c in person.CANDIDATES if c.name == name)
-        # The larger perturbation changes only the first fitted number.
-        reference = fitted(groups, c).numbers
-        delta = 0.03 if c.twin else 0.04
+        # The twin's negative first-number change and the candidate's positive
+        # second-number change dominate their respective refits.
+        reference = fitted(groups, c).numbers[0 if c.twin else 1]
+        delta = -0.03 if c.twin else 0.04
         add(
             f"[reproducibility, {name}] largest absolute change",
-            abs(float((reference[0] - delta) - reference[0])),
+            abs(float((reference + delta) - reference)),
             ".6f",
         )
         if c.letter != "B":
