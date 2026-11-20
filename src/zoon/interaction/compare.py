@@ -154,8 +154,22 @@ def evaluate(
     return Evaluation(opened, closed, covered, person.fit(groups, candidate))
 
 
-def fitted_lines(law: person.Person) -> list[str]:
-    """Print every fitted number, with the equation's parameter names."""
+@dataclass(frozen=True)
+class Entry:
+    label: str
+    value: int | float | str | tuple[float, ...]
+    format: str = ""
+
+    def render(self) -> str:
+        if isinstance(self.value, tuple):
+            mean, low, high = self.value
+            value = f"{mean:+.4f} [{low:+.4f}, {high:+.4f}]"
+        else:
+            value = format(self.value, self.format)
+        return f"{self.label} = {value}"
+
+
+def fitted_entries(law: person.Person) -> list[Entry]:
     c = law.candidate
     base = (
         ("constant", "endowment", "return", "product", "four seats")
@@ -165,39 +179,45 @@ def fitted_lines(law: person.Person) -> list[str]:
     names = [
         f"{phase} {name}"
         for phase in ("first", "later")
-        for name in (*base, "cut origin", "log gap 1", "log gap 2", "log gap 3")
+        for name in (*base, "log gap 1", "log gap 2", "log gap 3")
     ]
     names += [f"weight {name}" for name in c.features]
     names += [f"trace fraction {name}" for name in c.traces]
     return [
-        f"[numbers, {c.name}] {name} = {number:+.6f}"
+        Entry(f"[numbers, {c.name}] {name}", float(number), "+.6f")
         for name, number in zip(names, law.numbers, strict=True)
     ]
 
 
-def main(*, simulations: int = SIMULATED_GROUPS, resamples: int = measure.RESAMPLES) -> None:
-    groups = data.load()
-    held = data.held_out_counts()
+def report(
+    groups: Sequence[Group],
+    held: Mapping[str, int],
+    *,
+    simulations: int = SIMULATED_GROUPS,
+    resamples: int = measure.RESAMPLES,
+) -> list[Entry]:
     decisions = measure.decisions(groups)
-    print("zoon interaction: candidates on training groups")
-    print(f"[data] training groups = {len(groups)}")
-    print(f"[data] decisions = {len(decisions.choice)}")
-    print(f"[data] held-out groups = {sum(held.values())}")
-    print(f"[simulation] groups per game and fold = {simulations}")
-    print(f"[fit] ridge = {person.RIDGE}")
-    print(f"[fit] probability floor = {person.FLOOR:.10f}")
-    print(f"[fit] log gap limit = {person.LOG_GAP_LIMIT}")
-    print(f"[fit] iteration limit = {person.MAX_ITERATIONS}")
-    print(f"[fit] gradient tolerance = {person.TOLERANCE:.8f}")
-    print(f"[fit] function tolerance = {person.FUNCTION_TOLERANCE:.10f}")
+    entries = [
+        Entry("[data] training groups", len(groups)),
+        Entry("[data] decisions", len(decisions.choice)),
+        Entry("[data] held-out groups", sum(held.values())),
+        Entry("[simulation] groups per game and fold", simulations),
+        Entry("[fit] ridge", person.RIDGE),
+        Entry("[fit] probability floor", person.FLOOR, ".10f"),
+        Entry("[fit] log gap limit", person.LOG_GAP_LIMIT),
+        Entry("[fit] iteration limit", person.MAX_ITERATIONS),
+        Entry("[fit] gradient tolerance", person.TOLERANCE, ".8f"),
+        Entry("[fit] function tolerance", person.FUNCTION_TOLERANCE, ".10f"),
+        Entry("[fit check] absolute tolerance", person.REPRODUCIBILITY_TOLERANCE, ".2f"),
+        Entry("[fit check] start nudge", person.START_NUDGE, ".6f"),
+    ]
 
     def found(label: str, result: Sequence[float]) -> None:
-        mean, low, high = result
-        print(f"{label} = {mean:+.4f} [{low:+.4f}, {high:+.4f}]")
+        entries.append(Entry(label, tuple(float(v) for v in result)))
 
     for (endowment, band), values in kernel.Amounts.build(groups).rows.items():
         counts = ", ".join(f"{points}:{count}" for points, count in sorted(Counter(values).items()))
-        print(f"[amounts, endowment {endowment}, band {band}] points:count = {counts}")
+        entries.append(Entry(f"[amounts, endowment {endowment}, band {band}] points:count", counts))
 
     results: dict[str, Evaluation] = {}
     for c in person.CANDIDATES:
@@ -210,13 +230,19 @@ def main(*, simulations: int = SIMULATED_GROUPS, resamples: int = measure.RESAMP
         else:
             results[c.name] = evaluate(groups, c, simulations)
         result = results[c.name]
-        print(f"[count] {c.name} = {c.count}")
-        print("\n".join(fitted_lines(result.fitted)))
+        entries.append(Entry(f"[count] {c.name}", c.count))
+        entries.extend(fitted_entries(result.fitted))
         found(f"[open loop] {c.name}", measure.paired(result.open, decisions.group, len(groups)))
         for metric, value in zip(METRICS, interval(result.closed, groups, resamples), strict=True):
             found(f"[closed loop, {metric}] {c.name}", value)
         for j, summary in enumerate(SUMMARIES):
-            print(f"[coverage, {summary}] {c.name} = {np.nanmean(result.covered[:, j]):.4f}")
+            entries.append(
+                Entry(
+                    f"[coverage, {summary}] {c.name}",
+                    float(np.nanmean(result.covered[:, j])),
+                    ".4f",
+                )
+            )
 
     chosen: list[Selection] = []
     for twin in (False, True):
@@ -229,9 +255,9 @@ def main(*, simulations: int = SIMULATED_GROUPS, resamples: int = measure.RESAMP
         )
         chosen.append(selection)
         label = "twins" if twin else "candidates"
-        print(f"[selection, {label}] highest = {selection.reference}")
-        print(f"[selection, {label}] tied at step 2 = {', '.join(selection.tied)}")
-        print(f"[selection, {label}] winner = {selection.winner}")
+        entries.append(Entry(f"[selection, {label}] highest", selection.reference))
+        entries.append(Entry(f"[selection, {label}] tied at step 2", ", ".join(selection.tied)))
+        entries.append(Entry(f"[selection, {label}] winner", selection.winner))
     winner, alone = chosen[0].winner, chosen[1].winner
     own = winner + " twin"
     for comparison, opponent in (("selected twin", alone), ("own twin", own)):
@@ -251,22 +277,21 @@ def main(*, simulations: int = SIMULATED_GROUPS, resamples: int = measure.RESAMP
             training_count = sum(g.cell in defined for g in groups)
             sealed_count = sum(n for cell, n in held.items() if cell in defined)
             if value[2] == value[1]:
-                print(
-                    f"[power, {comparison}, {metric}] training effect = "
-                    "undefined (zero-width interval)"
-                )
-                print(
-                    f"[power, {comparison}, {metric}] half effect = undefined (zero-width interval)"
-                )
-                continue
+                full = half = "undefined (zero-width interval)"
             else:
                 full, half = measure.power(
                     (float(value[0]), float(value[1]), float(value[2])),
                     training_count,
                     sealed_count,
                 )
-            print(f"[power, {comparison}, {metric}] training effect = {full:.3f}")
-            print(f"[power, {comparison}, {metric}] half effect = {half:.3f}")
+            for effect, power in (("training effect", full), ("half effect", half)):
+                entries.append(
+                    Entry(
+                        f"[power, {comparison}, {metric}] {effect}",
+                        power,
+                        "" if isinstance(power, str) else ".3f",
+                    )
+                )
     for arm, name in (("candidate", winner), ("twin", alone)):
         c = next(c for c in person.CANDIDATES if c.name == name)
         left = person.out_of_sample(groups, c, leave_out_game=True)
@@ -277,7 +302,20 @@ def main(*, simulations: int = SIMULATED_GROUPS, resamples: int = measure.RESAMP
         )
         for cell in sorted(GAMES):
             mask = np.array([groups[int(g)].cell == cell for g in decisions.group])
-            print(f"[game left out, {arm}, {cell}] score = {left[mask].mean():+.4f}")
+            entries.append(
+                Entry(f"[game left out, {arm}, {cell}] score", float(left[mask].mean()), "+.4f")
+            )
+
+    return entries
+
+
+def main(*, simulations: int = SIMULATED_GROUPS, resamples: int = measure.RESAMPLES) -> None:
+    entries = report(
+        data.load(), data.held_out_counts(), simulations=simulations, resamples=resamples
+    )
+    print("zoon interaction: candidates on training groups")
+    for entry in entries:
+        print(entry.render())
 
 
 if __name__ == "__main__":

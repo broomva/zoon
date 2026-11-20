@@ -48,21 +48,27 @@ the training comparison; the repository does not establish that chronology.
 - The objective is the negative sum of decision log-likelihoods plus 0.01 times the sum
   of squares of every fitted number, including update fractions and cut-point parameters.
   It uses the small ridge penalty of `measure.fit`, extended to the trace fractions.
-- A cut-point origin and three log gaps parameterise each set of cut points. Constants
-  and state weights start at zero, origins at -1.5, log gaps at zero, and update fractions
+- Each rule has a first cut point fixed at zero, followed by three positive gaps.
+  Constants, state weights and log gaps start at zero, and update fractions
   at one half. There is one start for every fit. The fractions lie in the closed interval
   from zero to one; the log gaps lie from -8 to 8 to avoid numerical overflow. All other
   numbers are unbounded.
 - L-BFGS-B uses an analytic gradient, at most 2000 iterations and 50 line-search steps,
   function tolerance 0.0000000001 and projected-gradient tolerance 0.00000010. Either
   successful stopping condition is accepted. Any unsuccessful result raises with the
-  optimiser's message. A single start is simple and reproducible; it does not guarantee
-  a global optimum for the fitted trace fractions.
+  optimiser's message. This does not guarantee a global optimum for the fitted trace fractions.
 - Every probability is floored at 0.0000000010 and divided by the sum. H2 is a mean per
   decision. Its paired interval uses `measure.paired`, resampling whole groups.
 - Every fitted scalar counts, including the fractions and both rules' cut points.
   Identical twins A, C and D have the same equation, penalty and start. Their fits and
   simulations are reused exactly.
+
+The first parameterisation fitted a cut-point origin alongside each rule's constants.
+A check of the fit's reproducibility found that reversing group order changed fitted
+numbers: shifting the origin and constants together left likelihoods unchanged.
+The first cut point is now fixed at zero and
+the constants carry the level, with two fewer fitted numbers per form and the same
+expressible predictions. This change was not made in response to a comparison result.
 
 The pasted output gives every fitted number from a fit on all training groups. These are
 not the fits that produce the scores. Each score leaves the group's fold out, using the
@@ -89,18 +95,19 @@ the fold tables exclude the groups being scored. Tables reject any amount that i
 not a legal whole number of points in its declared endowment and band.
 
 The kernel collects a whole round's decisions before delivering any outcome. It uses
-`Game.payoffs` with exact fractions and checks the total and each seat's kept points
+`Game.payoffs` with exact fractions and checks each seat's kept points
 plus equal pool share every round. Its append-only log records intents, transfers
 and observations. Replay recomputes the draws and ledger from
 the logged returned weights, checking their normalised probabilities, the canonical
-game rules, draws, transfers and observations. Malformed logs raise a single error.
+game rules, draws, transfers and observations. Replay rejects the changed rules and
+damaged records exercised by the tests.
 Replay does not authenticate the source of the returned weights: a consistent common
 rescaling of those weights may still replay. Candidates receive every seat's
 contribution and payoff. Twins receive their own contribution and the rules, with
 no payoff. This matters in a pair, where a payoff could disclose the partner's contribution.
-A non-twin coded person raises an error if any seat's contribution is missing.
-Returned weights are converted to double precision before normalisation and logging,
-so single-precision arrays and lists also replay consistently.
+With only own contributions visible, others' traces stay centred and score zero.
+The play boundary converts returned weights to double precision before normalisation
+and logging.
 
 Streams use a SHA-256 hash of the seed, game, group, round, seat and draw purpose. The seed
 is `measure.SEED`; simulation group names include the fold, game and simulation index.
@@ -150,24 +157,24 @@ not enter selection.
 
 | Form | Fitted numbers | Open-loop nats per decision | Closed-loop composite |
 |---|---|---|---|
-| A | 40 | -0.9330 [-0.9930, -0.8699] | +0.1191 [+0.1125, +0.1261] |
-| B | 22 | -0.9300 [-0.9905, -0.8667] | +0.1187 [+0.1120, +0.1255] |
-| C | 42 | -0.9329 [-0.9928, -0.8697] | +0.1191 [+0.1125, +0.1260] |
-| D | 40 | -0.9292 [-0.9924, -0.8658] | +0.1195 [+0.1126, +0.1266] |
-| E | 41 | -0.9329 [-0.9931, -0.8698] | +0.1185 [+0.1119, +0.1255] |
-| F | 38 | -1.1904 [-1.2583, -1.1236] | +0.1589 [+0.1523, +0.1660] |
-| A twin | 38 | -0.9597 [-1.0204, -0.8962] | +0.1321 [+0.1269, +0.1378] |
-| B twin | 20 | -0.9553 [-1.0161, -0.8930] | +0.1311 [+0.1260, +0.1365] |
-| C twin | 38 | -0.9597 [-1.0204, -0.8962] | +0.1321 [+0.1269, +0.1378] |
-| D twin | 38 | -0.9597 [-1.0204, -0.8962] | +0.1321 [+0.1269, +0.1378] |
-| E twin | 39 | -0.9599 [-1.0208, -0.8966] | +0.1321 [+0.1268, +0.1378] |
-| F twin | 36 | -1.4687 [-1.5227, -1.4163] | +0.1890 [+0.1823, +0.1964] |
+| A | 38 | -0.9330 [-0.9930, -0.8699] | +0.1191 [+0.1126, +0.1261] |
+| B | 20 | -0.9300 [-0.9905, -0.8667] | +0.1187 [+0.1120, +0.1255] |
+| C | 40 | -0.9328 [-0.9928, -0.8697] | +0.1191 [+0.1126, +0.1261] |
+| D | 38 | -0.9292 [-0.9923, -0.8658] | +0.1195 [+0.1126, +0.1266] |
+| E | 39 | -0.9329 [-0.9930, -0.8697] | +0.1185 [+0.1120, +0.1255] |
+| F | 36 | -1.1904 [-1.2582, -1.1236] | +0.1590 [+0.1524, +0.1661] |
+| A twin | 36 | -0.9597 [-1.0204, -0.8962] | +0.1322 [+0.1269, +0.1378] |
+| B twin | 18 | -0.9553 [-1.0161, -0.8930] | +0.1311 [+0.1260, +0.1365] |
+| C twin | 36 | -0.9597 [-1.0204, -0.8962] | +0.1322 [+0.1269, +0.1378] |
+| D twin | 36 | -0.9597 [-1.0204, -0.8962] | +0.1322 [+0.1269, +0.1378] |
+| E twin | 37 | -0.9599 [-1.0208, -0.8966] | +0.1322 [+0.1269, +0.1378] |
+| F twin | 34 | -1.4687 [-1.5227, -1.4162] | +0.1891 [+0.1824, +0.1965] |
 
 The own and others' trace fractions for B, its twin's own fraction, every other
 fitted number and both rules' cut points are in the paste.
-The paste records six decimals from this run. Across platforms, expect about two
-decimal places in fitted numbers; the last digits can differ with optimiser stopping.
-The model choice and interpretation do not depend on those last digits.
+The paste records six decimals from this run. On synthetic groups, the fit test
+enforces absolute tolerance 0.02 for A and B when group order is reversed or the start
+is nudged by 0.000001.
 
 ### Coded-arm gains
 
@@ -177,12 +184,12 @@ in the open loop, and twin minus candidate score in the closed loop.
 | Measure | Against selected twin | Against own twin |
 |---|---|---|
 | H2 | +0.0253 [+0.0179, +0.0328] | +0.0253 [+0.0179, +0.0328] |
-| composite | +0.0124 [+0.0085, +0.0163] | +0.0124 [+0.0085, +0.0163] |
-| level | +0.0052 [+0.0005, +0.0098] | +0.0052 [+0.0005, +0.0098] |
+| composite | +0.0124 [+0.0085, +0.0162] | +0.0124 [+0.0085, +0.0162] |
+| level | +0.0051 [+0.0005, +0.0098] | +0.0051 [+0.0005, +0.0098] |
 | members apart | +0.0466 [+0.0355, +0.0571] | +0.0466 [+0.0355, +0.0571] |
 | trend | -0.0023 [-0.0045, -0.0001] | -0.0023 [-0.0045, -0.0001] |
 | movement | +0.0012 [+0.0004, +0.0020] | +0.0012 [+0.0004, +0.0020] |
-| type gap | +0.0115 [+0.0040, +0.0184] | +0.0115 [+0.0040, +0.0184] |
+| type gap | +0.0114 [+0.0040, +0.0184] | +0.0114 [+0.0040, +0.0184] |
 
 Both the H2 and H3 composite intervals are above zero against the coded twin.
 The largest summary gain is in members apart. Trend scores worse. This is a training
@@ -208,12 +215,12 @@ do not establish adequate absolute fit.
 | Measure | Selected twin, training effect | Selected twin, half effect | Own twin, training effect | Own twin, half effect |
 |---|---|---|---|---|
 | H2 | 1.000 | 0.782 | 1.000 | 0.782 |
-| composite | 0.999 | 0.738 | 0.999 | 0.738 |
-| level | 0.437 | 0.147 | 0.437 | 0.147 |
-| members apart | 1.000 | 0.939 | 1.000 | 0.939 |
+| composite | 0.999 | 0.737 | 0.999 | 0.737 |
+| level | 0.434 | 0.146 | 0.434 | 0.146 |
+| members apart | 1.000 | 0.938 | 1.000 | 0.938 |
 | trend | 0.395 | 0.135 | 0.395 | 0.135 |
-| movement | 0.627 | 0.208 | 0.627 | 0.208 |
-| type gap | 0.732 | 0.252 | 0.732 | 0.252 |
+| movement | 0.639 | 0.212 | 0.639 | 0.212 |
+| type gap | 0.731 | 0.251 | 0.731 | 0.251 |
 
 These are two-sided detection estimates under the assumptions above. A printed
 1.000 is not certainty. They do not include a smallest useful difference or a
@@ -227,13 +234,13 @@ fold score minus this score, paired by decision. The intervals vary groups, not 
 | Arm | Nats per decision | Loss from leaving the game out |
 |---|---|---|
 | candidate | -0.9357 [-0.9981, -0.8714] | +0.0058 [+0.0018, +0.0098] |
-| twin | -0.9587 [-1.0218, -0.8944] | +0.0034 [-0.0003, +0.0072] |
+| twin | -0.9586 [-1.0218, -0.8944] | +0.0033 [-0.0003, +0.0072] |
 
 | Game | Candidate | Twin |
 |---|---|---|
-| 2-AI | -0.8811 | -0.8915 |
+| 2-AI | -0.8812 | -0.8915 |
 | 2-EI | -0.9194 | -0.9203 |
-| 2-FE | -0.7242 | -0.7800 |
+| 2-FE | -0.7243 | -0.7800 |
 | 2-MI | -0.9696 | -0.9748 |
 | 2-PI | -0.8604 | -0.9047 |
 | 4-AI | -0.9518 | -0.9626 |
@@ -272,6 +279,8 @@ zoon interaction: candidates on training groups
 [fit] iteration limit = 2000
 [fit] gradient tolerance = 0.00000010
 [fit] function tolerance = 0.0000000001
+[fit check] absolute tolerance = 0.02
+[fit check] start nudge = 0.000001
 [amounts, endowment 12, band 1] points:count = 1:73, 2:96, 3:77, 4:73
 [amounts, endowment 12, band 2] points:count = 5:84, 6:171, 7:62, 8:153
 [amounts, endowment 12, band 3] points:count = 9:99, 10:307, 11:86
@@ -281,592 +290,568 @@ zoon interaction: candidates on training groups
 [amounts, endowment 36, band 1] points:count = 1:76, 2:77, 3:56, 4:61, 5:66, 6:78, 7:37, 8:64, 9:42, 10:201, 11:19, 12:143
 [amounts, endowment 36, band 2] points:count = 13:29, 14:27, 15:44, 16:38, 17:8, 18:70, 19:12, 20:157, 21:20, 22:21, 23:19, 24:71
 [amounts, endowment 36, band 3] points:count = 25:39, 26:37, 27:26, 28:35, 29:8, 30:200, 31:9, 32:46, 33:12, 34:68, 35:39
-[count] A = 40
-[numbers, A] first constant 2-AI type 0 = -0.492010
-[numbers, A] first constant 2-AI type 1 = -0.113326
-[numbers, A] first constant 2-EI type 0 = -0.439959
-[numbers, A] first constant 2-EI type 1 = +0.557407
-[numbers, A] first constant 2-FE type 0 = +0.223170
-[numbers, A] first constant 2-MI type 0 = -0.815205
-[numbers, A] first constant 2-MI type 1 = +0.403409
-[numbers, A] first constant 2-PI type 0 = +0.231507
-[numbers, A] first constant 2-PI type 1 = -0.210836
-[numbers, A] first constant 4-AI type 0 = +0.202098
-[numbers, A] first constant 4-AI type 1 = +0.311992
-[numbers, A] first constant 4-FE type 0 = +0.489304
-[numbers, A] first constant 4-MI type 0 = +0.094044
-[numbers, A] first constant 4-MI type 1 = +0.811709
-[numbers, A] first cut origin = -2.742254
-[numbers, A] first log gap 1 = +0.768556
-[numbers, A] first log gap 2 = +0.137556
-[numbers, A] first log gap 3 = -1.114979
-[numbers, A] later constant 2-AI type 0 = +0.001135
-[numbers, A] later constant 2-AI type 1 = +0.536647
-[numbers, A] later constant 2-EI type 0 = -0.392263
-[numbers, A] later constant 2-EI type 1 = +0.593983
-[numbers, A] later constant 2-FE type 0 = +0.403299
-[numbers, A] later constant 2-MI type 0 = -0.469235
-[numbers, A] later constant 2-MI type 1 = +0.482102
-[numbers, A] later constant 2-PI type 0 = +0.137610
-[numbers, A] later constant 2-PI type 1 = +0.288871
-[numbers, A] later constant 4-AI type 0 = +0.034514
-[numbers, A] later constant 4-AI type 1 = +0.179657
-[numbers, A] later constant 4-FE type 0 = +0.274700
-[numbers, A] later constant 4-MI type 0 = -0.276977
-[numbers, A] later constant 4-MI type 1 = +0.186343
-[numbers, A] later cut origin = -3.469335
-[numbers, A] later log gap 1 = +0.942333
-[numbers, A] later log gap 2 = +0.805802
-[numbers, A] later log gap 3 = +0.407663
-[numbers, A] weight own = +7.022916
-[numbers, A] weight others = +2.047300
-[numbers, A] trace fraction own = +0.658705
+[count] A = 38
+[numbers, A] first constant 2-AI type 0 = +2.225187
+[numbers, A] first constant 2-AI type 1 = +2.600094
+[numbers, A] first constant 2-EI type 0 = +2.278260
+[numbers, A] first constant 2-EI type 1 = +3.271519
+[numbers, A] first constant 2-FE type 0 = +2.940388
+[numbers, A] first constant 2-MI type 0 = +1.903734
+[numbers, A] first constant 2-MI type 1 = +3.117496
+[numbers, A] first constant 2-PI type 0 = +2.945633
+[numbers, A] first constant 2-PI type 1 = +2.505683
+[numbers, A] first constant 4-AI type 0 = +2.917562
+[numbers, A] first constant 4-AI type 1 = +3.026033
+[numbers, A] first constant 4-FE type 0 = +3.207432
+[numbers, A] first constant 4-MI type 0 = +2.808929
+[numbers, A] first constant 4-MI type 1 = +3.525203
+[numbers, A] first log gap 1 = +0.758398
+[numbers, A] first log gap 2 = +0.135634
+[numbers, A] first log gap 3 = -1.115819
+[numbers, A] later constant 2-AI type 0 = +3.467716
+[numbers, A] later constant 2-AI type 1 = +4.002843
+[numbers, A] later constant 2-EI type 0 = +3.074553
+[numbers, A] later constant 2-EI type 1 = +4.060168
+[numbers, A] later constant 2-FE type 0 = +3.869889
+[numbers, A] later constant 2-MI type 0 = +2.997609
+[numbers, A] later constant 2-MI type 1 = +3.948466
+[numbers, A] later constant 2-PI type 0 = +3.604125
+[numbers, A] later constant 2-PI type 1 = +3.755371
+[numbers, A] later constant 4-AI type 0 = +3.500935
+[numbers, A] later constant 4-AI type 1 = +3.645997
+[numbers, A] later constant 4-FE type 0 = +3.741336
+[numbers, A] later constant 4-MI type 0 = +3.189701
+[numbers, A] later constant 4-MI type 1 = +3.652699
+[numbers, A] later log gap 1 = +0.941484
+[numbers, A] later log gap 2 = +0.805294
+[numbers, A] later log gap 3 = +0.407276
+[numbers, A] weight own = +7.019937
+[numbers, A] weight others = +2.046825
+[numbers, A] trace fraction own = +0.658659
 [numbers, A] trace fraction others = +1.000000
 [open loop] A = -0.9330 [-0.9930, -0.8699]
-[closed loop, composite] A = +0.1191 [+0.1125, +0.1261]
-[closed loop, level] A = +0.1724 [+0.1575, +0.1880]
-[closed loop, members apart] A = +0.0983 [+0.0895, +0.1081]
-[closed loop, trend] A = +0.1510 [+0.1353, +0.1683]
-[closed loop, movement] A = +0.0551 [+0.0508, +0.0599]
-[closed loop, type gap] A = +0.1187 [+0.1031, +0.1356]
-[coverage, level] A = 0.7429
+[closed loop, composite] A = +0.1191 [+0.1126, +0.1261]
+[closed loop, level] A = +0.1723 [+0.1574, +0.1878]
+[closed loop, members apart] A = +0.0984 [+0.0895, +0.1081]
+[closed loop, trend] A = +0.1511 [+0.1355, +0.1684]
+[closed loop, movement] A = +0.0552 [+0.0509, +0.0599]
+[closed loop, type gap] A = +0.1187 [+0.1032, +0.1356]
+[coverage, level] A = 0.7476
 [coverage, members apart] A = 0.6905
 [coverage, trend] A = 0.8571
 [coverage, movement] A = 0.5476
 [coverage, type gap] A = 0.7764
-[count] B = 22
-[numbers, B] first constant = +1.402043
-[numbers, B] first endowment = -0.690580
-[numbers, B] first return = +0.986222
-[numbers, B] first product = -0.744029
-[numbers, B] first four seats = +0.432222
-[numbers, B] first cut origin = -1.282415
-[numbers, B] first log gap 1 = +0.759424
-[numbers, B] first log gap 2 = +0.129673
-[numbers, B] first log gap 3 = -1.117355
-[numbers, B] later constant = +1.882963
-[numbers, B] later endowment = -0.622430
-[numbers, B] later return = +0.286744
-[numbers, B] later product = +1.167341
-[numbers, B] later four seats = -0.062736
-[numbers, B] later cut origin = -1.763336
-[numbers, B] later log gap 1 = +0.936321
-[numbers, B] later log gap 2 = +0.805354
-[numbers, B] later log gap 3 = +0.405614
-[numbers, B] weight own = +7.079210
-[numbers, B] weight others = +1.940905
-[numbers, B] trace fraction own = +0.658827
+[count] B = 20
+[numbers, B] first constant = +2.683038
+[numbers, B] first endowment = -0.690416
+[numbers, B] first return = +0.987392
+[numbers, B] first product = -0.759102
+[numbers, B] first four seats = +0.432596
+[numbers, B] first log gap 1 = +0.758890
+[numbers, B] first log gap 2 = +0.129728
+[numbers, B] first log gap 3 = -1.117268
+[numbers, B] later constant = +3.646176
+[numbers, B] later endowment = -0.622400
+[numbers, B] later return = +0.286668
+[numbers, B] later product = +1.168089
+[numbers, B] later four seats = -0.062715
+[numbers, B] later log gap 1 = +0.936284
+[numbers, B] later log gap 2 = +0.805321
+[numbers, B] later log gap 3 = +0.405616
+[numbers, B] weight own = +7.079080
+[numbers, B] weight others = +1.940825
+[numbers, B] trace fraction own = +0.658825
 [numbers, B] trace fraction others = +1.000000
 [open loop] B = -0.9300 [-0.9905, -0.8667]
 [closed loop, composite] B = +0.1187 [+0.1120, +0.1255]
 [closed loop, level] B = +0.1679 [+0.1551, +0.1816]
 [closed loop, members apart] B = +0.1017 [+0.0926, +0.1115]
-[closed loop, trend] B = +0.1488 [+0.1330, +0.1659]
+[closed loop, trend] B = +0.1488 [+0.1331, +0.1660]
 [closed loop, movement] B = +0.0547 [+0.0504, +0.0594]
-[closed loop, type gap] B = +0.1205 [+0.1044, +0.1384]
+[closed loop, type gap] B = +0.1205 [+0.1045, +0.1384]
 [coverage, level] B = 0.7333
 [coverage, members apart] B = 0.6714
 [coverage, trend] B = 0.8952
 [coverage, movement] B = 0.5476
 [coverage, type gap] B = 0.8075
-[count] C = 42
-[numbers, C] first constant 2-AI type 0 = -0.491810
-[numbers, C] first constant 2-AI type 1 = -0.115018
-[numbers, C] first constant 2-EI type 0 = -0.438966
-[numbers, C] first constant 2-EI type 1 = +0.557831
-[numbers, C] first constant 2-FE type 0 = +0.223349
-[numbers, C] first constant 2-MI type 0 = -0.814907
-[numbers, C] first constant 2-MI type 1 = +0.403564
-[numbers, C] first constant 2-PI type 0 = +0.231315
-[numbers, C] first constant 2-PI type 1 = -0.210656
-[numbers, C] first constant 4-AI type 0 = +0.203113
-[numbers, C] first constant 4-AI type 1 = +0.311839
-[numbers, C] first constant 4-FE type 0 = +0.491105
-[numbers, C] first constant 4-MI type 0 = +0.093912
-[numbers, C] first constant 4-MI type 1 = +0.812080
-[numbers, C] first cut origin = -2.741875
-[numbers, C] first log gap 1 = +0.768541
-[numbers, C] first log gap 2 = +0.137576
-[numbers, C] first log gap 3 = -1.115119
-[numbers, C] later constant 2-AI type 0 = +0.001496
-[numbers, C] later constant 2-AI type 1 = +0.537250
-[numbers, C] later constant 2-EI type 0 = -0.392242
-[numbers, C] later constant 2-EI type 1 = +0.594814
-[numbers, C] later constant 2-FE type 0 = +0.403630
-[numbers, C] later constant 2-MI type 0 = -0.469257
-[numbers, C] later constant 2-MI type 1 = +0.482881
-[numbers, C] later constant 2-PI type 0 = +0.137991
-[numbers, C] later constant 2-PI type 1 = +0.289228
-[numbers, C] later constant 4-AI type 0 = +0.058081
-[numbers, C] later constant 4-AI type 1 = +0.152382
-[numbers, C] later constant 4-FE type 0 = +0.274995
-[numbers, C] later constant 4-MI type 0 = -0.248622
-[numbers, C] later constant 4-MI type 1 = +0.162086
-[numbers, C] later cut origin = -3.469836
-[numbers, C] later log gap 1 = +0.942208
-[numbers, C] later log gap 2 = +0.806691
-[numbers, C] later log gap 3 = +0.407932
-[numbers, C] weight own = +7.023070
-[numbers, C] weight same = +0.914466
-[numbers, C] weight other = +1.134077
-[numbers, C] trace fraction own = +0.658782
+[count] C = 40
+[numbers, C] first constant 2-AI type 0 = +2.227235
+[numbers, C] first constant 2-AI type 1 = +2.601268
+[numbers, C] first constant 2-EI type 0 = +2.279831
+[numbers, C] first constant 2-EI type 1 = +3.272960
+[numbers, C] first constant 2-FE type 0 = +2.942232
+[numbers, C] first constant 2-MI type 0 = +1.905826
+[numbers, C] first constant 2-MI type 1 = +3.119060
+[numbers, C] first constant 2-PI type 0 = +2.947352
+[numbers, C] first constant 2-PI type 1 = +2.507082
+[numbers, C] first constant 4-AI type 0 = +2.918474
+[numbers, C] first constant 4-AI type 1 = +3.027571
+[numbers, C] first constant 4-FE type 0 = +3.208787
+[numbers, C] first constant 4-MI type 0 = +2.810365
+[numbers, C] first constant 4-MI type 1 = +3.526466
+[numbers, C] first log gap 1 = +0.759039
+[numbers, C] first log gap 2 = +0.135719
+[numbers, C] first log gap 3 = -1.115578
+[numbers, C] later constant 2-AI type 0 = +3.468535
+[numbers, C] later constant 2-AI type 1 = +4.003971
+[numbers, C] later constant 2-EI type 0 = +3.074991
+[numbers, C] later constant 2-EI type 1 = +4.061653
+[numbers, C] later constant 2-FE type 0 = +3.870775
+[numbers, C] later constant 2-MI type 0 = +2.998078
+[numbers, C] later constant 2-MI type 1 = +3.949904
+[numbers, C] later constant 2-PI type 0 = +3.605078
+[numbers, C] later constant 2-PI type 1 = +3.756276
+[numbers, C] later constant 4-AI type 0 = +3.525071
+[numbers, C] later constant 4-AI type 1 = +3.619287
+[numbers, C] later constant 4-FE type 0 = +3.742201
+[numbers, C] later constant 4-MI type 0 = +3.218507
+[numbers, C] later constant 4-MI type 1 = +3.629028
+[numbers, C] later log gap 1 = +0.941364
+[numbers, C] later log gap 2 = +0.806192
+[numbers, C] later log gap 3 = +0.407564
+[numbers, C] weight own = +7.020209
+[numbers, C] weight same = +0.914232
+[numbers, C] weight other = +1.133759
+[numbers, C] trace fraction own = +0.658733
 [numbers, C] trace fraction same = +1.000000
 [numbers, C] trace fraction other = +1.000000
-[open loop] C = -0.9329 [-0.9928, -0.8697]
-[closed loop, composite] C = +0.1191 [+0.1125, +0.1260]
-[closed loop, level] C = +0.1723 [+0.1575, +0.1879]
-[closed loop, members apart] C = +0.0982 [+0.0894, +0.1080]
-[closed loop, trend] C = +0.1505 [+0.1349, +0.1678]
-[closed loop, movement] C = +0.0551 [+0.0508, +0.0598]
-[closed loop, type gap] C = +0.1192 [+0.1037, +0.1361]
+[open loop] C = -0.9328 [-0.9928, -0.8697]
+[closed loop, composite] C = +0.1191 [+0.1126, +0.1261]
+[closed loop, level] C = +0.1722 [+0.1575, +0.1878]
+[closed loop, members apart] C = +0.0983 [+0.0895, +0.1081]
+[closed loop, trend] C = +0.1507 [+0.1351, +0.1680]
+[closed loop, movement] C = +0.0551 [+0.0509, +0.0599]
+[closed loop, type gap] C = +0.1191 [+0.1036, +0.1360]
 [coverage, level] C = 0.7429
 [coverage, members apart] C = 0.6905
 [coverage, trend] C = 0.8571
 [coverage, movement] C = 0.5476
 [coverage, type gap] C = 0.7764
-[count] D = 40
-[numbers, D] first constant 2-AI type 0 = -0.492247
-[numbers, D] first constant 2-AI type 1 = -0.114882
-[numbers, D] first constant 2-EI type 0 = -0.439368
-[numbers, D] first constant 2-EI type 1 = +0.558024
-[numbers, D] first constant 2-FE type 0 = +0.223121
-[numbers, D] first constant 2-MI type 0 = -0.815565
-[numbers, D] first constant 2-MI type 1 = +0.403709
-[numbers, D] first constant 2-PI type 0 = +0.231399
-[numbers, D] first constant 2-PI type 1 = -0.210913
-[numbers, D] first constant 4-AI type 0 = +0.202962
-[numbers, D] first constant 4-AI type 1 = +0.311970
-[numbers, D] first constant 4-FE type 0 = +0.490677
-[numbers, D] first constant 4-MI type 0 = +0.093889
-[numbers, D] first constant 4-MI type 1 = +0.812438
-[numbers, D] first cut origin = -2.741697
-[numbers, D] first log gap 1 = +0.768376
-[numbers, D] first log gap 2 = +0.137571
-[numbers, D] first log gap 3 = -1.115071
-[numbers, D] later constant 2-AI type 0 = +0.994485
-[numbers, D] later constant 2-AI type 1 = -0.216710
-[numbers, D] later constant 2-EI type 0 = +0.659795
-[numbers, D] later constant 2-EI type 1 = -0.363459
-[numbers, D] later constant 2-FE type 0 = +0.267818
-[numbers, D] later constant 2-MI type 0 = +0.538784
-[numbers, D] later constant 2-MI type 1 = -0.242536
-[numbers, D] later constant 2-PI type 0 = +0.035292
-[numbers, D] later constant 2-PI type 1 = +0.187493
-[numbers, D] later constant 4-AI type 0 = +0.674491
-[numbers, D] later constant 4-AI type 1 = -0.484009
-[numbers, D] later constant 4-FE type 0 = +0.147234
-[numbers, D] later constant 4-MI type 0 = +0.387701
-[numbers, D] later constant 4-MI type 1 = -0.484361
-[numbers, D] later cut origin = -3.588501
-[numbers, D] later log gap 1 = +0.947654
-[numbers, D] later log gap 2 = +0.819406
-[numbers, D] later log gap 3 = +0.408345
-[numbers, D] weight own = +7.047119
-[numbers, D] weight others = +2.554551
-[numbers, D] trace fraction own = +0.661839
+[count] D = 38
+[numbers, D] first constant 2-AI type 0 = +2.225523
+[numbers, D] first constant 2-AI type 1 = +2.600536
+[numbers, D] first constant 2-EI type 0 = +2.278907
+[numbers, D] first constant 2-EI type 1 = +3.272164
+[numbers, D] first constant 2-FE type 0 = +2.940747
+[numbers, D] first constant 2-MI type 0 = +1.903873
+[numbers, D] first constant 2-MI type 1 = +3.117887
+[numbers, D] first constant 2-PI type 0 = +2.945998
+[numbers, D] first constant 2-PI type 1 = +2.506486
+[numbers, D] first constant 4-AI type 0 = +2.917516
+[numbers, D] first constant 4-AI type 1 = +3.026504
+[numbers, D] first constant 4-FE type 0 = +3.207170
+[numbers, D] first constant 4-MI type 0 = +2.809619
+[numbers, D] first constant 4-MI type 1 = +3.525844
+[numbers, D] first log gap 1 = +0.758562
+[numbers, D] first log gap 2 = +0.135682
+[numbers, D] first log gap 3 = -1.115867
+[numbers, D] later constant 2-AI type 0 = +4.579754
+[numbers, D] later constant 2-AI type 1 = +3.368741
+[numbers, D] later constant 2-EI type 0 = +4.245200
+[numbers, D] later constant 2-EI type 1 = +3.222087
+[numbers, D] later constant 2-FE type 0 = +3.853439
+[numbers, D] later constant 2-MI type 0 = +4.124270
+[numbers, D] later constant 2-MI type 1 = +3.343046
+[numbers, D] later constant 2-PI type 0 = +3.620862
+[numbers, D] later constant 2-PI type 1 = +3.772964
+[numbers, D] later constant 4-AI type 0 = +4.259717
+[numbers, D] later constant 4-AI type 1 = +3.101468
+[numbers, D] later constant 4-FE type 0 = +3.732976
+[numbers, D] later constant 4-MI type 0 = +3.973116
+[numbers, D] later constant 4-MI type 1 = +3.101189
+[numbers, D] later log gap 1 = +0.946756
+[numbers, D] later log gap 2 = +0.818870
+[numbers, D] later log gap 3 = +0.407957
+[numbers, D] weight own = +7.044364
+[numbers, D] weight others = +2.553511
+[numbers, D] trace fraction own = +0.661770
 [numbers, D] trace fraction others = +1.000000
-[open loop] D = -0.9292 [-0.9924, -0.8658]
+[open loop] D = -0.9292 [-0.9923, -0.8658]
 [closed loop, composite] D = +0.1195 [+0.1126, +0.1266]
-[closed loop, level] D = +0.1719 [+0.1571, +0.1879]
+[closed loop, level] D = +0.1720 [+0.1572, +0.1880]
 [closed loop, members apart] D = +0.0977 [+0.0888, +0.1078]
-[closed loop, trend] D = +0.1515 [+0.1355, +0.1693]
+[closed loop, trend] D = +0.1514 [+0.1356, +0.1692]
 [closed loop, movement] D = +0.0581 [+0.0536, +0.0630]
-[closed loop, type gap] D = +0.1182 [+0.1032, +0.1349]
-[coverage, level] D = 0.7238
-[coverage, members apart] D = 0.6762
+[closed loop, type gap] D = +0.1180 [+0.1031, +0.1347]
+[coverage, level] D = 0.7333
+[coverage, members apart] D = 0.6667
 [coverage, trend] D = 0.8762
 [coverage, movement] D = 0.5048
 [coverage, type gap] D = 0.8012
-[count] E = 41
-[numbers, E] first constant 2-AI type 0 = -0.492179
-[numbers, E] first constant 2-AI type 1 = -0.115018
-[numbers, E] first constant 2-EI type 0 = -0.439174
-[numbers, E] first constant 2-EI type 1 = +0.558054
-[numbers, E] first constant 2-FE type 0 = +0.223202
-[numbers, E] first constant 2-MI type 0 = -0.815429
-[numbers, E] first constant 2-MI type 1 = +0.403717
-[numbers, E] first constant 2-PI type 0 = +0.231368
-[numbers, E] first constant 2-PI type 1 = -0.210866
-[numbers, E] first constant 4-AI type 0 = +0.203055
-[numbers, E] first constant 4-AI type 1 = +0.311945
-[numbers, E] first constant 4-FE type 0 = +0.490913
-[numbers, E] first constant 4-MI type 0 = +0.093874
-[numbers, E] first constant 4-MI type 1 = +0.812444
-[numbers, E] first cut origin = -2.742275
-[numbers, E] first log gap 1 = +0.768648
-[numbers, E] first log gap 2 = +0.137598
-[numbers, E] first log gap 3 = -1.114883
-[numbers, E] later constant 2-AI type 0 = +0.025688
-[numbers, E] later constant 2-AI type 1 = +0.583950
-[numbers, E] later constant 2-EI type 0 = -0.397979
-[numbers, E] later constant 2-EI type 1 = +0.610424
-[numbers, E] later constant 2-FE type 0 = +0.397421
-[numbers, E] later constant 2-MI type 0 = -0.468242
-[numbers, E] later constant 2-MI type 1 = +0.484904
-[numbers, E] later constant 2-PI type 0 = +0.117186
-[numbers, E] later constant 2-PI type 1 = +0.300787
-[numbers, E] later constant 4-AI type 0 = +0.028034
-[numbers, E] later constant 4-AI type 1 = +0.174849
-[numbers, E] later constant 4-FE type 0 = +0.250791
-[numbers, E] later constant 4-MI type 0 = -0.281201
-[numbers, E] later constant 4-MI type 1 = +0.165562
-[numbers, E] later cut origin = -3.478544
-[numbers, E] later log gap 1 = +0.942193
-[numbers, E] later log gap 2 = +0.806073
-[numbers, E] later log gap 3 = +0.410341
-[numbers, E] weight own = +6.804549
-[numbers, E] weight others = +2.108689
-[numbers, E] weight anchor = +0.325258
-[numbers, E] trace fraction own = +0.685318
+[count] E = 39
+[numbers, E] first constant 2-AI type 0 = +2.225414
+[numbers, E] first constant 2-AI type 1 = +2.599330
+[numbers, E] first constant 2-EI type 0 = +2.277669
+[numbers, E] first constant 2-EI type 1 = +3.271336
+[numbers, E] first constant 2-FE type 0 = +2.940454
+[numbers, E] first constant 2-MI type 0 = +1.904158
+[numbers, E] first constant 2-MI type 1 = +3.117532
+[numbers, E] first constant 2-PI type 0 = +2.945799
+[numbers, E] first constant 2-PI type 1 = +2.504932
+[numbers, E] first constant 4-AI type 0 = +2.916772
+[numbers, E] first constant 4-AI type 1 = +3.025944
+[numbers, E] first constant 4-FE type 0 = +3.206528
+[numbers, E] first constant 4-MI type 0 = +2.808447
+[numbers, E] first constant 4-MI type 1 = +3.525014
+[numbers, E] first log gap 1 = +0.758240
+[numbers, E] first log gap 2 = +0.135633
+[numbers, E] first log gap 3 = -1.115927
+[numbers, E] later constant 2-AI type 0 = +3.501390
+[numbers, E] later constant 2-AI type 1 = +4.059313
+[numbers, E] later constant 2-EI type 0 = +3.077970
+[numbers, E] later constant 2-EI type 1 = +4.085979
+[numbers, E] later constant 2-FE type 0 = +3.873251
+[numbers, E] later constant 2-MI type 0 = +3.007805
+[numbers, E] later constant 2-MI type 1 = +3.960596
+[numbers, E] later constant 2-PI type 0 = +3.592930
+[numbers, E] later constant 2-PI type 1 = +3.776547
+[numbers, E] later constant 4-AI type 0 = +3.503799
+[numbers, E] later constant 4-AI type 1 = +3.650406
+[numbers, E] later constant 4-FE type 0 = +3.726768
+[numbers, E] later constant 4-MI type 0 = +3.194589
+[numbers, E] later constant 4-MI type 1 = +3.641200
+[numbers, E] later log gap 1 = +0.941350
+[numbers, E] later log gap 2 = +0.805569
+[numbers, E] later log gap 3 = +0.409983
+[numbers, E] weight own = +6.801897
+[numbers, E] weight others = +2.108211
+[numbers, E] weight anchor = +0.325060
+[numbers, E] trace fraction own = +0.685259
 [numbers, E] trace fraction others = +1.000000
-[open loop] E = -0.9329 [-0.9931, -0.8698]
-[closed loop, composite] E = +0.1185 [+0.1119, +0.1255]
-[closed loop, level] E = +0.1712 [+0.1568, +0.1867]
+[open loop] E = -0.9329 [-0.9930, -0.8697]
+[closed loop, composite] E = +0.1185 [+0.1120, +0.1255]
+[closed loop, level] E = +0.1713 [+0.1569, +0.1867]
 [closed loop, members apart] E = +0.0980 [+0.0892, +0.1075]
-[closed loop, trend] E = +0.1503 [+0.1344, +0.1680]
-[closed loop, movement] E = +0.0546 [+0.0503, +0.0593]
-[closed loop, type gap] E = +0.1183 [+0.1031, +0.1349]
-[coverage, level] E = 0.7476
+[closed loop, trend] E = +0.1504 [+0.1345, +0.1681]
+[closed loop, movement] E = +0.0546 [+0.0504, +0.0594]
+[closed loop, type gap] E = +0.1182 [+0.1030, +0.1348]
+[coverage, level] E = 0.7524
 [coverage, members apart] E = 0.6905
 [coverage, trend] E = 0.8476
-[coverage, movement] E = 0.5714
+[coverage, movement] E = 0.5667
 [coverage, type gap] E = 0.7950
-[count] F = 38
-[numbers, F] first constant 2-AI type 0 = -0.491871
-[numbers, F] first constant 2-AI type 1 = -0.115022
-[numbers, F] first constant 2-EI type 0 = -0.438846
-[numbers, F] first constant 2-EI type 1 = +0.557773
-[numbers, F] first constant 2-FE type 0 = +0.223104
-[numbers, F] first constant 2-MI type 0 = -0.814970
-[numbers, F] first constant 2-MI type 1 = +0.403502
-[numbers, F] first constant 2-PI type 0 = +0.231231
-[numbers, F] first constant 2-PI type 1 = -0.210714
-[numbers, F] first constant 4-AI type 0 = +0.203014
-[numbers, F] first constant 4-AI type 1 = +0.311763
-[numbers, F] first constant 4-FE type 0 = +0.490865
-[numbers, F] first constant 4-MI type 0 = +0.093829
-[numbers, F] first constant 4-MI type 1 = +0.812022
-[numbers, F] first cut origin = -2.741888
-[numbers, F] first log gap 1 = +0.768495
-[numbers, F] first log gap 2 = +0.137536
-[numbers, F] first log gap 3 = -1.114992
-[numbers, F] later constant 2-AI type 0 = -0.472036
-[numbers, F] later constant 2-AI type 1 = +0.942187
-[numbers, F] later constant 2-EI type 0 = -1.351335
-[numbers, F] later constant 2-EI type 1 = +1.541776
-[numbers, F] later constant 2-FE type 0 = +0.300959
-[numbers, F] later constant 2-MI type 0 = -1.508118
-[numbers, F] later constant 2-MI type 1 = +1.268023
-[numbers, F] later constant 2-PI type 0 = +0.033112
-[numbers, F] later constant 2-PI type 1 = -0.002148
-[numbers, F] later constant 4-AI type 0 = -0.238949
-[numbers, F] later constant 4-AI type 1 = +0.439045
-[numbers, F] later constant 4-FE type 0 = +0.049615
-[numbers, F] later constant 4-MI type 0 = -0.475551
-[numbers, F] later constant 4-MI type 1 = +0.520345
-[numbers, F] later cut origin = -2.533134
-[numbers, F] later log gap 1 = +0.628663
-[numbers, F] later log gap 2 = +0.246391
-[numbers, F] later log gap 3 = -0.115412
-[numbers, F] weight others = +5.187141
-[numbers, F] trace fraction others = +0.752642
-[open loop] F = -1.1904 [-1.2583, -1.1236]
-[closed loop, composite] F = +0.1589 [+0.1523, +0.1660]
-[closed loop, level] F = +0.1875 [+0.1705, +0.2055]
+[count] F = 36
+[numbers, F] first constant 2-AI type 0 = +2.224544
+[numbers, F] first constant 2-AI type 1 = +2.600362
+[numbers, F] first constant 2-EI type 0 = +2.277941
+[numbers, F] first constant 2-EI type 1 = +3.271718
+[numbers, F] first constant 2-FE type 0 = +2.940518
+[numbers, F] first constant 2-MI type 0 = +1.902942
+[numbers, F] first constant 2-MI type 1 = +3.117561
+[numbers, F] first constant 2-PI type 0 = +2.945555
+[numbers, F] first constant 2-PI type 1 = +2.505572
+[numbers, F] first constant 4-AI type 0 = +2.918073
+[numbers, F] first constant 4-AI type 1 = +3.026091
+[numbers, F] first constant 4-FE type 0 = +3.207129
+[numbers, F] first constant 4-MI type 0 = +2.808947
+[numbers, F] first constant 4-MI type 1 = +3.525645
+[numbers, F] first log gap 1 = +0.758388
+[numbers, F] first log gap 2 = +0.135664
+[numbers, F] first log gap 3 = -1.115567
+[numbers, F] later constant 2-AI type 0 = +2.059834
+[numbers, F] later constant 2-AI type 1 = +3.473768
+[numbers, F] later constant 2-EI type 0 = +1.180781
+[numbers, F] later constant 2-EI type 1 = +4.073324
+[numbers, F] later constant 2-FE type 0 = +2.833009
+[numbers, F] later constant 2-MI type 0 = +1.024030
+[numbers, F] later constant 2-MI type 1 = +3.799604
+[numbers, F] later constant 2-PI type 0 = +2.564992
+[numbers, F] later constant 2-PI type 1 = +2.529743
+[numbers, F] later constant 4-AI type 0 = +2.292901
+[numbers, F] later constant 4-AI type 1 = +2.970781
+[numbers, F] later constant 4-FE type 0 = +2.581727
+[numbers, F] later constant 4-MI type 0 = +2.056403
+[numbers, F] later constant 4-MI type 1 = +3.052077
+[numbers, F] later log gap 1 = +0.628128
+[numbers, F] later log gap 2 = +0.246197
+[numbers, F] later log gap 3 = -0.115523
+[numbers, F] weight others = +5.186466
+[numbers, F] trace fraction others = +0.752608
+[open loop] F = -1.1904 [-1.2582, -1.1236]
+[closed loop, composite] F = +0.1590 [+0.1524, +0.1661]
+[closed loop, level] F = +0.1875 [+0.1704, +0.2055]
 [closed loop, members apart] F = +0.1412 [+0.1296, +0.1539]
-[closed loop, trend] F = +0.1445 [+0.1299, +0.1605]
-[closed loop, movement] F = +0.1824 [+0.1728, +0.1922]
-[closed loop, type gap] F = +0.1391 [+0.1212, +0.1583]
+[closed loop, trend] F = +0.1446 [+0.1300, +0.1606]
+[closed loop, movement] F = +0.1825 [+0.1729, +0.1922]
+[closed loop, type gap] F = +0.1391 [+0.1212, +0.1582]
 [coverage, level] F = 0.4524
 [coverage, members apart] F = 0.4238
 [coverage, trend] F = 0.9000
 [coverage, movement] F = 0.1905
 [coverage, type gap] F = 0.3292
-[count] A twin = 38
-[numbers, A twin] first constant 2-AI type 0 = -0.492417
-[numbers, A twin] first constant 2-AI type 1 = -0.115041
-[numbers, A twin] first constant 2-EI type 0 = -0.439316
-[numbers, A twin] first constant 2-EI type 1 = +0.558254
-[numbers, A twin] first constant 2-FE type 0 = +0.223122
-[numbers, A twin] first constant 2-MI type 0 = -0.815836
-[numbers, A twin] first constant 2-MI type 1 = +0.403859
-[numbers, A twin] first constant 2-PI type 0 = +0.231449
-[numbers, A twin] first constant 2-PI type 1 = -0.210979
-[numbers, A twin] first constant 4-AI type 0 = +0.203070
-[numbers, A twin] first constant 4-AI type 1 = +0.312058
-[numbers, A twin] first constant 4-FE type 0 = +0.490616
-[numbers, A twin] first constant 4-MI type 0 = +0.093892
-[numbers, A twin] first constant 4-MI type 1 = +0.812760
-[numbers, A twin] first cut origin = -2.742170
-[numbers, A twin] first log gap 1 = +0.768593
-[numbers, A twin] first log gap 2 = +0.137591
-[numbers, A twin] first log gap 3 = -1.114585
-[numbers, A twin] later constant 2-AI type 0 = +0.216674
-[numbers, A twin] later constant 2-AI type 1 = +0.332657
-[numbers, A twin] later constant 2-EI type 0 = +0.039996
-[numbers, A twin] later constant 2-EI type 1 = +0.113874
-[numbers, A twin] later constant 2-FE type 0 = +0.386062
-[numbers, A twin] later constant 2-MI type 0 = -0.053337
-[numbers, A twin] later constant 2-MI type 1 = -0.030815
-[numbers, A twin] later constant 2-PI type 0 = +0.051963
-[numbers, A twin] later constant 2-PI type 1 = +0.241131
-[numbers, A twin] later constant 4-AI type 0 = +0.213238
-[numbers, A twin] later constant 4-AI type 1 = +0.141562
-[numbers, A twin] later constant 4-FE type 0 = +0.271626
-[numbers, A twin] later constant 4-MI type 0 = -0.105378
-[numbers, A twin] later constant 4-MI type 1 = +0.126163
-[numbers, A twin] later cut origin = -3.432096
-[numbers, A twin] later log gap 1 = +0.886611
-[numbers, A twin] later log gap 2 = +0.778847
-[numbers, A twin] later log gap 3 = +0.380677
-[numbers, A twin] weight own = +8.138924
-[numbers, A twin] trace fraction own = +0.631056
+[count] A twin = 36
+[numbers, A twin] first constant 2-AI type 0 = +2.224255
+[numbers, A twin] first constant 2-AI type 1 = +2.600039
+[numbers, A twin] first constant 2-EI type 0 = +2.277548
+[numbers, A twin] first constant 2-EI type 1 = +3.271196
+[numbers, A twin] first constant 2-FE type 0 = +2.940210
+[numbers, A twin] first constant 2-MI type 0 = +1.902703
+[numbers, A twin] first constant 2-MI type 1 = +3.117051
+[numbers, A twin] first constant 2-PI type 0 = +2.945090
+[numbers, A twin] first constant 2-PI type 1 = +2.505243
+[numbers, A twin] first constant 4-AI type 0 = +2.917505
+[numbers, A twin] first constant 4-AI type 1 = +3.025625
+[numbers, A twin] first constant 4-FE type 0 = +3.207130
+[numbers, A twin] first constant 4-MI type 0 = +2.808551
+[numbers, A twin] first constant 4-MI type 1 = +3.525027
+[numbers, A twin] first log gap 1 = +0.758201
+[numbers, A twin] first log gap 2 = +0.135683
+[numbers, A twin] first log gap 3 = -1.115922
+[numbers, A twin] later constant 2-AI type 0 = +3.646241
+[numbers, A twin] later constant 2-AI type 1 = +3.762148
+[numbers, A twin] later constant 2-EI type 0 = +3.469705
+[numbers, A twin] later constant 2-EI type 1 = +3.543430
+[numbers, A twin] later constant 2-FE type 0 = +3.815666
+[numbers, A twin] later constant 2-MI type 0 = +3.376446
+[numbers, A twin] later constant 2-MI type 1 = +3.398804
+[numbers, A twin] later constant 2-PI type 0 = +3.481586
+[numbers, A twin] later constant 2-PI type 1 = +3.670722
+[numbers, A twin] later constant 4-AI type 0 = +3.642795
+[numbers, A twin] later constant 4-AI type 1 = +3.570969
+[numbers, A twin] later constant 4-FE type 0 = +3.701355
+[numbers, A twin] later constant 4-MI type 0 = +3.324210
+[numbers, A twin] later constant 4-MI type 1 = +3.555576
+[numbers, A twin] later log gap 1 = +0.885865
+[numbers, A twin] later log gap 2 = +0.778342
+[numbers, A twin] later log gap 3 = +0.380303
+[numbers, A twin] weight own = +8.135944
+[numbers, A twin] trace fraction own = +0.631019
 [open loop] A twin = -0.9597 [-1.0204, -0.8962]
-[closed loop, composite] A twin = +0.1321 [+0.1269, +0.1378]
-[closed loop, level] A twin = +0.1752 [+0.1596, +0.1913]
-[closed loop, members apart] A twin = +0.1436 [+0.1335, +0.1542]
-[closed loop, trend] A twin = +0.1494 [+0.1330, +0.1676]
-[closed loop, movement] A twin = +0.0563 [+0.0518, +0.0614]
-[closed loop, type gap] A twin = +0.1363 [+0.1263, +0.1465]
+[closed loop, composite] A twin = +0.1322 [+0.1269, +0.1378]
+[closed loop, level] A twin = +0.1751 [+0.1596, +0.1912]
+[closed loop, members apart] A twin = +0.1438 [+0.1337, +0.1543]
+[closed loop, trend] A twin = +0.1494 [+0.1330, +0.1677]
+[closed loop, movement] A twin = +0.0564 [+0.0519, +0.0614]
+[closed loop, type gap] A twin = +0.1362 [+0.1263, +0.1464]
 [coverage, level] A twin = 0.6048
 [coverage, members apart] A twin = 0.6952
 [coverage, trend] A twin = 0.8143
 [coverage, movement] A twin = 0.4524
 [coverage, type gap] A twin = 1.0000
-[count] B twin = 20
-[numbers, B twin] first constant = +1.320582
-[numbers, B twin] first endowment = -0.690753
-[numbers, B twin] first return = +0.982805
-[numbers, B twin] first product = -0.749621
-[numbers, B twin] first four seats = +0.432253
-[numbers, B twin] first cut origin = -1.363813
-[numbers, B twin] first log gap 1 = +0.759367
-[numbers, B twin] first log gap 2 = +0.129722
-[numbers, B twin] first log gap 3 = -1.117116
-[numbers, B twin] later constant = +1.773358
-[numbers, B twin] later endowment = -0.087880
-[numbers, B twin] later return = -0.005008
-[numbers, B twin] later product = +1.359962
-[numbers, B twin] later four seats = -0.013612
-[numbers, B twin] later cut origin = -1.816588
-[numbers, B twin] later log gap 1 = +0.881953
-[numbers, B twin] later log gap 2 = +0.780928
-[numbers, B twin] later log gap 3 = +0.380935
-[numbers, B twin] weight own = +8.134397
-[numbers, B twin] trace fraction own = +0.631901
+[count] B twin = 18
+[numbers, B twin] first constant = +2.683730
+[numbers, B twin] first endowment = -0.690312
+[numbers, B twin] first return = +0.986683
+[numbers, B twin] first product = -0.758062
+[numbers, B twin] first four seats = +0.432390
+[numbers, B twin] first log gap 1 = +0.759150
+[numbers, B twin] first log gap 2 = +0.129725
+[numbers, B twin] first log gap 3 = -1.117532
+[numbers, B twin] later constant = +3.589777
+[numbers, B twin] later endowment = -0.087788
+[numbers, B twin] later return = -0.005112
+[numbers, B twin] later product = +1.360966
+[numbers, B twin] later four seats = -0.013597
+[numbers, B twin] later log gap 1 = +0.881900
+[numbers, B twin] later log gap 2 = +0.780900
+[numbers, B twin] later log gap 3 = +0.380904
+[numbers, B twin] weight own = +8.134181
+[numbers, B twin] trace fraction own = +0.631896
 [open loop] B twin = -0.9553 [-1.0161, -0.8930]
 [closed loop, composite] B twin = +0.1311 [+0.1260, +0.1365]
-[closed loop, level] B twin = +0.1731 [+0.1586, +0.1880]
+[closed loop, level] B twin = +0.1730 [+0.1585, +0.1880]
 [closed loop, members apart] B twin = +0.1484 [+0.1386, +0.1583]
-[closed loop, trend] B twin = +0.1465 [+0.1299, +0.1639]
+[closed loop, trend] B twin = +0.1465 [+0.1300, +0.1640]
 [closed loop, movement] B twin = +0.0559 [+0.0513, +0.0608]
-[closed loop, type gap] B twin = +0.1319 [+0.1220, +0.1428]
+[closed loop, type gap] B twin = +0.1319 [+0.1219, +0.1429]
 [coverage, level] B twin = 0.6143
 [coverage, members apart] B twin = 0.6667
 [coverage, trend] B twin = 0.8619
 [coverage, movement] B twin = 0.4429
 [coverage, type gap] B twin = 0.9938
-[count] C twin = 38
-[numbers, C twin] first constant 2-AI type 0 = -0.492417
-[numbers, C twin] first constant 2-AI type 1 = -0.115041
-[numbers, C twin] first constant 2-EI type 0 = -0.439316
-[numbers, C twin] first constant 2-EI type 1 = +0.558254
-[numbers, C twin] first constant 2-FE type 0 = +0.223122
-[numbers, C twin] first constant 2-MI type 0 = -0.815836
-[numbers, C twin] first constant 2-MI type 1 = +0.403859
-[numbers, C twin] first constant 2-PI type 0 = +0.231449
-[numbers, C twin] first constant 2-PI type 1 = -0.210979
-[numbers, C twin] first constant 4-AI type 0 = +0.203070
-[numbers, C twin] first constant 4-AI type 1 = +0.312058
-[numbers, C twin] first constant 4-FE type 0 = +0.490616
-[numbers, C twin] first constant 4-MI type 0 = +0.093892
-[numbers, C twin] first constant 4-MI type 1 = +0.812760
-[numbers, C twin] first cut origin = -2.742170
-[numbers, C twin] first log gap 1 = +0.768593
-[numbers, C twin] first log gap 2 = +0.137591
-[numbers, C twin] first log gap 3 = -1.114585
-[numbers, C twin] later constant 2-AI type 0 = +0.216674
-[numbers, C twin] later constant 2-AI type 1 = +0.332657
-[numbers, C twin] later constant 2-EI type 0 = +0.039996
-[numbers, C twin] later constant 2-EI type 1 = +0.113874
-[numbers, C twin] later constant 2-FE type 0 = +0.386062
-[numbers, C twin] later constant 2-MI type 0 = -0.053337
-[numbers, C twin] later constant 2-MI type 1 = -0.030815
-[numbers, C twin] later constant 2-PI type 0 = +0.051963
-[numbers, C twin] later constant 2-PI type 1 = +0.241131
-[numbers, C twin] later constant 4-AI type 0 = +0.213238
-[numbers, C twin] later constant 4-AI type 1 = +0.141562
-[numbers, C twin] later constant 4-FE type 0 = +0.271626
-[numbers, C twin] later constant 4-MI type 0 = -0.105378
-[numbers, C twin] later constant 4-MI type 1 = +0.126163
-[numbers, C twin] later cut origin = -3.432096
-[numbers, C twin] later log gap 1 = +0.886611
-[numbers, C twin] later log gap 2 = +0.778847
-[numbers, C twin] later log gap 3 = +0.380677
-[numbers, C twin] weight own = +8.138924
-[numbers, C twin] trace fraction own = +0.631056
+[count] C twin = 36
+[numbers, C twin] first constant 2-AI type 0 = +2.224255
+[numbers, C twin] first constant 2-AI type 1 = +2.600039
+[numbers, C twin] first constant 2-EI type 0 = +2.277548
+[numbers, C twin] first constant 2-EI type 1 = +3.271196
+[numbers, C twin] first constant 2-FE type 0 = +2.940210
+[numbers, C twin] first constant 2-MI type 0 = +1.902703
+[numbers, C twin] first constant 2-MI type 1 = +3.117051
+[numbers, C twin] first constant 2-PI type 0 = +2.945090
+[numbers, C twin] first constant 2-PI type 1 = +2.505243
+[numbers, C twin] first constant 4-AI type 0 = +2.917505
+[numbers, C twin] first constant 4-AI type 1 = +3.025625
+[numbers, C twin] first constant 4-FE type 0 = +3.207130
+[numbers, C twin] first constant 4-MI type 0 = +2.808551
+[numbers, C twin] first constant 4-MI type 1 = +3.525027
+[numbers, C twin] first log gap 1 = +0.758201
+[numbers, C twin] first log gap 2 = +0.135683
+[numbers, C twin] first log gap 3 = -1.115922
+[numbers, C twin] later constant 2-AI type 0 = +3.646241
+[numbers, C twin] later constant 2-AI type 1 = +3.762148
+[numbers, C twin] later constant 2-EI type 0 = +3.469705
+[numbers, C twin] later constant 2-EI type 1 = +3.543430
+[numbers, C twin] later constant 2-FE type 0 = +3.815666
+[numbers, C twin] later constant 2-MI type 0 = +3.376446
+[numbers, C twin] later constant 2-MI type 1 = +3.398804
+[numbers, C twin] later constant 2-PI type 0 = +3.481586
+[numbers, C twin] later constant 2-PI type 1 = +3.670722
+[numbers, C twin] later constant 4-AI type 0 = +3.642795
+[numbers, C twin] later constant 4-AI type 1 = +3.570969
+[numbers, C twin] later constant 4-FE type 0 = +3.701355
+[numbers, C twin] later constant 4-MI type 0 = +3.324210
+[numbers, C twin] later constant 4-MI type 1 = +3.555576
+[numbers, C twin] later log gap 1 = +0.885865
+[numbers, C twin] later log gap 2 = +0.778342
+[numbers, C twin] later log gap 3 = +0.380303
+[numbers, C twin] weight own = +8.135944
+[numbers, C twin] trace fraction own = +0.631019
 [open loop] C twin = -0.9597 [-1.0204, -0.8962]
-[closed loop, composite] C twin = +0.1321 [+0.1269, +0.1378]
-[closed loop, level] C twin = +0.1752 [+0.1596, +0.1913]
-[closed loop, members apart] C twin = +0.1436 [+0.1335, +0.1542]
-[closed loop, trend] C twin = +0.1494 [+0.1330, +0.1676]
-[closed loop, movement] C twin = +0.0563 [+0.0518, +0.0614]
-[closed loop, type gap] C twin = +0.1363 [+0.1263, +0.1465]
+[closed loop, composite] C twin = +0.1322 [+0.1269, +0.1378]
+[closed loop, level] C twin = +0.1751 [+0.1596, +0.1912]
+[closed loop, members apart] C twin = +0.1438 [+0.1337, +0.1543]
+[closed loop, trend] C twin = +0.1494 [+0.1330, +0.1677]
+[closed loop, movement] C twin = +0.0564 [+0.0519, +0.0614]
+[closed loop, type gap] C twin = +0.1362 [+0.1263, +0.1464]
 [coverage, level] C twin = 0.6048
 [coverage, members apart] C twin = 0.6952
 [coverage, trend] C twin = 0.8143
 [coverage, movement] C twin = 0.4524
 [coverage, type gap] C twin = 1.0000
-[count] D twin = 38
-[numbers, D twin] first constant 2-AI type 0 = -0.492417
-[numbers, D twin] first constant 2-AI type 1 = -0.115041
-[numbers, D twin] first constant 2-EI type 0 = -0.439316
-[numbers, D twin] first constant 2-EI type 1 = +0.558254
-[numbers, D twin] first constant 2-FE type 0 = +0.223122
-[numbers, D twin] first constant 2-MI type 0 = -0.815836
-[numbers, D twin] first constant 2-MI type 1 = +0.403859
-[numbers, D twin] first constant 2-PI type 0 = +0.231449
-[numbers, D twin] first constant 2-PI type 1 = -0.210979
-[numbers, D twin] first constant 4-AI type 0 = +0.203070
-[numbers, D twin] first constant 4-AI type 1 = +0.312058
-[numbers, D twin] first constant 4-FE type 0 = +0.490616
-[numbers, D twin] first constant 4-MI type 0 = +0.093892
-[numbers, D twin] first constant 4-MI type 1 = +0.812760
-[numbers, D twin] first cut origin = -2.742170
-[numbers, D twin] first log gap 1 = +0.768593
-[numbers, D twin] first log gap 2 = +0.137591
-[numbers, D twin] first log gap 3 = -1.114585
-[numbers, D twin] later constant 2-AI type 0 = +0.216674
-[numbers, D twin] later constant 2-AI type 1 = +0.332657
-[numbers, D twin] later constant 2-EI type 0 = +0.039996
-[numbers, D twin] later constant 2-EI type 1 = +0.113874
-[numbers, D twin] later constant 2-FE type 0 = +0.386062
-[numbers, D twin] later constant 2-MI type 0 = -0.053337
-[numbers, D twin] later constant 2-MI type 1 = -0.030815
-[numbers, D twin] later constant 2-PI type 0 = +0.051963
-[numbers, D twin] later constant 2-PI type 1 = +0.241131
-[numbers, D twin] later constant 4-AI type 0 = +0.213238
-[numbers, D twin] later constant 4-AI type 1 = +0.141562
-[numbers, D twin] later constant 4-FE type 0 = +0.271626
-[numbers, D twin] later constant 4-MI type 0 = -0.105378
-[numbers, D twin] later constant 4-MI type 1 = +0.126163
-[numbers, D twin] later cut origin = -3.432096
-[numbers, D twin] later log gap 1 = +0.886611
-[numbers, D twin] later log gap 2 = +0.778847
-[numbers, D twin] later log gap 3 = +0.380677
-[numbers, D twin] weight own = +8.138924
-[numbers, D twin] trace fraction own = +0.631056
+[count] D twin = 36
+[numbers, D twin] first constant 2-AI type 0 = +2.224255
+[numbers, D twin] first constant 2-AI type 1 = +2.600039
+[numbers, D twin] first constant 2-EI type 0 = +2.277548
+[numbers, D twin] first constant 2-EI type 1 = +3.271196
+[numbers, D twin] first constant 2-FE type 0 = +2.940210
+[numbers, D twin] first constant 2-MI type 0 = +1.902703
+[numbers, D twin] first constant 2-MI type 1 = +3.117051
+[numbers, D twin] first constant 2-PI type 0 = +2.945090
+[numbers, D twin] first constant 2-PI type 1 = +2.505243
+[numbers, D twin] first constant 4-AI type 0 = +2.917505
+[numbers, D twin] first constant 4-AI type 1 = +3.025625
+[numbers, D twin] first constant 4-FE type 0 = +3.207130
+[numbers, D twin] first constant 4-MI type 0 = +2.808551
+[numbers, D twin] first constant 4-MI type 1 = +3.525027
+[numbers, D twin] first log gap 1 = +0.758201
+[numbers, D twin] first log gap 2 = +0.135683
+[numbers, D twin] first log gap 3 = -1.115922
+[numbers, D twin] later constant 2-AI type 0 = +3.646241
+[numbers, D twin] later constant 2-AI type 1 = +3.762148
+[numbers, D twin] later constant 2-EI type 0 = +3.469705
+[numbers, D twin] later constant 2-EI type 1 = +3.543430
+[numbers, D twin] later constant 2-FE type 0 = +3.815666
+[numbers, D twin] later constant 2-MI type 0 = +3.376446
+[numbers, D twin] later constant 2-MI type 1 = +3.398804
+[numbers, D twin] later constant 2-PI type 0 = +3.481586
+[numbers, D twin] later constant 2-PI type 1 = +3.670722
+[numbers, D twin] later constant 4-AI type 0 = +3.642795
+[numbers, D twin] later constant 4-AI type 1 = +3.570969
+[numbers, D twin] later constant 4-FE type 0 = +3.701355
+[numbers, D twin] later constant 4-MI type 0 = +3.324210
+[numbers, D twin] later constant 4-MI type 1 = +3.555576
+[numbers, D twin] later log gap 1 = +0.885865
+[numbers, D twin] later log gap 2 = +0.778342
+[numbers, D twin] later log gap 3 = +0.380303
+[numbers, D twin] weight own = +8.135944
+[numbers, D twin] trace fraction own = +0.631019
 [open loop] D twin = -0.9597 [-1.0204, -0.8962]
-[closed loop, composite] D twin = +0.1321 [+0.1269, +0.1378]
-[closed loop, level] D twin = +0.1752 [+0.1596, +0.1913]
-[closed loop, members apart] D twin = +0.1436 [+0.1335, +0.1542]
-[closed loop, trend] D twin = +0.1494 [+0.1330, +0.1676]
-[closed loop, movement] D twin = +0.0563 [+0.0518, +0.0614]
-[closed loop, type gap] D twin = +0.1363 [+0.1263, +0.1465]
+[closed loop, composite] D twin = +0.1322 [+0.1269, +0.1378]
+[closed loop, level] D twin = +0.1751 [+0.1596, +0.1912]
+[closed loop, members apart] D twin = +0.1438 [+0.1337, +0.1543]
+[closed loop, trend] D twin = +0.1494 [+0.1330, +0.1677]
+[closed loop, movement] D twin = +0.0564 [+0.0519, +0.0614]
+[closed loop, type gap] D twin = +0.1362 [+0.1263, +0.1464]
 [coverage, level] D twin = 0.6048
 [coverage, members apart] D twin = 0.6952
 [coverage, trend] D twin = 0.8143
 [coverage, movement] D twin = 0.4524
 [coverage, type gap] D twin = 1.0000
-[count] E twin = 39
-[numbers, E twin] first constant 2-AI type 0 = -0.491764
-[numbers, E twin] first constant 2-AI type 1 = -0.114269
-[numbers, E twin] first constant 2-EI type 0 = -0.439260
-[numbers, E twin] first constant 2-EI type 1 = +0.557441
-[numbers, E twin] first constant 2-FE type 0 = +0.223151
-[numbers, E twin] first constant 2-MI type 0 = -0.814797
-[numbers, E twin] first constant 2-MI type 1 = +0.403335
-[numbers, E twin] first constant 2-PI type 0 = +0.231283
-[numbers, E twin] first constant 2-PI type 1 = -0.210694
-[numbers, E twin] first constant 4-AI type 0 = +0.202584
-[numbers, E twin] first constant 4-AI type 1 = +0.311769
-[numbers, E twin] first constant 4-FE type 0 = +0.490510
-[numbers, E twin] first constant 4-MI type 0 = +0.093901
-[numbers, E twin] first constant 4-MI type 1 = +0.811626
-[numbers, E twin] first cut origin = -2.742009
-[numbers, E twin] first log gap 1 = +0.768493
-[numbers, E twin] first log gap 2 = +0.137539
-[numbers, E twin] first log gap 3 = -1.114841
-[numbers, E twin] later constant 2-AI type 0 = +0.219369
-[numbers, E twin] later constant 2-AI type 1 = +0.335584
-[numbers, E twin] later constant 2-EI type 0 = +0.040558
-[numbers, E twin] later constant 2-EI type 1 = +0.113596
-[numbers, E twin] later constant 2-FE type 0 = +0.385451
-[numbers, E twin] later constant 2-MI type 0 = -0.052029
-[numbers, E twin] later constant 2-MI type 1 = -0.031751
-[numbers, E twin] later constant 2-PI type 0 = +0.050067
-[numbers, E twin] later constant 2-PI type 1 = +0.242019
-[numbers, E twin] later constant 4-AI type 0 = +0.213158
-[numbers, E twin] later constant 4-AI type 1 = +0.141250
-[numbers, E twin] later constant 4-FE type 0 = +0.269650
-[numbers, E twin] later constant 4-MI type 0 = -0.105309
-[numbers, E twin] later constant 4-MI type 1 = +0.124018
-[numbers, E twin] later cut origin = -3.432824
-[numbers, E twin] later log gap 1 = +0.886432
-[numbers, E twin] later log gap 2 = +0.778797
-[numbers, E twin] later log gap 3 = +0.380884
-[numbers, E twin] weight own = +8.122233
-[numbers, E twin] weight anchor = +0.028822
-[numbers, E twin] trace fraction own = +0.632945
+[count] E twin = 37
+[numbers, E twin] first constant 2-AI type 0 = +2.226397
+[numbers, E twin] first constant 2-AI type 1 = +2.600610
+[numbers, E twin] first constant 2-EI type 0 = +2.279391
+[numbers, E twin] first constant 2-EI type 1 = +3.274041
+[numbers, E twin] first constant 2-FE type 0 = +2.941342
+[numbers, E twin] first constant 2-MI type 0 = +1.904623
+[numbers, E twin] first constant 2-MI type 1 = +3.119642
+[numbers, E twin] first constant 2-PI type 0 = +2.947568
+[numbers, E twin] first constant 2-PI type 1 = +2.506879
+[numbers, E twin] first constant 4-AI type 0 = +2.917961
+[numbers, E twin] first constant 4-AI type 1 = +3.027989
+[numbers, E twin] first constant 4-FE type 0 = +3.208908
+[numbers, E twin] first constant 4-MI type 0 = +2.810517
+[numbers, E twin] first constant 4-MI type 1 = +3.528144
+[numbers, E twin] first log gap 1 = +0.758979
+[numbers, E twin] first log gap 2 = +0.135737
+[numbers, E twin] first log gap 3 = -1.115540
+[numbers, E twin] later constant 2-AI type 0 = +3.649628
+[numbers, E twin] later constant 2-AI type 1 = +3.765750
+[numbers, E twin] later constant 2-EI type 0 = +3.470976
+[numbers, E twin] later constant 2-EI type 1 = +3.543817
+[numbers, E twin] later constant 2-FE type 0 = +3.815798
+[numbers, E twin] later constant 2-MI type 0 = +3.378426
+[numbers, E twin] later constant 2-MI type 1 = +3.398515
+[numbers, E twin] later constant 2-PI type 0 = +3.480319
+[numbers, E twin] later constant 2-PI type 1 = +3.672276
+[numbers, E twin] later constant 4-AI type 0 = +3.643382
+[numbers, E twin] later constant 4-AI type 1 = +3.571351
+[numbers, E twin] later constant 4-FE type 0 = +3.700116
+[numbers, E twin] later constant 4-MI type 0 = +3.324956
+[numbers, E twin] later constant 4-MI type 1 = +3.554132
+[numbers, E twin] later log gap 1 = +0.885665
+[numbers, E twin] later log gap 2 = +0.778290
+[numbers, E twin] later log gap 3 = +0.380515
+[numbers, E twin] weight own = +8.119241
+[numbers, E twin] weight anchor = +0.028731
+[numbers, E twin] trace fraction own = +0.632898
 [open loop] E twin = -0.9599 [-1.0208, -0.8966]
-[closed loop, composite] E twin = +0.1321 [+0.1268, +0.1378]
-[closed loop, level] E twin = +0.1750 [+0.1595, +0.1911]
-[closed loop, members apart] E twin = +0.1436 [+0.1335, +0.1541]
-[closed loop, trend] E twin = +0.1495 [+0.1331, +0.1679]
+[closed loop, composite] E twin = +0.1322 [+0.1269, +0.1378]
+[closed loop, level] E twin = +0.1750 [+0.1596, +0.1911]
+[closed loop, members apart] E twin = +0.1439 [+0.1337, +0.1544]
+[closed loop, trend] E twin = +0.1495 [+0.1331, +0.1680]
 [closed loop, movement] E twin = +0.0563 [+0.0518, +0.0614]
 [closed loop, type gap] E twin = +0.1361 [+0.1263, +0.1463]
-[coverage, level] E twin = 0.6143
+[coverage, level] E twin = 0.6095
 [coverage, members apart] E twin = 0.7048
 [coverage, trend] E twin = 0.8143
 [coverage, movement] E twin = 0.4571
 [coverage, type gap] E twin = 1.0000
-[count] F twin = 36
-[numbers, F twin] first constant 2-AI type 0 = -0.492151
-[numbers, F twin] first constant 2-AI type 1 = -0.115191
-[numbers, F twin] first constant 2-EI type 0 = -0.439002
-[numbers, F twin] first constant 2-EI type 1 = +0.557962
-[numbers, F twin] first constant 2-FE type 0 = +0.223047
-[numbers, F twin] first constant 2-MI type 0 = -0.815378
-[numbers, F twin] first constant 2-MI type 1 = +0.403618
-[numbers, F twin] first constant 2-PI type 0 = +0.231251
-[numbers, F twin] first constant 2-PI type 1 = -0.210875
-[numbers, F twin] first constant 4-AI type 0 = +0.203058
-[numbers, F twin] first constant 4-AI type 1 = +0.311821
-[numbers, F twin] first constant 4-FE type 0 = +0.490928
-[numbers, F twin] first constant 4-MI type 0 = +0.093785
-[numbers, F twin] first constant 4-MI type 1 = +0.812313
-[numbers, F twin] first cut origin = -2.741735
-[numbers, F twin] first log gap 1 = +0.768436
-[numbers, F twin] first log gap 2 = +0.137546
-[numbers, F twin] first log gap 3 = -1.115037
-[numbers, F twin] later constant 2-AI type 0 = -0.070386
-[numbers, F twin] later constant 2-AI type 1 = +0.471153
-[numbers, F twin] later constant 2-EI type 0 = -0.609881
-[numbers, F twin] later constant 2-EI type 1 = +0.493811
-[numbers, F twin] later constant 2-FE type 0 = +0.407999
-[numbers, F twin] later constant 2-MI type 0 = -0.953736
-[numbers, F twin] later constant 2-MI type 1 = +0.068395
-[numbers, F twin] later constant 2-PI type 0 = -0.220744
-[numbers, F twin] later constant 2-PI type 1 = -0.200646
-[numbers, F twin] later constant 4-AI type 0 = +0.183274
-[numbers, F twin] later constant 4-AI type 1 = +0.592461
-[numbers, F twin] later constant 4-FE type 0 = -0.014209
-[numbers, F twin] later constant 4-MI type 0 = +0.030773
-[numbers, F twin] later constant 4-MI type 1 = +0.594022
-[numbers, F twin] later cut origin = -2.258834
-[numbers, F twin] later log gap 1 = +0.253094
-[numbers, F twin] later log gap 2 = -0.233314
-[numbers, F twin] later log gap 3 = -0.572060
-[open loop] F twin = -1.4687 [-1.5227, -1.4163]
-[closed loop, composite] F twin = +0.1890 [+0.1823, +0.1964]
+[count] F twin = 34
+[numbers, F twin] first constant 2-AI type 0 = +2.226028
+[numbers, F twin] first constant 2-AI type 1 = +2.599738
+[numbers, F twin] first constant 2-EI type 0 = +2.278428
+[numbers, F twin] first constant 2-EI type 1 = +3.272497
+[numbers, F twin] first constant 2-FE type 0 = +2.941383
+[numbers, F twin] first constant 2-MI type 0 = +1.904622
+[numbers, F twin] first constant 2-MI type 1 = +3.118487
+[numbers, F twin] first constant 2-PI type 0 = +2.946588
+[numbers, F twin] first constant 2-PI type 1 = +2.505660
+[numbers, F twin] first constant 4-AI type 0 = +2.917101
+[numbers, F twin] first constant 4-AI type 1 = +3.026772
+[numbers, F twin] first constant 4-FE type 0 = +3.207140
+[numbers, F twin] first constant 4-MI type 0 = +2.809274
+[numbers, F twin] first constant 4-MI type 1 = +3.526341
+[numbers, F twin] first log gap 1 = +0.758593
+[numbers, F twin] first log gap 2 = +0.135698
+[numbers, F twin] first log gap 3 = -1.115731
+[numbers, F twin] later constant 2-AI type 0 = +2.187663
+[numbers, F twin] later constant 2-AI type 1 = +2.729046
+[numbers, F twin] later constant 2-EI type 0 = +1.648300
+[numbers, F twin] later constant 2-EI type 1 = +2.751623
+[numbers, F twin] later constant 2-FE type 0 = +2.665942
+[numbers, F twin] later constant 2-MI type 0 = +1.304462
+[numbers, F twin] later constant 2-MI type 1 = +2.326298
+[numbers, F twin] later constant 2-PI type 0 = +2.037248
+[numbers, F twin] later constant 2-PI type 1 = +2.057385
+[numbers, F twin] later constant 4-AI type 0 = +2.441211
+[numbers, F twin] later constant 4-AI type 1 = +2.850352
+[numbers, F twin] later constant 4-FE type 0 = +2.243835
+[numbers, F twin] later constant 4-MI type 0 = +2.288788
+[numbers, F twin] later constant 4-MI type 1 = +2.851798
+[numbers, F twin] later log gap 1 = +0.252638
+[numbers, F twin] later log gap 2 = -0.233475
+[numbers, F twin] later log gap 3 = -0.572120
+[open loop] F twin = -1.4687 [-1.5227, -1.4162]
+[closed loop, composite] F twin = +0.1891 [+0.1824, +0.1965]
 [closed loop, level] F twin = +0.2226 [+0.2045, +0.2421]
-[closed loop, members apart] F twin = +0.1881 [+0.1733, +0.2035]
+[closed loop, members apart] F twin = +0.1882 [+0.1734, +0.2036]
 [closed loop, trend] F twin = +0.1411 [+0.1226, +0.1603]
-[closed loop, movement] F twin = +0.2680 [+0.2574, +0.2787]
+[closed loop, movement] F twin = +0.2681 [+0.2575, +0.2788]
 [closed loop, type gap] F twin = +0.1252 [+0.1089, +0.1432]
 [coverage, level] F twin = 0.1381
 [coverage, members apart] F twin = 0.2190
-[coverage, trend] F twin = 0.6952
+[coverage, trend] F twin = 0.6905
 [coverage, movement] F twin = 0.0143
 [coverage, type gap] F twin = 0.5963
 [selection, candidates] highest = D
@@ -876,59 +861,59 @@ zoon interaction: candidates on training groups
 [selection, twins] tied at step 2 = B twin
 [selection, twins] winner = B twin
 [gain, selected twin, open loop] candidate minus twin = +0.0253 [+0.0179, +0.0328]
-[gain, selected twin, closed loop, composite] twin minus candidate = +0.0124 [+0.0085, +0.0163]
-[gain, selected twin, closed loop, level] twin minus candidate = +0.0052 [+0.0005, +0.0098]
+[gain, selected twin, closed loop, composite] twin minus candidate = +0.0124 [+0.0085, +0.0162]
+[gain, selected twin, closed loop, level] twin minus candidate = +0.0051 [+0.0005, +0.0098]
 [gain, selected twin, closed loop, members apart] twin minus candidate = +0.0466 [+0.0355, +0.0571]
 [gain, selected twin, closed loop, trend] twin minus candidate = -0.0023 [-0.0045, -0.0001]
 [gain, selected twin, closed loop, movement] twin minus candidate = +0.0012 [+0.0004, +0.0020]
-[gain, selected twin, closed loop, type gap] twin minus candidate = +0.0115 [+0.0040, +0.0184]
+[gain, selected twin, closed loop, type gap] twin minus candidate = +0.0114 [+0.0040, +0.0184]
 [power, selected twin, H2] training effect = 1.000
 [power, selected twin, H2] half effect = 0.782
 [power, selected twin, composite] training effect = 0.999
-[power, selected twin, composite] half effect = 0.738
-[power, selected twin, level] training effect = 0.437
-[power, selected twin, level] half effect = 0.147
+[power, selected twin, composite] half effect = 0.737
+[power, selected twin, level] training effect = 0.434
+[power, selected twin, level] half effect = 0.146
 [power, selected twin, members apart] training effect = 1.000
-[power, selected twin, members apart] half effect = 0.939
+[power, selected twin, members apart] half effect = 0.938
 [power, selected twin, trend] training effect = 0.395
 [power, selected twin, trend] half effect = 0.135
-[power, selected twin, movement] training effect = 0.627
-[power, selected twin, movement] half effect = 0.208
-[power, selected twin, type gap] training effect = 0.732
-[power, selected twin, type gap] half effect = 0.252
+[power, selected twin, movement] training effect = 0.639
+[power, selected twin, movement] half effect = 0.212
+[power, selected twin, type gap] training effect = 0.731
+[power, selected twin, type gap] half effect = 0.251
 [gain, own twin, open loop] candidate minus twin = +0.0253 [+0.0179, +0.0328]
-[gain, own twin, closed loop, composite] twin minus candidate = +0.0124 [+0.0085, +0.0163]
-[gain, own twin, closed loop, level] twin minus candidate = +0.0052 [+0.0005, +0.0098]
+[gain, own twin, closed loop, composite] twin minus candidate = +0.0124 [+0.0085, +0.0162]
+[gain, own twin, closed loop, level] twin minus candidate = +0.0051 [+0.0005, +0.0098]
 [gain, own twin, closed loop, members apart] twin minus candidate = +0.0466 [+0.0355, +0.0571]
 [gain, own twin, closed loop, trend] twin minus candidate = -0.0023 [-0.0045, -0.0001]
 [gain, own twin, closed loop, movement] twin minus candidate = +0.0012 [+0.0004, +0.0020]
-[gain, own twin, closed loop, type gap] twin minus candidate = +0.0115 [+0.0040, +0.0184]
+[gain, own twin, closed loop, type gap] twin minus candidate = +0.0114 [+0.0040, +0.0184]
 [power, own twin, H2] training effect = 1.000
 [power, own twin, H2] half effect = 0.782
 [power, own twin, composite] training effect = 0.999
-[power, own twin, composite] half effect = 0.738
-[power, own twin, level] training effect = 0.437
-[power, own twin, level] half effect = 0.147
+[power, own twin, composite] half effect = 0.737
+[power, own twin, level] training effect = 0.434
+[power, own twin, level] half effect = 0.146
 [power, own twin, members apart] training effect = 1.000
-[power, own twin, members apart] half effect = 0.939
+[power, own twin, members apart] half effect = 0.938
 [power, own twin, trend] training effect = 0.395
 [power, own twin, trend] half effect = 0.135
-[power, own twin, movement] training effect = 0.627
-[power, own twin, movement] half effect = 0.208
-[power, own twin, type gap] training effect = 0.732
-[power, own twin, type gap] half effect = 0.252
+[power, own twin, movement] training effect = 0.639
+[power, own twin, movement] half effect = 0.212
+[power, own twin, type gap] training effect = 0.731
+[power, own twin, type gap] half effect = 0.251
 [game left out, candidate] score = -0.9357 [-0.9981, -0.8714]
 [game left out, candidate] loss = +0.0058 [+0.0018, +0.0098]
-[game left out, candidate, 2-AI] score = -0.8811
+[game left out, candidate, 2-AI] score = -0.8812
 [game left out, candidate, 2-EI] score = -0.9194
-[game left out, candidate, 2-FE] score = -0.7242
+[game left out, candidate, 2-FE] score = -0.7243
 [game left out, candidate, 2-MI] score = -0.9696
 [game left out, candidate, 2-PI] score = -0.8604
 [game left out, candidate, 4-AI] score = -0.9518
 [game left out, candidate, 4-FE] score = -1.1331
 [game left out, candidate, 4-MI] score = -1.0728
-[game left out, twin] score = -0.9587 [-1.0218, -0.8944]
-[game left out, twin] loss = +0.0034 [-0.0003, +0.0072]
+[game left out, twin] score = -0.9586 [-1.0218, -0.8944]
+[game left out, twin] loss = +0.0033 [-0.0003, +0.0072]
 [game left out, twin, 2-AI] score = -0.8915
 [game left out, twin, 2-EI] score = -0.9203
 [game left out, twin, 2-FE] score = -0.7800

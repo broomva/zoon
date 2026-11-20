@@ -107,8 +107,9 @@ def test_candidate_figures_are_printed_and_every_form_is_reported() -> None:
     from zoon.interaction import compare, person
 
     prose, paste = candidate_note()
-    printed = {n.lstrip("+-") for n in NUMBER.findall(paste)}
-    assert {n.lstrip("+-") for n in NUMBER.findall(prose)} <= printed
+    decimals = re.compile(r"[+-]?\d+\.\d+")
+    printed = {n.lstrip("+-") for n in decimals.findall(paste)}
+    assert {n.lstrip("+-") for n in decimals.findall(prose)} <= printed
     assert paste.startswith("zoon interaction: candidates on training groups\n")
     lines = dict(line.split(" = ", 1) for line in paste.splitlines()[1:])
     for c in person.CANDIDATES:
@@ -228,5 +229,47 @@ def test_candidate_findings_and_tables_match_the_report() -> None:
     }
     assert max(gains, key=lambda s: gains[s][0]) == "members apart"
     assert gains["trend"][2] < 0, "the note says trend scores worse"
-    assert "own and others' trace fractions" in prose
-    assert "expect about two\ndecimal places in fitted numbers" in prose
+
+
+def test_candidate_reproducibility_tolerance_is_the_measured_test_contract() -> None:
+    from zoon.interaction import person
+
+    prose, paste = candidate_note()
+    tolerance = re.search(r"enforces absolute tolerance ([\d.]+)", prose)
+    nudge = re.search(r"is nudged by ([\d.]+)\.", prose)
+    assert tolerance and nudge
+    assert float(tolerance[1]) == person.REPRODUCIBILITY_TOLERANCE
+    assert float(nudge[1]) == person.START_NUDGE
+    lines = dict(line.split(" = ", 1) for line in paste.splitlines()[1:])
+    assert float(lines["[fit check] absolute tolerance"]) == person.REPRODUCIBILITY_TOLERANCE
+    assert float(lines["[fit check] start nudge"]) == person.START_NUDGE
+
+
+def test_candidate_parameterisation_and_channel_record_match_the_declared_contract() -> None:
+    prose, _ = candidate_note()
+    from zoon.interaction import kernel
+
+    assert (
+        kernel.Coded.__doc__
+        == "With only own contributions visible, others' traces stay centred and score zero."
+    )
+    normal = " ".join(prose.split())
+    for statement in (
+        "The first parameterisation fitted a cut-point origin alongside each rule's constants.",
+        (
+            "A check of the fit's reproducibility found that reversing group order changed fitted "
+            "numbers: shifting the origin and constants together left likelihoods unchanged."
+        ),
+        (
+            "The first cut point is now fixed at zero and the constants carry the level, with"
+            " two fewer fitted numbers per form and the same expressible predictions."
+        ),
+        "This change was not made in response to a comparison result.",
+        "With only own contributions visible, others' traces stay centred and score zero.",
+        "Replay rejects the changed rules and damaged records exercised by the tests.",
+        (
+            "The play boundary converts returned weights to double precision before "
+            "normalisation and logging."
+        ),
+    ):
+        assert statement in normal

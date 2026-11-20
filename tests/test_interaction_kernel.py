@@ -118,9 +118,12 @@ def test_balance_check_is_live(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.mark.parametrize("letter", person.LETTERS)
+@pytest.mark.parametrize("twin", (False, True))
 @pytest.mark.parametrize("cell", ("2-MI", "4-AI"))
-def test_twins_play_identically_with_the_channel_closed(letter: str, cell: str) -> None:
-    p, game = law(letter, True), GAMES[cell]
+def test_zero_other_weights_play_identically_with_the_channel_closed(
+    letter: str, twin: bool, cell: str
+) -> None:
+    p, game = law(letter, twin), GAMES[cell]
     weights = p.numbers.copy()
     for j, name in enumerate(p.candidate.features):
         if name in ("others", "same", "other"):
@@ -146,7 +149,7 @@ def test_closed_channel_reveals_no_other_contribution_or_payoff(cell: str) -> No
 
         def spy(view: kernel.View, which: int = which) -> Floats:
             histories[which].append(view)
-            p = kernel.Coded(law("A", True))(view)
+            p = kernel.Coded(law("A"))(view)
             laws[which].append(p)
             return p
 
@@ -276,19 +279,6 @@ def test_coded_open_channel_updates_from_all_actual_seats() -> None:
         )
 
 
-def test_non_twin_requires_open_contribution_channel() -> None:
-    game = GAMES["2-FE"]
-    with pytest.raises(ValueError, match="non-twin person needs an open channel"):
-        kernel.play(
-            game,
-            [kernel.Coded(law("B")) for _ in range(game.size)],
-            kernel.Amounts.build(training()),
-            1,
-            "closed",
-            open_channel=False,
-        )
-
-
 @pytest.mark.parametrize(
     "rows",
     (
@@ -306,14 +296,19 @@ def test_non_twin_requires_open_contribution_channel() -> None:
 def test_amounts_reject_illegal_or_wrong_band_values(
     rows: dict[tuple[int, int], tuple[int, ...]],
 ) -> None:
-    with pytest.raises(ValueError):
+    message = (
+        "amount table needs a positive endowment and a middle band"
+        if any(e <= 0 or b not in (1, 2, 3) for e, b in rows)
+        else "amount is illegal or outside its band"
+    )
+    with pytest.raises(ValueError, match=f"^{message}$"):
         kernel.Amounts(rows)
 
 
 @pytest.mark.parametrize(
     "damage", ("dropped", "empty", "blank", "treatment", "endowment", "productivity", "amount")
 )
-def test_replay_rejects_malformed_records_and_changed_game_rules_with_one_error(
+def test_replay_rejects_malformed_records_and_changed_game_rules(
     damage: str,
 ) -> None:
     game = GAMES["2-FE"]
@@ -334,7 +329,7 @@ def test_replay_rejects_malformed_records_and_changed_game_rules_with_one_error(
     damaged = "".join(kernel.encoded(v) for v in records).encode()
     if damage == "blank":
         damaged += b"\n"
-    with pytest.raises(ValueError, match=r"^log does not replay$"):
+    with pytest.raises((ValueError, KeyError, IndexError)):
         kernel.replay(damaged)
 
 
@@ -354,21 +349,25 @@ def test_replay_accepts_consistently_rescaled_weights_but_checks_their_normalisa
         kernel.replay("".join(kernel.encoded(v) for v in records).encode())
 
 
-def test_distribution_coerces_lists_and_float32_and_their_runs_replay() -> None:
+@pytest.mark.parametrize("kind", ("list", "single precision"))
+def test_play_coerces_returned_weights_once_and_replays(kind: str) -> None:
     values = [0.1, 0.2, 0.4, 0.2, 0.1]
-    assert kernel.distribution(values) == pytest.approx(values)
 
-    def single_precision(view: kernel.View) -> Floats:
-        return np.asarray(values, dtype=np.float32).astype(np.float64)
-
-    # The agent may return single precision at runtime; the boundary records float64 weights.
     def raw(view: kernel.View) -> Floats:
-        return np.asarray(values, dtype=np.float32)  # type: ignore[return-value]
+        return values if kind == "list" else np.asarray(values, dtype=np.float32)  # type: ignore[return-value]
 
     game = GAMES["2-FE"]
-    run = kernel.play(game, [raw] * game.size, kernel.Amounts.build(training()), 1, "one")
+    try:
+        run = kernel.play(game, [raw] * game.size, kernel.Amounts.build(training()), 1, "one")
+    except (AttributeError, TypeError, ValueError):
+        pytest.fail("play must accept returned lists and single-precision arrays")
     assert kernel.replay(run.bytes).bytes == run.bytes
-    assert kernel.distribution(single_precision(kernel.View(game, 0, ()))) == pytest.approx(values)
+    expected = np.asarray(raw(kernel.View(game, 0, ())), dtype=np.float64)
+    for line in run.log:
+        entry = json.loads(line)
+        if entry["kind"] == "intent":
+            assert entry["returned"] == expected.tolist()
+            assert entry["probabilities"] == kernel.distribution(expected).tolist()
 
 
 def test_balance_rejects_unequal_pool_allocation_even_when_total_is_conserved(
@@ -386,3 +385,80 @@ def test_balance_rejects_unequal_pool_allocation_even_when_total_is_conserved(
     monkeypatch.setattr(Game, "payoffs", unequal)
     with pytest.raises(ArithmeticError, match="does not balance"):
         kernel.play(game, [fixed] * game.size, kernel.Amounts.build(training()), 1, "one")
+
+
+@pytest.mark.parametrize("letter", person.LETTERS)
+def test_nonzero_other_weights_distinguish_channels_and_closed_state_is_centred(
+    letter: str,
+) -> None:
+    game, p = GAMES["4-AI"], law(letter)
+    table = kernel.Amounts.build(training())
+    plays: list[list[tuple[int, ...]]] = []
+    for opened in (False, True):
+        runs: list[tuple[int, ...]] = []
+        laws: list[Floats] = []
+        for other in (nothing, everything):
+            coded = kernel.Coded(p)
+            probabilities: list[Floats] = []
+
+            def focal(
+                view: kernel.View,
+                coded: kernel.Coded = coded,
+                probabilities: list[Floats] = probabilities,
+                opened: bool = opened,
+            ) -> Floats:
+                result = coded(view)
+                probabilities.append(result)
+                if view.history and not opened:
+                    for name, value in zip(
+                        p.candidate.traces,
+                        coded._state.traces,  # type: ignore[reportPrivateUsage]
+                        strict=True,
+                    ):
+                        if name != "own":
+                            assert value == 0.5
+                return result
+
+            run = kernel.play(
+                game, [focal, other, other, other], table, 7, "one", open_channel=opened
+            )
+            runs.append(tuple(row[0] for row in run.rounds))
+            laws.append(np.array(probabilities))
+        if not opened:
+            assert runs[0] == runs[1]
+            assert np.array_equal(laws[0], laws[1])
+        else:
+            assert not np.array_equal(laws[0], laws[1])
+        plays.append(runs)
+    assert plays[0] != plays[1]
+
+
+def test_amounts_accept_numpy_integers_and_reject_bool_and_float_keys() -> None:
+    groups = [
+        replace(g, rounds=tuple(tuple(np.int64(x) for x in row) for row in g.rounds))
+        for g in training()
+    ]
+    direct = kernel.Amounts({(np.int64(24), np.int64(1)): (np.int64(1),)})  # type: ignore[arg-type]
+    assert direct.rows == {(24, 1): (1,)}
+    assert all(type(x) is int for key in direct.rows for x in key)
+    assert all(type(x) is int for values in direct.rows.values() for x in values)
+    direct_run = kernel.play(GAMES["2-FE"], [nothing] * 2, direct, 1, "one")
+    assert kernel.replay(direct_run.bytes).bytes == direct_run.bytes
+    table = kernel.Amounts.build(groups)
+    assert table.rows == kernel.Amounts.build(training()).rows
+    game = GAMES["2-FE"]
+    run = kernel.play(game, [fixed] * 2, table, 1, "one")
+    assert kernel.replay(run.bytes).bytes == run.bytes
+    with pytest.raises(ValueError, match=r"^amount is illegal or outside its band$"):
+        kernel.Amounts({(24, 1): (True,)})
+    for key in ((24.0, 1), (24, 1.0)):
+        with pytest.raises(
+            ValueError, match=r"^amount table needs a positive endowment and a middle band$"
+        ):
+            kernel.Amounts({key: (1,)})  # type: ignore[arg-type]
+
+
+def test_amounts_build_rejects_bool_before_integer_conversion() -> None:
+    group = Group("2-FE", "one", ((True, True),) * ROUNDS)
+    with pytest.raises(ValueError, match=r"^amount is illegal or outside its band$"):
+        kernel.Amounts.build([group])

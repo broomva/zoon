@@ -155,14 +155,16 @@ def test_likelihood_gradient_and_live_state_agree(c: person.Candidate) -> None:
     assert len(numbers) == c.count
 
 
-def test_b_predicts_an_absent_game_and_a_missing_constant_stays_zero() -> None:
+def test_b_predicts_an_absent_game_and_a_missing_constant_fits_zero() -> None:
     groups = [g for g in tiny() if g.cell != "2-MI"]
     for letter in ("A", "B"):
         p = person.fit(groups, person.Candidate(letter))
         assert np.isfinite(p.probabilities(GAMES["2-MI"], 0)).all()
         if letter == "A":
             idx = measure.STRATA["2-MI", 0]
-            assert p.numbers[idx] == 0 and p.numbers[p.candidate.phase_size + idx] == 0
+            assert (
+                abs(p.numbers[idx]) < 1e-5 and abs(p.numbers[p.candidate.phase_size + idx]) < 1e-5
+            )
 
 
 def test_nonconvergence_includes_the_optimiser_message(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -177,8 +179,8 @@ def test_nonconvergence_includes_the_optimiser_message(monkeypatch: pytest.Monke
 
 
 def test_counts_starts_and_ridge_cover_every_declared_parameter() -> None:
-    counts = {"A": 40, "B": 22, "C": 42, "D": 40, "E": 41, "F": 38}
-    twins = {"A": 38, "B": 20, "C": 38, "D": 38, "E": 39, "F": 36}
+    counts = {"A": 38, "B": 20, "C": 40, "D": 38, "E": 39, "F": 36}
+    twins = {"A": 36, "B": 18, "C": 36, "D": 36, "E": 37, "F": 34}
     for c in person.CANDIDATES:
         assert c.count == (twins if c.twin else counts)[c.letter]
         assert len(c.start()) == c.count
@@ -203,14 +205,15 @@ def test_fit_uses_one_start_and_the_declared_bounds_and_stopping_rules(
         c = person.Candidate("C")
         assert np.array_equal(start, c.start())
         assert kwargs["method"] == "L-BFGS-B" and kwargs["jac"] is True
-        assert kwargs["options"] == {"maxiter": 2000, "ftol": 1e-10, "gtol": 1e-7, "maxls": 50}
+        assert kwargs["options"] == {"maxiter": 2000, "ftol": 2e-10, "gtol": 1e-7, "maxls": 50}
         bounds = kwargs["bounds"]
         assert bounds[-3:] == [(0.0, 1.0)] * 3
         for offset in (0, c.phase_size):
-            assert bounds[offset + c.constants + 1 : offset + c.phase_size] == [(-8.0, 8.0)] * 3
+            assert bounds[offset + c.constants : offset + c.phase_size] == [(-8.0, 8.0)] * 3
         assert np.isfinite(fun(start)[0])
         return SimpleNamespace(success=True, x=start)
 
+    monkeypatch.setattr(person, "FUNCTION_TOLERANCE", 2e-10)
     monkeypatch.setattr(person, "minimize", inspected)
     person.fit(tiny(), person.Candidate("C"))
     assert calls == 1
@@ -305,7 +308,7 @@ def test_a_c_d_twins_have_identical_likelihood_gradient_fit_and_live_law() -> No
     fitted = [person.fit(groups, c) for c in candidates]
     reference = fitted[0]
     for c, p in zip(candidates, fitted, strict=True):
-        assert p.numbers == pytest.approx(reference.numbers, abs=1e-5)
+        assert np.array_equal(p.numbers, reference.numbers)
         record = person.records(groups, c)
         loss, gradient, logs = person.likelihood(reference.numbers, record, c)
         expected = person.likelihood(
@@ -320,3 +323,82 @@ def test_a_c_d_twins_have_identical_likelihood_gradient_fit_and_live_law() -> No
         assert p.probabilities(game, 1, state) == pytest.approx(
             reference.probabilities(game, 1, state)
         )
+
+
+@pytest.mark.parametrize("letter", ("A", "B"))
+def test_fit_reproduces_with_reversed_groups_and_a_nudged_start(
+    letter: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    assert person.REPRODUCIBILITY_TOLERANCE == 0.02
+    assert person.START_NUDGE == 1e-6
+    c, groups = person.Candidate(letter), tiny()
+    reference = person.fit(groups, c).numbers
+    assert person.fit(list(reversed(groups)), c).numbers == pytest.approx(
+        reference, abs=person.REPRODUCIBILITY_TOLERANCE, rel=0
+    )
+    original = person.Candidate.start
+
+    def nudged(self: person.Candidate) -> person.Floats:
+        return original(self) + person.START_NUDGE
+
+    monkeypatch.setattr(person.Candidate, "start", nudged)
+    assert person.fit(groups, c).numbers == pytest.approx(
+        reference, abs=person.REPRODUCIBILITY_TOLERANCE, rel=0
+    )
+
+
+@pytest.mark.parametrize("c", person.CANDIDATES, ids=lambda c: c.name)
+def test_zero_first_cut_and_each_fitted_number_changes_likelihood(c: person.Candidate) -> None:
+    p, groups = law(c.letter, c.twin), tiny()
+    record = person.records(groups, c)
+    baseline = person.likelihood(p.numbers, record, c)[2]
+    for j in range(c.count):
+        shifted = p.numbers.copy()
+        shifted[j] += 0.1
+        assert not np.array_equal(person.likelihood(shifted, record, c)[2], baseline), j
+    for start, state in (
+        (0, person.State()),
+        (c.phase_size, person.State((0.5,) * len(c.traces), 0.5, True)),
+    ):
+        game = GAMES["4-AI"]
+        phase = p.numbers[start : start + c.phase_size]
+        cuts: person.Floats = np.asarray(np.r_[0, np.cumsum(np.exp(phase[-3:]))], dtype=float)
+        score = c.base(game, 0) @ phase[: c.constants]
+        from scipy.special import expit
+
+        assert np.cumsum(p.probabilities(game, 0, state))[:4] == pytest.approx(expit(cuts - score))
+    assert np.array_equal(c.start()[: 2 * c.phase_size], np.zeros(2 * c.phase_size))
+
+
+@pytest.mark.parametrize("c", person.CANDIDATES, ids=lambda c: c.name)
+def test_fixing_cut_origin_preserves_the_previous_expressible_predictions(
+    c: person.Candidate,
+) -> None:
+    from scipy.special import expit
+
+    p = law(c.letter, c.twin)
+    origin = -0.7
+    translated = p.numbers.copy()
+    for offset in (0, c.phase_size):
+        indices = [offset] if c.letter == "B" else list(range(offset, offset + c.constants))
+        translated[indices] -= origin
+    fixed = person.Person(c, translated)
+    for game in GAMES.values():
+        for seat in range(game.size):
+            state = p.update(person.State(), game, seat, tuple(e // 3 for e in game.endowments))
+            for offset, current in ((0, person.State()), (c.phase_size, state)):
+                phase = p.numbers[offset : offset + c.phase_size]
+                score = float(c.base(game, seat) @ phase[: c.constants])
+                if current.seen:
+                    features = np.array(
+                        [*current.traces, *([current.anchor] if c.letter == "E" else [])]
+                    )
+                    score += float(
+                        (features - 0.5)
+                        @ p.numbers[2 * c.phase_size : 2 * c.phase_size + len(c.features)]
+                    )
+                old_cuts: person.Floats = np.asarray(
+                    origin + np.r_[0, np.cumsum(np.exp(phase[-3:]))], dtype=float
+                )
+                expected = np.diff(np.r_[0, expit(old_cuts - score), 1])
+                assert fixed.probabilities(game, seat, current) == pytest.approx(expected)

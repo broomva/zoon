@@ -20,6 +20,8 @@ LOG_GAP_LIMIT = 8.0
 MAX_ITERATIONS = 2000
 TOLERANCE = 1e-7
 FUNCTION_TOLERANCE = 1e-10
+REPRODUCIBILITY_TOLERANCE = 0.02
+START_NUDGE = 1e-6
 
 
 @dataclass(frozen=True)
@@ -51,14 +53,14 @@ class Candidate:
 
     @property
     def phase_size(self) -> int:
-        return self.constants + 4
+        return self.constants + 3
 
     @property
     def count(self) -> int:
         return 2 * self.phase_size + len(self.features) + len(self.traces)
 
     def start(self) -> Floats:
-        phase = np.r_[np.zeros(self.constants), -1.5, np.zeros(3)]
+        phase = np.zeros(self.phase_size)
         return np.r_[phase, phase, np.zeros(len(self.features)), np.full(len(self.traces), 0.5)]
 
     def base(self, game: Game, seat: int) -> Floats:
@@ -146,28 +148,28 @@ class Person:
         c = self.candidate
         start = c.phase_size if state.seen else 0
         phase = self.numbers[start : start + c.phase_size]
-        score = float(c.base(game, seat) @ phase[:-4])
+        score = float(c.base(game, seat) @ phase[:-3])
         if state.seen:
             features = [*state.traces, *([state.anchor] if c.letter == "E" else [])]
             weights = self.numbers[2 * c.phase_size : 2 * c.phase_size + len(c.features)]
             score += float((np.array(features) - 0.5) @ weights)
-        cuts = np.cumsum(np.r_[phase[-4], np.exp(phase[-3:])])
+        cuts: Floats = np.asarray(np.r_[0.0, np.cumsum(np.exp(phase[-3:]))], dtype=float)
         below = expit(cuts - score)
         p = np.maximum(np.diff(np.r_[0.0, below, 1.0]), FLOOR)
         return p / p.sum()
 
 
 def ordered(score: Floats, cuts: Floats) -> tuple[Floats, Floats, Floats]:
-    """Probabilities and their derivatives by score and four cut-point parameters."""
-    gaps = np.r_[1.0, np.exp(cuts[1:])]
-    thresholds = np.cumsum(np.r_[cuts[0], gaps[1:]])
+    """Probabilities and their derivatives by score and three log-gap parameters."""
+    gaps = np.exp(cuts)
+    thresholds: Floats = np.asarray(np.r_[0.0, np.cumsum(gaps)], dtype=float)
     below = expit(thresholds[None, :] - score[:, None])
     density = below * (1 - below)
     p = np.diff(np.c_[np.zeros(len(score)), below, np.ones(len(score))], axis=1)
     ds = np.diff(np.c_[np.zeros(len(score)), -density, np.zeros(len(score))], axis=1)
-    dc = np.zeros((len(score), 5, 4))
-    for j in range(4):
-        derivative = density * (np.arange(4) >= j) * gaps[j]
+    dc = np.zeros((len(score), 5, 3))
+    for j in range(3):
+        derivative = density * (np.arange(4) > j) * gaps[j]
         dc[:, :, j] = np.diff(np.c_[np.zeros(len(score)), derivative, np.zeros(len(score))], axis=1)
     active = p > FLOOR
     ds *= active
@@ -253,7 +255,7 @@ def likelihood(numbers: Floats, record: Records, c: Candidate) -> tuple[float, F
             score += np.einsum("nk,k->n", f, weights)
         choices = record.choice[:, :1] if first else record.choice[:, 1:]
         choice = choices.ravel()
-        p, ds, dc = ordered(score, phase[-4:])
+        p, ds, dc = ordered(score, phase[-3:])
         rows = np.arange(len(choice))
         logp = np.log(p[rows, choice])
         g = -ds[rows, choice] / p[rows, choice]
@@ -280,7 +282,7 @@ def fit(groups: Sequence[Group], candidate: Candidate) -> Person:
     record = records(groups, candidate)
     bounds: list[tuple[float | None, float | None]] = [(None, None)] * candidate.count
     for offset in (0, candidate.phase_size):
-        for j in range(offset + candidate.constants + 1, offset + candidate.phase_size):
+        for j in range(offset + candidate.constants, offset + candidate.phase_size):
             bounds[j] = (-LOG_GAP_LIMIT, LOG_GAP_LIMIT)
     for j in range(candidate.count - len(candidate.traces), candidate.count):
         bounds[j] = (0.0, 1.0)

@@ -1,6 +1,6 @@
 """Selection, fair scores and complete runs on groups made through the kernel."""
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import replace
 from pathlib import Path
 
@@ -9,10 +9,41 @@ import pytest
 from scipy.special import expit
 
 from tests.test_interaction_kernel import training
+from tests.test_interaction_person import law
 from zoon.interaction import compare, kernel, measure, person
 from zoon.interaction.data import Group
-from zoon.interaction.games import GAMES, ROUNDS
+from zoon.interaction.games import GAMES, ROUNDS, Game
 from zoon.interaction.measure import Floats
+
+
+def simulation_stand_ins(
+    monkeypatch: pytest.MonkeyPatch,
+    rows: Callable[[Game, str, kernel.Amounts, bool, person.Candidate], Sequence[Sequence[int]]]
+    | None = None,
+) -> None:
+    def fitted(groups: Sequence[Group], c: person.Candidate) -> person.Person:
+        return law(c.letter, c.twin)
+
+    monkeypatch.setattr(person, "fit", fitted)
+    if rows is None:
+        return
+    simulate = rows
+
+    def played(
+        game: Game,
+        agents: Sequence[kernel.Agent],
+        amounts: kernel.Amounts,
+        seed: int,
+        group: str,
+        *,
+        open_channel: bool = True,
+    ) -> kernel.Run:
+        assert seed == measure.SEED
+        assert isinstance(agents[0], kernel.Coded)
+        result = simulate(game, group, amounts, open_channel, agents[0].law.candidate)
+        return kernel.Run(tuple(tuple(row) for row in result), ())
+
+    monkeypatch.setattr(kernel, "play", played)
 
 
 def generated(others: float, count: int = 8, seed: int = 31) -> list[Group]:
@@ -232,9 +263,6 @@ def test_coverage_uses_the_inclusive_central_ninety_percent(
     sample: tuple[float, ...],
     covered: tuple[float, ...],
 ) -> None:
-    from tests.test_interaction_person import law
-    from zoon.interaction.games import Game
-
     groups = [
         Group(
             cell,
@@ -245,24 +273,13 @@ def test_coverage_uses_the_inclusive_central_ninety_percent(
         for n in range(4)
     ]
 
-    def fitted(groups: Sequence[Group], candidate: person.Candidate) -> person.Person:
-        return law(candidate.letter, candidate.twin)
-
-    def played(
-        game: Game,
-        agents: Sequence[kernel.Agent],
-        amounts: kernel.Amounts,
-        seed: int,
-        group: str,
-        *,
-        open_channel: bool = True,
-    ) -> kernel.Run:
+    def rows(
+        game: Game, group: str, amounts: kernel.Amounts, opened: bool, c: person.Candidate
+    ) -> Sequence[Sequence[int]]:
         fraction = sample[int(group.rsplit("|", 1)[1])]
-        row = tuple(int(e * fraction) for e in game.endowments)
-        return kernel.Run((row,) * ROUNDS, ())
+        return (tuple(int(e * fraction) for e in game.endowments),) * ROUNDS
 
-    monkeypatch.setattr(compare.person, "fit", fitted)
-    monkeypatch.setattr(compare.kernel, "play", played)
+    simulation_stand_ins(monkeypatch, rows)
     result = compare.evaluate(groups, person.Candidate("B"), simulations=4)
     assert result.covered[:, 0] == pytest.approx(list(covered) * len(GAMES))
     assert result.covered[:, 2:4] == pytest.approx(np.ones((len(groups), 2)))
@@ -340,41 +357,27 @@ def test_composite_interval_matches_enumerated_stratified_ninety_five_percent(
 def test_evaluate_excludes_scored_amounts_and_uses_fold_labels_and_correct_channels(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from tests.test_interaction_person import law
-    from zoon.interaction.games import Game
-
     groups = training()
     groups[0] = replace(groups[0], rounds=((8, 8),) * ROUNDS)
     all_rows = kernel.Amounts.build(groups).rows
     calls: list[str] = []
-    current: list[person.Candidate] = []
 
-    def fitted(train: Sequence[Group], candidate: person.Candidate) -> person.Person:
-        current[:] = [candidate]
-        return law(candidate.letter, candidate.twin)
-
-    def played(
-        game: Game,
-        agents: Sequence[kernel.Agent],
-        amounts: kernel.Amounts,
-        seed: int,
-        group: str,
-        *,
-        open_channel: bool = True,
-    ) -> kernel.Run:
+    def rows(
+        game: Game, group: str, amounts: kernel.Amounts, opened: bool, c: person.Candidate
+    ) -> Sequence[Sequence[int]]:
         fold_label, cell, index = group.split("|")
+        assert fold_label in {f"fold-{measure.fold_of(g)}" for g in groups}
         fold = int(fold_label.removeprefix("fold-"))
-        assert fold_label == f"fold-{fold}" and cell == game.cell
-        assert index in ("0", "1") and seed == measure.SEED
+        assert cell == game.cell
+        assert index in ("0", "1")
         train = [g for g in groups if measure.fold_of(g) != fold]
         assert amounts.rows == kernel.Amounts.build(train).rows
         assert amounts.rows != all_rows
-        assert open_channel == (not current[0].twin)
+        assert opened == (not c.twin)
         calls.append(group)
-        return kernel.Run(((0,) * game.size,) * ROUNDS, ())
+        return ((0,) * game.size,) * ROUNDS
 
-    monkeypatch.setattr(person, "fit", fitted)
-    monkeypatch.setattr(kernel, "play", played)
+    simulation_stand_ins(monkeypatch, rows)
     for twin in (False, True):
         compare.evaluate(groups, person.Candidate("B", twin), simulations=2)
     assert calls
@@ -385,29 +388,15 @@ def test_evaluate_excludes_scored_amounts_and_uses_fold_labels_and_correct_chann
 def test_coverage_excludes_values_between_ninety_and_ninety_five_percent_bounds(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from tests.test_interaction_person import law
-    from zoon.interaction.games import Game
-
     groups = [Group("2-FE", str(i), ((1, 1),) * ROUNDS) for i in range(4)]
 
-    def fitted(groups: Sequence[Group], c: person.Candidate) -> person.Person:
-        return law(c.letter, c.twin)
-
-    monkeypatch.setattr(person, "fit", fitted)
-
-    def played(
-        game: Game,
-        agents: Sequence[kernel.Agent],
-        amounts: kernel.Amounts,
-        seed: int,
-        group: str,
-        *,
-        open_channel: bool = True,
-    ) -> kernel.Run:
+    def rows(
+        game: Game, group: str, amounts: kernel.Amounts, opened: bool, c: person.Candidate
+    ) -> Sequence[Sequence[int]]:
         n = int(group.rsplit("|", 1)[1])
-        return kernel.Run(((0 if n == 0 else 12 if n == 1 else 24,) * 2,) * ROUNDS, ())
+        return ((0 if n == 0 else 12 if n == 1 else 24,) * 2,) * ROUNDS
 
-    monkeypatch.setattr(kernel, "play", played)
+    simulation_stand_ins(monkeypatch, rows)
     result = compare.evaluate(groups, person.Candidate("B"), simulations=4)
     assert np.percentile([0, 0.5, 1, 1], 2.5) < 1 / 24 < np.percentile([0, 0.5, 1, 1], 5)
     assert np.array_equal(result.covered[:, 0], np.zeros(4))
@@ -440,7 +429,7 @@ def test_game_left_out_fits_exclude_every_group_of_the_scored_game(
     assert observed_calls == [tuple(sorted(set(GAMES) - {cell})) for cell in sorted(GAMES)]
 
 
-def test_main_reports_direct_gains_separate_twins_selection_and_game_left_out_values(
+def test_report_recomputes_every_entry_and_main_only_prints_it(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
@@ -458,7 +447,8 @@ def test_main_reports_direct_gains_separate_twins_selection_and_game_left_out_va
         p = law(c.letter, c.twin)
         # Train composition changes both rules; a game-left-out fit differs from a fold fit.
         shift = sum((list(GAMES).index(g.cell) + 1) ** 2 for g in train) / 1000
-        return replace(p, numbers=p.numbers + shift)
+        index = 0 if c.twin and c.letter in "CD" else person.LETTERS.index(c.letter)
+        return replace(p, numbers=p.numbers + shift + index / 100 + c.twin / 1000)
 
     def evaluated(
         groups: Sequence[Group], c: person.Candidate, simulations: int
@@ -466,10 +456,12 @@ def test_main_reports_direct_gains_separate_twins_selection_and_game_left_out_va
         calls.append(c.name)
         n = person.LETTERS.index(c.letter)
         base = -0.1 if c.name == "E" else -0.4 if c.name == "B twin" else -2.0 - n / 10
-        opened = base + (n + 1) * decisions.group / 1000
+        opened = base + (n + 1 + c.twin) * decisions.group / 1000
         closed = np.full((len(groups), 5), 0.1 + n / 10 + c.twin / 20)
-        closed += np.arange(len(groups))[:, None] * (n + 1) / 1000
-        covered = np.ones_like(closed)
+        closed += np.arange(len(groups))[:, None] * (n + 1 + c.twin) / 1000
+        covered = np.broadcast_to(
+            np.arange(1, 6) / 7 + n / 100 + c.twin / 1000, closed.shape
+        ).copy()
         for i, g in enumerate(groups):
             if g.cell.endswith("FE"):
                 closed[i, 4] = covered[i, 4] = np.nan
@@ -479,59 +471,140 @@ def test_main_reports_direct_gains_separate_twins_selection_and_game_left_out_va
 
     monkeypatch.setattr(person, "fit", fitted)
     monkeypatch.setattr(compare, "evaluate", evaluated)
-    compare.main(simulations=2, resamples=100)
-    printed = dict(line.split(" = ", 1) for line in capsys.readouterr().out.splitlines()[1:])
-    assert printed["[fit] function tolerance"] == "0.0000000002"
+    power_calls: list[tuple[tuple[float, float, float], int, int]] = []
+    real_power = measure.power
+
+    def checked_power(
+        found: tuple[float, float, float], training: int, sealed: int
+    ) -> tuple[float, float]:
+        power_calls.append((found, training, sealed))
+        return real_power(found, training, sealed)
+
+    monkeypatch.setattr(measure, "power", checked_power)
+
+    report = compare.report(groups, {cell: 3 for cell in GAMES}, simulations=2, resamples=100)
     assert "C twin" not in calls and "D twin" not in calls
+    expected: list[tuple[str, int | float | str | tuple[float, ...], str]] = []
+
+    def add(label: str, value: int | float | str | tuple[float, ...], fmt: str = "") -> None:
+        expected.append((label, value, fmt))
+
+    add("[data] training groups", len(groups))
+    add("[data] decisions", len(decisions.choice))
+    add("[data] held-out groups", 3 * len(GAMES))
+    add("[simulation] groups per game and fold", 2)
+    for label, value, fmt in (
+        ("ridge", person.RIDGE, ""),
+        ("probability floor", person.FLOOR, ".10f"),
+        ("log gap limit", person.LOG_GAP_LIMIT, ""),
+        ("iteration limit", person.MAX_ITERATIONS, ""),
+        ("gradient tolerance", person.TOLERANCE, ".8f"),
+        ("function tolerance", 2e-10, ".10f"),
+    ):
+        add(f"[fit] {label}", value, fmt)
+    add("[fit check] absolute tolerance", 0.02, ".2f")
+    add("[fit check] start nudge", 1e-6, ".6f")
+    from collections import Counter
+
+    for (e, band), values in kernel.Amounts.build(groups).rows.items():
+        add(
+            f"[amounts, endowment {e}, band {band}] points:count",
+            ", ".join(f"{x}:{n}" for x, n in sorted(Counter(values).items())),
+        )
+    for c in person.CANDIDATES:
+        result = results["A twin" if c.twin and c.letter in "CD" else c.name]
+        add(f"[count] {c.name}", c.count)
+        p = fitted(groups, c)
+        base = (
+            ("constant", "endowment", "return", "product", "four seats")
+            if c.letter == "B"
+            else tuple(f"constant {cell} type {kind}" for cell, kind in measure.STRATA)
+        )
+        names = [
+            f"{phase} {name}"
+            for phase in ("first", "later")
+            for name in (*base, "log gap 1", "log gap 2", "log gap 3")
+        ]
+        names += [f"weight {x}" for x in c.features] + [f"trace fraction {x}" for x in c.traces]
+        for name, value in zip(names, p.numbers, strict=True):
+            add(f"[numbers, {c.name}] {name}", float(value), "+.6f")
+        add(f"[open loop] {c.name}", measure.paired(result.open, decisions.group, len(groups)))
+        for metric, value in zip(
+            compare.METRICS, compare.interval(result.closed, groups, 100), strict=True
+        ):
+            add(f"[closed loop, {metric}] {c.name}", tuple(value))
+        for j, summary in enumerate(compare.SUMMARIES):
+            add(f"[coverage, {summary}] {c.name}", float(np.nanmean(result.covered[:, j])), ".4f")
+    selections: list[compare.Selection] = []
     for twin in (False, True):
         candidates = [c for c in person.CANDIDATES if c.twin == twin]
-        scores = {
-            c.name: results["A twin" if c.twin and c.letter in "CD" else c.name].open
-            for c in candidates
-        }
         selected = compare.select(
-            scores, {c.name: c.count for c in candidates}, decisions.group, len(groups)
+            {
+                c.name: results["A twin" if c.twin and c.letter in "CD" else c.name].open
+                for c in candidates
+            },
+            {c.name: c.count for c in candidates},
+            decisions.group,
+            len(groups),
         )
+        selections.append(selected)
         label = "twins" if twin else "candidates"
-        assert printed[f"[selection, {label}] highest"] == selected.reference
-        assert printed[f"[selection, {label}] tied at step 2"] == ", ".join(selected.tied)
-        assert printed[f"[selection, {label}] winner"] == selected.winner
-    assert printed["[selection, candidates] winner"] == "E"
-    assert printed["[selection, twins] winner"] == "B twin"
-
-    def formatted(value: Sequence[float]) -> str:
-        mean, low, high = value
-        return f"{mean:+.4f} [{low:+.4f}, {high:+.4f}]"
-
-    for twin in ("C twin", "D twin"):
-        assert printed[f"[open loop] {twin}"] == printed["[open loop] A twin"]
-        for metric in compare.METRICS:
-            assert (
-                printed[f"[closed loop, {metric}] {twin}"]
-                == printed[f"[closed loop, {metric}] A twin"]
-            )
+        add(f"[selection, {label}] highest", selected.reference)
+        add(f"[selection, {label}] tied at step 2", ", ".join(selected.tied))
+        add(f"[selection, {label}] winner", selected.winner)
+    assert [selection.winner for selection in selections] == ["E", "B twin"]
+    expected_power_calls: list[tuple[tuple[float, float, float], int, int]] = []
     for comparison, opponent in (("selected twin", "B twin"), ("own twin", "E twin")):
         a, b = results["E"], results[opponent]
-        assert printed[f"[gain, {comparison}, open loop] candidate minus twin"] == formatted(
-            measure.paired(a.open - b.open, decisions.group, len(groups))
-        )
-        expected = compare.interval(b.closed - a.closed, groups, resamples=100)
-        for metric, value in zip(compare.METRICS, expected, strict=True):
-            assert printed[
-                f"[gain, {comparison}, closed loop, {metric}] twin minus candidate"
-            ] == formatted(value)
+        h2 = measure.paired(a.open - b.open, decisions.group, len(groups))
+        add(f"[gain, {comparison}, open loop] candidate minus twin", h2)
+        h3 = compare.interval(b.closed - a.closed, groups, 100)
+        for metric, value in zip(compare.METRICS, h3, strict=True):
+            add(f"[gain, {comparison}, closed loop, {metric}] twin minus candidate", tuple(value))
+        for metric, value in (("H2", h2), *zip(compare.METRICS, h3, strict=True)):
+            # Two equal-seat games lack a type gap; all others define every summary.
+            n = (
+                sum(g.cell not in ("2-FE", "4-FE") for g in groups)
+                if metric == "type gap"
+                else len(groups)
+            )
+            sealed = 18 if metric == "type gap" else 24
+            effect_interval = (float(value[0]), float(value[1]), float(value[2]))
+            expected_power_calls.append((effect_interval, n, sealed))
+            full, half = real_power(effect_interval, n, sealed)
+            for effect, power in (("training effect", full), ("half effect", half)):
+                add(f"[power, {comparison}, {metric}] {effect}", power, ".3f")
     for arm, name in (("candidate", "E"), ("twin", "B twin")):
         c = next(c for c in person.CANDIDATES if c.name == name)
         left = person.out_of_sample(groups, c, leave_out_game=True)
-        assert printed[f"[game left out, {arm}] score"] == formatted(
-            measure.paired(left, decisions.group, len(groups))
-        )
-        assert printed[f"[game left out, {arm}] loss"] == formatted(
-            measure.paired(results[name].open - left, decisions.group, len(groups))
+        add(f"[game left out, {arm}] score", measure.paired(left, decisions.group, len(groups)))
+        add(
+            f"[game left out, {arm}] loss",
+            measure.paired(results[name].open - left, decisions.group, len(groups)),
         )
         for cell in sorted(GAMES):
             mask = np.array([groups[int(i)].cell == cell for i in decisions.group])
-            assert printed[f"[game left out, {arm}, {cell}] score"] == f"{left[mask].mean():+.4f}"
+            add(f"[game left out, {arm}, {cell}] score", float(left[mask].mean()), "+.4f")
+    assert power_calls == expected_power_calls
+    # Exact ordered equality also rejects extra, missing, duplicate or reordered entries.
+    assert [(entry.label, entry.value, entry.format) for entry in report] == expected
+    rendered: list[str] = []
+    for label, value, fmt in expected:
+        if isinstance(value, tuple):
+            mean, low, high = value
+            rendered.append(f"{label} = {mean:+.4f} [{low:+.4f}, {high:+.4f}]")
+        else:
+            rendered.append(f"{label} = {value:{fmt}}")
+
+    def built(*args: object, **kwargs: object) -> list[compare.Entry]:
+        return report
+
+    monkeypatch.setattr(compare, "report", built)
+    compare.main(simulations=2, resamples=100)
+    assert (
+        capsys.readouterr().out
+        == "zoon interaction: candidates on training groups\n" + "\n".join(rendered) + "\n"
+    )
 
 
 def test_main_explains_undefined_power_for_zero_width_intervals(
@@ -545,10 +618,7 @@ def test_main_explains_undefined_power_for_zero_width_intervals(
     monkeypatch.setattr(compare.data, "load", lambda: groups)
     monkeypatch.setattr(compare.data, "held_out_counts", lambda: {cell: 3 for cell in GAMES})
 
-    def fitted(groups: Sequence[Group], c: person.Candidate) -> person.Person:
-        return law(c.letter, c.twin)
-
-    monkeypatch.setattr(person, "fit", fitted)
+    simulation_stand_ins(monkeypatch)
 
     def scored(
         groups: Sequence[Group], c: person.Candidate, leave_out_game: bool = False

@@ -5,8 +5,9 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from fractions import Fraction
+from numbers import Integral
 from typing import Any, Protocol
 
 import numpy as np
@@ -25,15 +26,29 @@ class Amounts:
 
     def __post_init__(self) -> None:
         for (endowment, band), values in self.rows.items():
-            if endowment <= 0 or band not in (1, 2, 3):
+            if (
+                not isinstance(endowment, Integral)
+                or endowment <= 0
+                or not isinstance(band, Integral)
+                or band not in (1, 2, 3)
+            ):
                 raise ValueError("amount table needs a positive endowment and a middle band")
             for value in values:
                 if (
-                    type(value) is not int
+                    isinstance(value, bool)
+                    or not isinstance(value, Integral)
                     or not 0 <= value <= endowment
                     or measure.band(value, endowment) != band
                 ):
                     raise ValueError("amount is illegal or outside its band")
+        object.__setattr__(
+            self,
+            "rows",
+            {
+                (int(e), int(b)): tuple(int(v) for v in values)
+                for (e, b), values in self.rows.items()
+            },
+        )
 
     @classmethod
     def build(cls, groups: Sequence[Group]) -> Amounts:
@@ -77,6 +92,8 @@ class Agent(Protocol):
 
 @dataclass
 class Coded:
+    """With only own contributions visible, others' traces stay centred and score zero."""
+
     law: person.Person
     _history: tuple[Observation, ...] = field(default=(), init=False, repr=False)
     _state: person.State = field(default_factory=person.State, init=False, repr=False)
@@ -92,10 +109,16 @@ class Coded:
         for observation in observations:
             # No missing contribution or payoff is inferred from the rules.
             visible = dict(observation.contributions)
-            if not self.law.candidate.twin and set(visible) != set(range(view.game.size)):
-                raise ValueError("a non-twin person needs an open channel")
             row = tuple(visible.get(s, 0) for s in range(view.game.size))
             state = self.law.update(state, view.game, view.seat, row)
+            if set(visible) == {view.seat}:
+                state = replace(
+                    state,
+                    traces=tuple(
+                        value if name == "own" else 0.5
+                        for name, value in zip(self.law.candidate.traces, state.traces, strict=True)
+                    ),
+                )
         self._history, self._state, self._key = view.history, state, key
         return self.law.probabilities(view.game, view.seat, state)
 
@@ -107,8 +130,7 @@ def uniform(seed: int, cell: str, group: str, round_: int, seat: int, purpose: s
     return integer / 2**53
 
 
-def distribution(values: Floats | Sequence[float]) -> Floats:
-    values = np.asarray(values, dtype=np.float64)
+def distribution(values: Floats) -> Floats:
     if (
         values.shape != (5,)
         or not np.isfinite(values).all()
@@ -123,15 +145,10 @@ def distribution(values: Floats | Sequence[float]) -> Floats:
 def balance(game: Game, points: tuple[int, ...]) -> tuple[Fraction, ...]:
     payoffs = game.payoffs(points)
     pool = sum((p * c for p, c in zip(game.productivities, points, strict=True)), Fraction())
-    kept = sum(game.endowments) - sum(points)
     expected = tuple(
         Fraction(e - c) + pool / game.size for e, c in zip(game.endowments, points, strict=True)
     )
-    if (
-        sum(payoffs, Fraction()) != kept + pool
-        or payoffs != expected
-        or not all(type(value) is Fraction for value in payoffs)
-    ):
+    if payoffs != expected:
         raise ArithmeticError("round ledger does not balance")
     return payoffs
 
@@ -244,13 +261,6 @@ def play(
 
 def replay(log: bytes) -> Run:
     """Check canonical rules, draws, transfers and observations, not the source of weights."""
-    try:
-        return _replay(log)
-    except (ValueError, KeyError, IndexError, TypeError, ArithmeticError) as error:
-        raise ValueError("log does not replay") from error
-
-
-def _replay(log: bytes) -> Run:
     records: list[dict[str, Any]] = [json.loads(line) for line in log.decode().splitlines()]
     header = records[0]
     game = Game(
