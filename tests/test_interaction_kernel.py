@@ -169,3 +169,14 @@ def test_bad_distributions_are_refused() -> None:
     for values in ([1.0, 2.0], [0.0] * 5, [-1.0, 1.0, 1.0, 1.0, 1.0], [float("nan")] * 5):
         with pytest.raises(ValueError, match="five finite"):
             kernel.distribution(np.array(values))
+
+
+def test_coded_prefix_cache_cannot_change_a_prediction() -> None:
+    p = law("E")
+    game = GAMES["2-AI"]
+    observations = tuple(kernel.Observation(((0, r), (1, r // 3)), None) for r in range(12))
+    coded = kernel.Coded(p)
+    views = [kernel.View(game, 0, observations[:r]) for r in range(12)]
+    views += [views[3], views[10], kernel.View(game, 1, observations), views[0]]
+    for view in views:
+        assert coded(view) == pytest.approx(kernel.Coded(p)(view))

@@ -69,6 +69,16 @@ class Candidate:
         row[measure.STRATA[game.cell, measure.seat_type(game, seat)]] = 1
         return row
 
+    def trace_sources(self, game: Game, seat: int) -> tuple[int, ...]:
+        if self.letter == "C" and not self.twin:
+            kind = measure.seat_type(game, seat)
+            kinds = {measure.seat_type(game, s) == kind for s in range(game.size) if s != seat}
+            if True not in kinds:
+                return (0, 2, 2)
+            if False not in kinds:
+                return (0, 1, 1)
+        return tuple(range(len(self.traces)))
+
     def observations(self, game: Game, seat: int, contributions: tuple[int, ...]) -> Floats:
         """Return the exact-share observations which can enter this person's traces."""
         own = contributions[seat] / game.endowments[seat]
@@ -128,6 +138,7 @@ class Person:
         anchor = 0.0
         if self.candidate.letter == "E":
             anchor = state.anchor if state.seen else contributions[seat] / game.endowments[seat]
+        values = values[list(self.candidate.trace_sources(game, seat))]
         return State(tuple(float(v) for v in values), anchor, True)
 
     def probabilities(self, game: Game, seat: int, state: State = State()) -> Floats:
@@ -175,9 +186,11 @@ class Records:
     observations: Floats
     anchor: Floats
     choice: Ints
+    sources: Ints
 
 
 def records(groups: Sequence[Group], candidate: Candidate) -> Records:
+    sources: list[tuple[int, ...]] = []
     base: list[Floats] = []
     observed: list[Floats] = []
     anchor: list[float] = []
@@ -186,6 +199,7 @@ def records(groups: Sequence[Group], candidate: Candidate) -> Records:
         game = GAMES[group.cell]
         for seat in range(game.size):
             base.append(candidate.base(game, seat))
+            sources.append(candidate.trace_sources(game, seat))
             observed.append(
                 np.array([candidate.observations(game, seat, row) for row in group.rounds])
             )
@@ -194,7 +208,11 @@ def records(groups: Sequence[Group], candidate: Candidate) -> Records:
     if not base:
         raise ValueError("a fit needs training groups")
     return Records(
-        np.array(base), np.array(observed), np.array(anchor), np.array(choice, dtype=np.int64)
+        np.array(base),
+        np.array(observed),
+        np.array(anchor),
+        np.array(choice, dtype=np.int64),
+        np.array(sources, dtype=np.int64),
     )
 
 
@@ -208,6 +226,7 @@ def states(record: Records, c: Candidate, fractions: Floats) -> tuple[Floats, Fl
             delta = record.observations[:, r] - values[:, r - 1]
             values[:, r] = values[:, r - 1] + fractions * delta
             derivative[:, r] = (1 - fractions) * derivative[:, r - 1] + delta
+    values = np.take_along_axis(values, record.sources[:, None, :], axis=2)
     if c.letter == "E":
         values = np.concatenate(
             [values, np.broadcast_to(record.anchor[:, None, None], (n, 19, 1))], axis=2
@@ -228,26 +247,28 @@ def likelihood(numbers: Floats, record: Records, c: Candidate) -> tuple[float, F
         repeats = 1 if first else ROUNDS - 1
         x = np.repeat(record.base, repeats, axis=0)
         f = features.reshape(-1, len(c.features)) if c.features else np.empty((len(x), 0))
-        score = x @ phase[:m]
+        score = np.einsum("nm,m->n", x, phase[:m])
         if not first:
-            score += f @ weights
+            score += np.einsum("nk,k->n", f, weights)
         choices = record.choice[:, : 1 if first else ROUNDS] if first else record.choice[:, 1:]
         choice = choices.ravel()
         p, ds, dc = ordered(score, phase[-4:])
         rows = np.arange(len(choice))
         logp = np.log(p[rows, choice])
         g = -ds[rows, choice] / p[rows, choice]
-        gradient[offset : offset + m] = x.T @ g
+        gradient[offset : offset + m] = np.einsum("nm,n->m", x, g)
         gradient[offset + m : offset + q] = (-dc[rows, choice] / p[rows, choice, None]).sum(axis=0)
         if first:
             logs[:, 0] = logp
         else:
             logs[:, 1:] = logp.reshape(-1, ROUNDS - 1)
-            gradient[2 * q : 2 * q + len(c.features)] = f.T @ g
+            gradient[2 * q : 2 * q + len(c.features)] = np.einsum("nk,n->k", f, g)
             if k:
-                gradient[-k:] = np.einsum(
-                    "nr,nrk,k->k", g.reshape(-1, 19), derivatives, weights[:k]
+                effective = np.zeros((len(record.base), k))
+                np.add.at(
+                    effective, (np.arange(len(record.base))[:, None], record.sources), weights[:k]
                 )
+                gradient[-k:] = np.einsum("nr,nrk,nk->k", g.reshape(-1, 19), derivatives, effective)
     loss = float(-logs.sum() + RIDGE * (numbers**2).sum())
     return loss, gradient + 2 * RIDGE * numbers, logs
 

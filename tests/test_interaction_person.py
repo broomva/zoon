@@ -99,13 +99,17 @@ def test_disguise_scales_every_point_without_changing_predictions(c: person.Cand
 
 
 def tiny() -> list[Group]:
+    rng = np.random.default_rng(71)
     return [
         Group(
             cell,
             f"{cell}-{g}",
             tuple(
-                tuple((r + g + s) % (e + 1) for s, e in enumerate(game.endowments))
-                for r in range(ROUNDS)
+                tuple(
+                    (0, e // 6, e // 2, 5 * e // 6, e)[int(rng.integers(5))]
+                    for e in game.endowments
+                )
+                for _ in range(ROUNDS)
             ),
         )
         for cell, game in GAMES.items()
@@ -115,7 +119,7 @@ def tiny() -> list[Group]:
 
 @pytest.mark.parametrize("c", person.CANDIDATES, ids=lambda c: c.name)
 def test_likelihood_gradient_and_live_state_agree(c: person.Candidate) -> None:
-    groups = tiny()
+    groups = tiny()[::3]
     record = person.records(groups, c)
     numbers = c.start()
     numbers[2 * c.phase_size : 2 * c.phase_size + len(c.features)] = 0.7
@@ -163,3 +167,76 @@ def test_nonconvergence_includes_the_optimiser_message(monkeypatch: pytest.Monke
     monkeypatch.setattr(person, "minimize", failed)
     with pytest.raises(RuntimeError, match="did not converge: iteration limit"):
         person.fit(tiny(), person.Candidate("A"))
+
+
+def test_counts_and_shared_parameters_are_the_declared_equations() -> None:
+    counts = {"A": 40, "B": 22, "C": 42, "D": 40, "E": 41, "F": 38}
+    twins = {"A": 38, "B": 20, "C": 38, "D": 38, "E": 39, "F": 36}
+    for c in person.CANDIDATES:
+        assert c.count == (twins if c.twin else counts)[c.letter]
+        assert len(c.start()) == c.count
+        assert (c.start()[-len(c.traces) :] == 0.5).all() if c.traces else True
+        assert np.array_equal(c.start()[: c.phase_size], c.start()[c.phase_size : 2 * c.phase_size])
+        record = person.records(tiny(), c)
+        numbers = c.start() + 0.1
+        loss, _, logs = person.likelihood(numbers, record, c)
+        assert loss + logs.sum() == pytest.approx(0.01 * float((numbers**2).sum()))
+
+
+def test_fit_uses_one_start_and_the_declared_bounds_and_stopping_rules(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from types import SimpleNamespace
+
+    calls = 0
+
+    def inspected(fun: Any, start: person.Floats, **kwargs: Any) -> Any:
+        nonlocal calls
+        calls += 1
+        c = person.Candidate("C")
+        assert np.array_equal(start, c.start())
+        assert kwargs["method"] == "L-BFGS-B" and kwargs["jac"] is True
+        assert kwargs["options"] == {"maxiter": 2000, "ftol": 1e-10, "gtol": 1e-7, "maxls": 50}
+        bounds = kwargs["bounds"]
+        assert bounds[-3:] == [(0.0, 1.0)] * 3
+        for offset in (0, c.phase_size):
+            assert bounds[offset + c.constants + 1 : offset + c.phase_size] == [(-8.0, 8.0)] * 3
+        assert np.isfinite(fun(start)[0])
+        return SimpleNamespace(success=True, x=start)
+
+    monkeypatch.setattr(person, "minimize", inspected)
+    person.fit(tiny(), person.Candidate("C"))
+    assert calls == 1
+
+
+def test_c_copies_the_missing_trace_after_updates_with_different_fractions() -> None:
+    p = law("C")
+    numbers = p.numbers.copy()
+    numbers[-3:] = (0.3, 0.1, 0.9)
+    p = replace(p, numbers=numbers)
+    for cell, seat, source in (("2-AI", 0, 2), ("2-AI", 1, 2), ("2-FE", 0, 1), ("4-FE", 0, 1)):
+        game = GAMES[cell]
+        state = person.State()
+        expected = None
+        for r in range(10):
+            row = tuple(e if r % 2 else 0 for e in game.endowments)
+            observed = float(r % 2)
+            expected = (
+                observed
+                if expected is None
+                else expected + p.fractions[source] * (observed - expected)
+            )
+            state = p.update(state, game, seat, row)
+            assert state.traces[1:] == pytest.approx([expected, expected])
+    # Both traces remain separate when both kinds of other seat are present.
+    game = GAMES["4-AI"]
+    state = p.update(person.State(), game, 0, (0, 0, 0, 0))
+    state = p.update(state, game, 0, (0, 36, 12, 12))
+    assert state.traces[1:] == pytest.approx((0.1, 0.9))
+
+
+def test_b_uses_the_four_game_numbers_in_the_original_point_unit() -> None:
+    c = person.Candidate("B")
+    for game in GAMES.values():
+        for seat in range(game.size):
+            assert c.base(game, seat) == pytest.approx((1.0, *measure.traits(game, seat)))

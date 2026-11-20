@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from fractions import Fraction
 from typing import Any, Protocol
 
@@ -63,16 +63,25 @@ class Agent(Protocol):
     def __call__(self, view: View) -> Floats: ...
 
 
-@dataclass(frozen=True)
+@dataclass
 class Coded:
     law: person.Person
+    _history: tuple[Observation, ...] = field(default=(), init=False, repr=False)
+    _state: person.State = field(default_factory=person.State, init=False, repr=False)
+    _key: tuple[Game, int] | None = field(default=None, init=False, repr=False)
 
     def __call__(self, view: View) -> Floats:
-        state = person.State()
-        for observation in view.history:
+        # Reuse only a verified prefix. An arbitrary view still works on its own.
+        key = (view.game, view.seat)
+        if key == self._key and view.history and view.history[:-1] == self._history:
+            state, observations = self._state, view.history[-1:]
+        else:
+            state, observations = person.State(), view.history
+        for observation in observations:
             # No missing contribution or payoff is inferred from the rules.
             row = tuple(dict(observation.contributions).get(s, 0) for s in range(view.game.size))
             state = self.law.update(state, view.game, view.seat, row)
+        self._history, self._state, self._key = view.history, state, key
         return self.law.probabilities(view.game, view.seat, state)
 
 
