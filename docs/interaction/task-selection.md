@@ -96,7 +96,8 @@ them against the manifest, writes the training file and prints this table.
 
 How the held-out groups are kept out of the analysis:
 
-- One function, `seal`, is the only code that opens the raw files. It writes
+- One function, `seal`, with the private functions it calls, is the only code that reads
+  the raw files for their contents. It writes
   `data/groups/training.json`: the training groups, and a count of held-out groups per game.
 - Everything else, the measurement included, reads only that file. A test deletes the raw
   files, disables the libraries that read them, and loads.

@@ -20,7 +20,7 @@ def _points(band: int, endowment: int) -> int:
     return (0, endowment // 6, endowment // 2, endowment * 5 // 6, endowment)[band]
 
 
-def _groups(others: float, count: int, seed: int) -> list[Group]:
+def played_groups(others: float, count: int, seed: int) -> list[Group]:
     """Synthetic groups of every game, played forward by a model whose weight on the others'
     last contributions is `others`. With zero the members never affect one another."""
     strata = np.linspace(-0.6, 0.6, len(measure.STRATA))
@@ -108,7 +108,7 @@ def test_with_no_weight_on_others_the_group_does_not_interact() -> None:
 def test_no_influence_in_the_data_gives_no_advantage() -> None:
     """NEGATIVE CONTROL. Groups simulated with members who ignore each other: seeing the
     others' history is worth nothing out of sample, in the open loop and the closed loop."""
-    groups = _groups(others=0.0, count=40, seed=21)
+    groups = played_groups(others=0.0, count=40, seed=21)
     mean, _, _ = _gain(groups)
     assert abs(mean) < NOISE
     alone, together = measure.closed_loop(groups)
@@ -119,7 +119,7 @@ def test_influence_in_the_data_is_found_in_both_loops() -> None:
     """POSITIVE CONTROL. Groups simulated with members who follow each other: the advantage
     is clearly positive in the open loop, and in the closed loop it shows where it should,
     in how far apart the members of a group are."""
-    groups = _groups(others=2.0, count=40, seed=22)
+    groups = played_groups(others=2.0, count=40, seed=22)
     _, low, _ = _gain(groups)
     assert low > 5 * NOISE
     alone, together = measure.closed_loop(groups)
@@ -178,7 +178,7 @@ def _grows(groups: list[Group]) -> bool:
 def test_influence_appears_only_after_the_first_round() -> None:
     """POSITIVE CONTROL for the check without a model. Members who follow each other are no
     closer than chance in the first round, and closer in every later block."""
-    groups = _groups(others=2.0, count=40, seed=31)
+    groups = played_groups(others=2.0, count=40, seed=31)
     _, low, high = _closer(groups)
     assert low[0] < 0 < high[0]
     assert _grows(groups)
@@ -186,7 +186,7 @@ def test_influence_appears_only_after_the_first_round() -> None:
 
 def test_members_who_ignore_each_other_are_never_closer_than_chance() -> None:
     """NEGATIVE CONTROL for the check without a model."""
-    groups = _groups(others=0.0, count=40, seed=32)
+    groups = played_groups(others=0.0, count=40, seed=32)
     _, low, high = _closer(groups)
     assert all(lower < 0 < upper for lower, upper in zip(low, high, strict=True))
     assert not _grows(groups)
@@ -264,7 +264,7 @@ def test_power_counts_both_tails() -> None:
 def test_a_group_is_scored_by_a_model_that_never_saw_it() -> None:
     """Changing one group's own contributions does not change the model that scores it: the
     scores of every other fold's groups move, the group's own fold-mates' model does not."""
-    groups = _groups(others=1.0, count=6, seed=23)
+    groups = played_groups(others=1.0, count=6, seed=23)
     folds = {measure.fold_of(group) for group in groups}
     assert folds == set(range(measure.FOLDS))
     target = 0
@@ -293,7 +293,7 @@ def _zeroed(groups: list[Group], target: int) -> list[Group]:
 def test_a_left_out_game_is_scored_by_a_model_that_saw_none_of_it() -> None:
     """Changing one group changes nothing for the other groups of its game when the game is
     left out of the fit, and changes the scores of the other games, whose fits include it."""
-    groups = _groups(others=1.0, count=6, seed=24)
+    groups = played_groups(others=1.0, count=6, seed=24)
     name = "pooled, own and others"
     before = measure.out_of_sample(groups, name, leave_out_game=True)
     after = measure.out_of_sample(_zeroed(groups, 0), name, leave_out_game=True)
@@ -309,7 +309,7 @@ def test_a_group_is_compared_with_simulations_from_a_model_that_never_saw_it() -
     """In the closed loop, changing one group changes nothing for the other groups of its
     fold, and changes the scores of groups in the other folds, whose models were fitted on
     it."""
-    groups = _groups(others=1.0, count=6, seed=25)
+    groups = played_groups(others=1.0, count=6, seed=25)
     before = np.hstack(measure.closed_loop(groups))
     after = np.hstack(measure.closed_loop(_zeroed(groups, 0)))
     fold = np.array([measure.fold_of(group) for group in groups])
@@ -338,7 +338,7 @@ def test_a_fit_that_does_not_converge_is_refused(monkeypatch: pytest.MonkeyPatch
 def test_the_check_against_chance_accepts_a_subset_of_the_games() -> None:
     """Groups of one game only are compared with re-formings of that game; the games that
     are absent are skipped and carry no weight."""
-    only = [group for group in _groups(others=2.0, count=30, seed=41) if group.cell == "4-FE"]
+    only = [group for group in played_groups(others=2.0, count=30, seed=41) if group.cell == "4-FE"]
     real, chance = measure.against_chance(only)
     assert real.shape == (len(measure.BLOCKS),) and np.isfinite(chance).all()
     assert (real[1:] < np.percentile(chance[:, 1:], 2.5, axis=0)).all()

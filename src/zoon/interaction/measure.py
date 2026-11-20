@@ -201,7 +201,7 @@ def fit(x: Floats, choice: Ints) -> Floats:
 
     result = minimize(loss, start, method="L-BFGS-B")
     if not result.success:
-        raise RuntimeError("an ordered logit did not converge")
+        raise RuntimeError(f"an ordered logit did not converge: {result.message}")
     return np.asarray(result.x, dtype=np.float64)
 
 
@@ -467,6 +467,10 @@ def main() -> None:
     others_add = gain("[open loop] others' history adds, entered second", both - own, d.group)
     gain("[open loop] others' history adds, entered first", others - none, d.group)
     gain("[open loop] own history adds, entered second", both - others, d.group)
+    opening = d.first == 1
+    for name in ("per game, no history", "per game, own history", "per game, own and others"):
+        score = left[name][opening].mean()
+        print(f"[open loop, round 1 only] {name} = {score:+.4f} nats per decision")
     later = d.first == 0
     gain(
         "[open loop, rounds 2 to 20] others' history adds, entered second",

@@ -3,7 +3,25 @@
 import re
 from pathlib import Path
 
+import pytest
+
+from tests.test_interaction_measure import played_groups
+from zoon.interaction import measure
+
 NOTE = Path(__file__).parent.parent / "docs" / "interaction" / "measure.md"
+# Lines the note's argument rests on. A run must print each one.
+REPORTED = (
+    "[open loop] own history adds, entered first",
+    "[open loop] own history adds, entered second",
+    "[open loop] others' history adds, entered first",
+    "[open loop] others' history adds, entered second",
+    "[open loop, round 1 only] per game, no history",
+    "[open loop, round 1 only] per game, own and others",
+    "[members apart, round 1] closer than chance by",
+    "[members apart, rounds 16 to 20] closer than chance by",
+    "[power] closed loop, all three",
+    "[power] closed loop, members apart",
+)
 NUMBER = re.compile(r"[+-]?\d+\.\d{3,}")
 
 
@@ -34,17 +52,28 @@ def test_the_pasted_output_reports_what_the_note_relies_on() -> None:
     and power for each closed-loop measure are printed, so the note cannot quote one without
     the other."""
     _, paste = _split()
-    for label in (
-        "[open loop] own history adds, entered first",
-        "[open loop] own history adds, entered second",
-        "[open loop] others' history adds, entered first",
-        "[open loop] others' history adds, entered second",
-        "[members apart, round 1] closer than chance by",
-        "[members apart, rounds 16 to 20] closer than chance by",
-        "[power] closed loop, all three",
-        "[power] closed loop, members apart",
-    ):
+    for label in REPORTED:
         assert label in paste, label
+
+
+def test_a_live_run_prints_what_the_note_relies_on(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The same lines are printed by the program itself, run here on synthetic groups, and
+    the pasted output has a line for every label a run prints."""
+    groups = played_groups(others=1.0, count=6, seed=51)
+    monkeypatch.setattr(measure.data, "load", lambda: groups)
+    monkeypatch.setattr(measure.data, "held_out_counts", lambda: {"2-FE": 4, "4-FE": 3})
+    measure.main()
+    printed = capsys.readouterr().out
+    for label in REPORTED:
+        assert label in printed, label
+    _, paste = _split()
+
+    def labels(text: str) -> list[str]:
+        return [line.split(" = ")[0] for line in text.splitlines()]
+
+    assert labels(printed) == labels(paste)
 
 
 def test_the_notes_claim_prediction_and_not_influence() -> None:
