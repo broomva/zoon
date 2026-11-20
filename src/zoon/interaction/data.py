@@ -7,7 +7,7 @@ Paper: https://doi.org/10.1073/pnas.2525760123
 The raw files are never committed. `fetch` downloads them into `data/groups/raw/` and checks
 each against `interaction/data-manifest.json`. `load` returns the training groups.
 
-What is read, and what is not:
+What is used, and what is not:
 
 - Only the linear game, and only its first session. In the second session the same people
   play again in new groups, and the four-player file does not say who is who across
@@ -15,16 +15,28 @@ What is read, and what is not:
   its members came from.
 - Only the first 20 rounds, the ones the authors analysed. The two-player sessions ran for
   22 rounds.
-- The threshold game, the second session and the questionnaire answers are never read.
-- A held-out group contributes one to a count and nothing else. Its contributions are never
-  turned into numbers.
+- The threshold game, the second session and the questionnaire answers are never used.
+- A held-out group contributes one to a count and nothing else.
+
+How far the seal goes, by file:
+
+- The two-player spreadsheet is read cell range by cell range. The loader asks for the two
+  identifier columns of a sheet, and then for the 20 round cells of the two first-session
+  rows of each training pair. It never asks for a held-out pair's rounds, a second-session
+  row, a round after the twentieth or a questionnaire column.
+- The four-player file is a MATLAB table that its reader library decodes whole. The loader
+  takes the identifier columns, works out which rows belong to first-session training
+  groups, and takes the contributions of those rows only. Nothing else is kept or turned
+  into a number.
+
+Both loaders check the files against the manifest first, so the split cannot move with a
+changed file. No function in this module returns a held-out group.
 """
 
 import hashlib
 import importlib
 import json
 import urllib.request
-from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
@@ -54,19 +66,10 @@ PAIR_SHEETS: dict[str, str] = {
 }
 FOCAL_LABEL = "me"
 ROWS_PER_PARTICIPANT = 4
-FOUR_COLUMNS: tuple[str, ...] = (
-    "Treatment",
-    "Session",
-    "GroupID",
-    "PlayerID",
-    "Round",
-    "Contribution",
-)
+FOUR_KEYS: tuple[str, ...] = ("Treatment", "Session", "GroupID", "PlayerID", "Round")
+FOUR_VALUE = "Contribution"
 
 Rounds = tuple[tuple[int, ...], ...]
-# For each game, each raw group identifier and a function that reads that group's rounds.
-# Nothing about a group is turned into numbers until its function is called.
-Unread = dict[str, dict[str, Callable[[], Rounds]]]
 
 
 class RecordFault(ValueError):
@@ -114,22 +117,35 @@ def fetch(raw_dir: Path = RAW_DIR, manifest: Path = MANIFEST) -> None:
     manifest.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n")
 
 
+def verify(raw_dir: Path) -> None:
+    """Refuse to read files that are missing from the manifest or differ from it."""
+    recorded: dict[str, dict[str, str | int]] = json.loads(MANIFEST.read_text())["files"]
+    for filename in FILES:
+        path = raw_dir / filename
+        entry = recorded.get(filename)
+        if entry is None or entry["sha256"] != _sha256(path):
+            raise ValueError(f"{filename} does not match {MANIFEST.name}")
+
+
 def _points(cell: object, endowment: int) -> int:
-    """Read one contribution: a whole number of points from nothing to the endowment."""
+    """Read one contribution: a whole number of points from nothing to the endowment.
+
+    The message never repeats the cell.
+    """
     if isinstance(cell, (str, bool)) or not isinstance(cell, (int, float)):
-        raise RecordFault(f"a contribution is not a number: {cell!r}")
+        raise RecordFault("a contribution is not a number")
     value = float(cell)
     if not value.is_integer() or not 0 <= value <= endowment:
-        raise RecordFault(f"a contribution of {cell!r} is not a whole number in 0..{endowment}")
+        raise RecordFault(f"a contribution is not a whole number in 0..{endowment}")
     return int(value)
 
 
 def _whole(cell: object, what: str) -> int:
     if isinstance(cell, (str, bool)) or not isinstance(cell, (int, float)):
-        raise ValueError(f"{what} is not a number: {cell!r}")
+        raise ValueError(f"{what} is not a number")
     value = float(cell)
     if not value.is_integer():
-        raise ValueError(f"{what} is not a whole number: {cell!r}")
+        raise ValueError(f"{what} is not a whole number")
     return int(value)
 
 
@@ -144,41 +160,59 @@ def _by_seat(game: Game, seats: list[list[object]]) -> Rounds:
     return tuple(tuple(seat[r] for seat in points) for r in range(ROUNDS))
 
 
-def _rows(frame: pd.DataFrame) -> list[list[object]]:
-    return cast(list[list[object]], frame.astype(object).to_numpy().tolist())
+def cells(sheet: Any, rows: tuple[int, int], columns: tuple[int, int]) -> list[list[object]]:
+    """Return the values of one rectangle of a worksheet, rows and columns counted from 1.
+
+    Every read of the spreadsheet goes through this function, so a test can record exactly
+    which cells were asked for.
+    """
+    found = sheet.iter_rows(
+        min_row=rows[0], max_row=rows[1], min_col=columns[0], max_col=columns[1], values_only=True
+    )
+    return [list(row) for row in found]
 
 
-def _unread_pairs(path: Path) -> Unread:
-    """Index the first-session pairs of the two-player file without reading a contribution."""
-    unread: Unread = {}
-    for treatment, sheet in PAIR_SHEETS.items():
-        game = GAMES[f"2-{treatment}"]
-        frame = cast(
-            pd.DataFrame, cast(Any, pd).read_excel(path, sheet_name=sheet, header=0, dtype=object)
-        )
-        columns = [str(column) for column in frame.columns]
-        wanted = [f"R_{r}" for r in range(1, ROUNDS + 1)]
-        if columns[2 : 2 + ROUNDS] != wanted:
-            raise ValueError(f"{sheet} does not start with rounds 1 to {ROUNDS}")
-        rows = _rows(frame)
-        if len(rows) % ROWS_PER_PARTICIPANT:
-            raise ValueError(f"{sheet} is not made of blocks of {ROWS_PER_PARTICIPANT} rows")
-        groups: dict[str, Callable[[], Rounds]] = {}
-        for start in range(0, len(rows), ROWS_PER_PARTICIPANT):
-            first, second = rows[start], rows[start + 1]
-            if first[1] != FOCAL_LABEL or second[1] == FOCAL_LABEL:
-                raise ValueError(f"{sheet} row {start + 2}: the first seat is not the focal one")
-            raw_group = str(_whole(first[0], f"{sheet} participant number"))
-            if raw_group in groups:
-                raise ValueError(f"{sheet} repeats participant {raw_group}")
-            seats = [first[2 : 2 + ROUNDS], second[2 : 2 + ROUNDS]]
-            groups[raw_group] = lambda game=game, seats=seats: _by_seat(game, seats)
-        unread[game.cell] = groups
-    return unread
+ID_COLUMNS = (1, 2)
+ROUND_COLUMNS = (3, 2 + ROUNDS)
 
 
-def read_fours_table(path: Path) -> pd.DataFrame:
-    """Read the four-player file, a MATLAB table, with the optional `mat-io` package."""
+def _training_pairs(path: Path) -> tuple[list[Group], dict[str, int]]:
+    """Read the first-session training pairs, and count the held-out ones."""
+    openpyxl: Any = importlib.import_module("openpyxl")
+    book = openpyxl.load_workbook(path, read_only=True, data_only=True)
+    groups: list[Group] = []
+    counts: dict[str, int] = {}
+    try:
+        for treatment, name in PAIR_SHEETS.items():
+            game, sheet = GAMES[f"2-{treatment}"], book[name]
+            header = cells(sheet, (1, 1), ROUND_COLUMNS)[0]
+            if header != [f"R_{r}" for r in range(1, ROUNDS + 1)]:
+                raise ValueError(f"{name} does not start with rounds 1 to {ROUNDS}")
+            labels = cells(sheet, (2, sheet.max_row), ID_COLUMNS)
+            if len(labels) % ROWS_PER_PARTICIPANT:
+                raise ValueError(f"{name} is not made of blocks of {ROWS_PER_PARTICIPANT} rows")
+            first_row: dict[str, int] = {}
+            for start in range(0, len(labels), ROWS_PER_PARTICIPANT):
+                first, second = labels[start], labels[start + 1]
+                if first[1] != FOCAL_LABEL or second[1] == FOCAL_LABEL:
+                    raise ValueError(f"{name} row {start + 2}: the first seat is not the focal one")
+                raw_group = str(_whole(first[0], f"{name} participant number"))
+                if raw_group in first_row:
+                    raise ValueError(f"{name} repeats participant {raw_group}")
+                first_row[raw_group] = start + 2
+            sealed = held_out(game.cell, first_row)
+            counts[game.cell] = len(sealed)
+            for raw_group, row in first_row.items():
+                if raw_group not in sealed:
+                    rounds = _by_seat(game, cells(sheet, (row, row + 1), ROUND_COLUMNS))
+                    groups.append(Group(game.cell, group_index(game.cell, raw_group), rounds))
+    finally:
+        book.close()
+    return groups, counts
+
+
+def fours_table(path: Path) -> pd.DataFrame:
+    """Decode the four-player file, a MATLAB table, with the optional `mat-io` package."""
     matio: Any = importlib.import_module("matio")
     return cast(pd.DataFrame, matio.load_from_mat(str(path))["all_data"])
 
@@ -194,65 +228,70 @@ def _scalar(cell: object) -> object:
     return cast(object, value)
 
 
-def _unread_fours(path: Path) -> Unread:
-    """Index the first-session groups of the four-player file without reading a contribution."""
-    frame = read_fours_table(path)
-    missing = [column for column in FOUR_COLUMNS if column not in frame.columns]
+def _training_fours(path: Path) -> tuple[list[Group], dict[str, int]]:
+    """Read the first-session training groups of four, and count the held-out ones.
+
+    The identifier columns decide which rows are wanted. Only those rows' contributions are
+    taken out of the table.
+    """
+    frame = fours_table(path)
+    missing = [column for column in (*FOUR_KEYS, FOUR_VALUE) if column not in frame.columns]
     if missing:
         raise ValueError(f"{path.name} lacks the columns {missing}")
-    by_group: dict[tuple[str, str], list[tuple[int, int, object]]] = {}
-    for treatment, session, group, player, round_, cell in _rows(frame[list(FOUR_COLUMNS)]):
+    keys = cast(list[list[object]], frame[list(FOUR_KEYS)].astype(object).to_numpy().tolist())
+    places: dict[tuple[str, str], dict[tuple[int, int], int]] = {}
+    for position, (treatment, session, group, player, round_) in enumerate(keys):
         if _whole(_scalar(session), "a session") != 1:
             continue
-        key = (str(_scalar(treatment)), str(_whole(_scalar(group), "a group number")))
-        seat = _whole(_scalar(player), "a player number")
-        by_group.setdefault(key, []).append((seat, _whole(_scalar(round_), "a round"), cell))
+        key = (f"4-{_scalar(treatment)}", str(_whole(_scalar(group), "a group number")))
+        if key[0] not in GAMES:
+            raise ValueError(f"{path.name} has an unknown treatment")
+        place = (_whole(_scalar(player), "a player number"), _whole(_scalar(round_), "a round"))
+        if place in places.setdefault(key, {}):
+            raise ValueError(f"{path.name} repeats a seat and round of a group")
+        places[key][place] = position
 
-    def rounds_of(game: Game, cells: list[tuple[int, int, object]]) -> Rounds:
-        placed = {(seat, round_): cell for seat, round_, cell in cells}
-        expected = {(s, r) for s in range(1, game.size + 1) for r in range(1, ROUNDS + 1)}
-        if len(cells) != len(expected) or set(placed) != expected:
-            raise RecordFault(f"a group of {game.cell} is not {game.size} seats by {ROUNDS} rounds")
-        seats = [
-            [placed[seat, r] for r in range(1, ROUNDS + 1)] for seat in range(1, game.size + 1)
-        ]
-        return _by_seat(game, seats)
+    groups: list[Group] = []
+    counts: dict[str, int] = {}
+    for cell in sorted({cell for cell, _ in places}):
+        game = GAMES[cell]
+        sealed = held_out(cell, [group for game_cell, group in places if game_cell == cell])
+        counts[cell] = len(sealed)
+        wanted = [(s, r) for s in range(1, game.size + 1) for r in range(1, ROUNDS + 1)]
+        for (game_cell, raw_group), place in places.items():
+            if game_cell != cell or raw_group in sealed:
+                continue
+            if set(place) != set(wanted):
+                raise RecordFault(f"a group of {cell} is not {game.size} seats by {ROUNDS} rounds")
+            taken = cast(
+                list[object],
+                frame[FOUR_VALUE].iloc[[place[w] for w in wanted]].astype(object).tolist(),
+            )
+            seats = [taken[s * ROUNDS : (s + 1) * ROUNDS] for s in range(game.size)]
+            groups.append(Group(cell, group_index(cell, raw_group), _by_seat(game, seats)))
+    return groups, counts
 
-    unread: Unread = {}
-    for (treatment, raw_group), cells in by_group.items():
-        cell_name = f"4-{treatment}"
-        if cell_name not in GAMES:
-            raise ValueError(f"{path.name} has an unknown treatment {treatment!r}")
-        game = GAMES[cell_name]
-        unread.setdefault(cell_name, {})[raw_group] = lambda game=game, cells=cells: rounds_of(
-            game, cells
-        )
-    return unread
 
-
-def _unread(raw_dir: Path) -> Unread:
-    unread = {**_unread_pairs(raw_dir / PAIRS_FILE), **_unread_fours(raw_dir / FOURS_FILE)}
-    if set(unread) != set(GAMES):
-        raise ValueError(f"the files hold the games {sorted(unread)}, not {sorted(GAMES)}")
-    return unread
+def _training(raw_dir: Path) -> tuple[list[Group], dict[str, int]]:
+    """Check the files, then return the training groups and the held-out counts."""
+    verify(raw_dir)
+    pairs, pair_counts = _training_pairs(raw_dir / PAIRS_FILE)
+    fours, four_counts = _training_fours(raw_dir / FOURS_FILE)
+    counts = {**pair_counts, **four_counts}
+    if set(counts) != set(GAMES):
+        raise ValueError(f"the files hold the games {sorted(counts)}, not {sorted(GAMES)}")
+    groups = sorted([*pairs, *fours], key=lambda group: (group.cell, group.index))
+    return groups, dict(sorted(counts.items()))
 
 
 def load(raw_dir: Path = RAW_DIR) -> list[Group]:
     """Return the training groups of all eight games, in a fixed order."""
-    groups: list[Group] = []
-    for cell, readers in sorted(_unread(raw_dir).items()):
-        sealed = held_out(cell, readers)
-        for raw_group, read in readers.items():
-            if raw_group not in sealed:
-                groups.append(Group(cell, group_index(cell, raw_group), read()))
-    return sorted(groups, key=lambda group: (group.cell, group.index))
+    return _training(raw_dir)[0]
 
 
 def held_out_counts(raw_dir: Path = RAW_DIR) -> dict[str, int]:
     """Return how many groups of each game are held out. Nothing else is known about them."""
-    return {
-        cell: len(held_out(cell, readers)) for cell, readers in sorted(_unread(raw_dir).items())
-    }
+    return _training(raw_dir)[1]
 
 
 def main() -> None:

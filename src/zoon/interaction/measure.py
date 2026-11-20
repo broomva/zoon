@@ -1,13 +1,21 @@
-"""What a law about other people adds, measured on training groups only.
+"""What the others' history adds, measured on training groups only.
 
-Three questions are answered before anything is designed or registered:
+Four questions are answered before anything is designed or registered:
 
 1. Open loop: how much better is a person's next contribution predicted when the model sees
    what the others in the group did last round?
-2. A game never seen: how much is lost when the model has not seen the game being played,
-   and how much of that loss do the game's four numbers recover?
+2. A game left out: how much is lost when no group of the game being played was in the fit,
+   and how much do the game's four numbers recover?
 3. Closed loop: do simulated groups whose members respond to each other look more like human
    groups than simulated groups whose members do not?
+4. Without any model: are the members of a human group closer to each other than the same
+   people re-formed into groups at random, and were they already closer in the first round,
+   before anyone had seen anyone else?
+
+A gain in prediction is not by itself evidence that people influence each other. Members who
+never looked at each other but shared a tendency from the start would produce one too. The
+fourth question is the check on that: a shared tendency shows in the first round, influence
+does not.
 
 Every model here is an ordered logit over five bands of the share contributed. The models are
 measuring sticks, not the person model that will be registered. Held-out groups are never
@@ -40,6 +48,14 @@ FOLDS = 5
 SEED = 20261120
 RESAMPLES = 2000
 SIMULATED_GROUPS = 400
+REGROUPINGS = 500
+# First round, early, middle and the last five rounds, as slices of the 20.
+BLOCKS: tuple[tuple[str, slice], ...] = (
+    ("round 1", slice(0, 1)),
+    ("rounds 2 to 5", slice(1, 5)),
+    ("rounds 6 to 15", slice(5, 15)),
+    ("rounds 16 to 20", slice(15, 20)),
+)
 
 
 def band(points: int, endowment: int) -> int:
@@ -149,13 +165,14 @@ def _social(d: Decisions) -> Floats:
     return np.column_stack([d.first, d.own, d.others])
 
 
-# What each model may look at. `seen` models know which game is played; the others do not.
+# What each model may look at. `per game` models have a constant for each game and seat type;
+# `pooled` has one constant; `game numbers` has one constant and the game's four numbers.
 DESIGNS: dict[str, Design] = {
-    "seen, no history": _strata,
-    "seen, own history": lambda d: np.column_stack([_strata(d), _own(d)]),
-    "seen, own and others": lambda d: np.column_stack([_strata(d), _social(d)]),
-    "unseen, pooled": lambda d: np.column_stack([_one(d), _social(d)]),
-    "unseen, game numbers": lambda d: np.column_stack([_one(d), d.traits, _social(d)]),
+    "per game, no history": _strata,
+    "per game, own history": lambda d: np.column_stack([_strata(d), _own(d)]),
+    "per game, own and others": lambda d: np.column_stack([_strata(d), _social(d)]),
+    "pooled, own and others": lambda d: np.column_stack([_one(d), _social(d)]),
+    "game numbers, own and others": lambda d: np.column_stack([_one(d), d.traits, _social(d)]),
 }
 
 
@@ -283,8 +300,8 @@ def summaries(played: Ints) -> Floats:
 
 SUMMARIES: tuple[str, ...] = ("level", "members apart", "trend")
 HISTORY_MODELS: tuple[tuple[str, bool], ...] = (
-    ("seen, own history", False),
-    ("seen, own and others", True),
+    ("per game, own history", False),
+    ("per game, own and others", True),
 )
 
 
@@ -342,78 +359,111 @@ def power(found: tuple[float, float, float], training: int, sealed: int) -> tupl
     """Return the chance that the held-out groups detect an effect, at its training size and
     at half of it.
 
-    The standard error is read off the training interval and scaled to the number of
-    held-out groups. Detecting means a 95% interval that excludes zero.
+    A normal approximation with three assumptions: the held-out groups are as variable as
+    the training groups, so the standard error read off the training interval only needs
+    scaling by the two counts; the scoring models are treated as fixed; and the true effect
+    is the size given. Detecting means a two-sided 95% interval that excludes zero, on either
+    side.
     """
     mean, low, high = found
     error = (high - low) / (2 * 1.96) * (training / sealed) ** 0.5
 
+    def below(z: float) -> float:
+        return 0.5 * (1.0 + math.erf(z / math.sqrt(2.0)))
+
     def detected(effect: float) -> float:
-        return 0.5 * (1.0 + math.erf((effect / error - 1.96) / math.sqrt(2.0)))
+        return below(effect / error - 1.96) + below(-effect / error - 1.96)
 
     return detected(mean), detected(mean / 2)
+
+
+def apart(shares: Floats) -> Floats:
+    """Return, for each block of rounds, how far apart the members of a group are.
+
+    `shares` is groups by rounds by seats. The result is the mean over groups, rounds and
+    pairs of members of the absolute difference between two members' shares.
+    """
+    size = shares.shape[2]
+    gaps = np.mean(
+        [
+            np.abs(shares[:, :, a] - shares[:, :, b])
+            for a in range(size)
+            for b in range(a + 1, size)
+        ],
+        axis=0,
+    )
+    return np.array([gaps[:, rounds].mean() for _, rounds in BLOCKS])
+
+
+def against_chance(groups: Sequence[Group]) -> tuple[Floats, Floats]:
+    """Compare human groups with the same people re-formed into groups at random.
+
+    Returns how far apart members are in each block of rounds, for the real groups and for
+    each of `REGROUPINGS` re-formings. A re-forming keeps every person's whole session and
+    seat, and deals the people of one game and seat to groups at random. Games are weighted
+    by their number of groups.
+    """
+    rng = np.random.default_rng(SEED)
+    real = np.zeros(len(BLOCKS))
+    chance = np.zeros((REGROUPINGS, len(BLOCKS)))
+    for cell in sorted(GAMES):
+        mine = [group for group in groups if group.cell == cell]
+        shares = np.array(BAND_SHARE)[np.array([bands_of(group) for group in mine])]
+        weight = len(mine) / len(groups)
+        real += weight * apart(shares)
+        for draw in range(REGROUPINGS):
+            dealt = np.stack(
+                [shares[rng.permutation(len(mine)), :, seat] for seat in range(shares.shape[2])],
+                axis=2,
+            )
+            chance[draw] += weight * apart(dealt)
+    return real, chance
 
 
 def main() -> None:
     groups = data.load()
     d = decisions(groups)
-    print("zoon interaction: what a law about other people adds, on training groups")
-    print(f"[data] training groups = {len(groups)}; decisions = {len(d.choice)}")
+    count = len(groups)
+    print("zoon interaction: what the others' history adds, on training groups")
+    print(f"[data] training groups = {count}; decisions = {len(d.choice)}")
     shares = np.bincount(d.choice, minlength=BANDS) / len(d.choice)
     print("[bands] share of decisions = " + ", ".join(f"{s:.3f}" for s in shares))
 
-    seen = {name: out_of_sample(groups, name, leave_out_game=False) for name in DESIGNS}
-    for name, scores in seen.items():
-        print(f"[open loop, game seen in training] {name} = {scores.mean():+.4f} nats per decision")
-    for better, worse in (
-        ("seen, own history", "seen, no history"),
-        ("seen, own and others", "seen, own history"),
-    ):
-        mean, low, high = paired(seen[better] - seen[worse], d.group, len(groups))
-        print(f"[open loop] {better} minus {worse} = {mean:+.4f} [{low:+.4f}, {high:+.4f}]")
-    others_add = (mean, low, high)
-    later = d.first == 0
-    mean, low, high = paired(
-        (seen["seen, own and others"] - seen["seen, own history"])[later],
-        d.group[later],
-        len(groups),
-    )
-    print(
-        f"[open loop, rounds 2 to 20] others' history adds = {mean:+.4f} [{low:+.4f}, {high:+.4f}]"
-    )
+    def gain(label: str, difference: Floats, group: Ints) -> tuple[float, float, float]:
+        found = paired(difference, group, count)
+        print(f"{label} = {found[0]:+.4f} [{found[1]:+.4f}, {found[2]:+.4f}]")
+        return found
 
-    unseen = {
-        name: out_of_sample(groups, name, leave_out_game=True)
-        for name in ("unseen, pooled", "unseen, game numbers")
-    }
-    for name, scores in unseen.items():
-        print(f"[open loop, game never seen] {name} = {scores.mean():+.4f} nats per decision")
-    for label, difference in (
-        ("seen minus unseen pooled", seen["seen, own and others"] - unseen["unseen, pooled"]),
-        ("game numbers minus pooled", unseen["unseen, game numbers"] - unseen["unseen, pooled"]),
-    ):
-        mean, low, high = paired(difference, d.group, len(groups))
-        print(f"[game never seen] {label} = {mean:+.4f} [{low:+.4f}, {high:+.4f}]")
+    left = {name: out_of_sample(groups, name, leave_out_game=False) for name in DESIGNS}
+    for name, scores in left.items():
+        print(f"[open loop, groups left out] {name} = {scores.mean():+.4f} nats per decision")
+    own, both = left["per game, own history"], left["per game, own and others"]
+    gain("[open loop] own history adds", own - left["per game, no history"], d.group)
+    others_add = gain("[open loop] others' history adds", both - own, d.group)
+    later = d.first == 0
+    gain("[open loop, rounds 2 to 20] others' history adds", (both - own)[later], d.group[later])
+
+    pooled, numbers = "pooled, own and others", "game numbers, own and others"
+    out = {name: out_of_sample(groups, name, leave_out_game=True) for name in (pooled, numbers)}
+    for name, scores in out.items():
+        print(f"[open loop, game left out] {name} = {scores.mean():+.4f} nats per decision")
+    gain("[game left out] a constant per game adds", both - left[pooled], d.group)
+    gain("[game left out] having the game in the fit adds", left[pooled] - out[pooled], d.group)
+    gain("[game left out] both together", both - out[pooled], d.group)
+    gain("[game left out] the game's numbers recover", out[numbers] - out[pooled], d.group)
     first = d.first == 1
-    mean, low, high = paired(
-        (seen["seen, own and others"] - unseen["unseen, pooled"])[first],
-        d.group[first],
-        len(groups),
-    )
-    print(
-        f"[game never seen, round 1 only] seen minus pooled = {mean:+.4f} [{low:+.4f}, {high:+.4f}]"
-    )
+    gain("[game left out, round 1 only] both together", (both - out[pooled])[first], d.group[first])
 
     alone, together = closed_loop(groups)
     for column, summary in enumerate(SUMMARIES):
         for name, scores in (("own history", alone), ("own and others", together)):
             print(f"[closed loop, {summary}] {name} = {scores[:, column].mean():.4f}")
         mean, low, high = interval(alone[:, column] - together[:, column])
-        gain = f"{mean:+.4f} [{low:+.4f}, {high:+.4f}]"
-        print(f"[closed loop, {summary}] others' history gains = {gain}")
-    mean, low, high = interval((alone - together).mean(axis=1))
+        found = f"{mean:+.4f} [{low:+.4f}, {high:+.4f}]"
+        print(f"[closed loop, {summary}] others' history gains = {found}")
+    loop_gain = interval((alone - together).mean(axis=1))
+    mean, low, high = loop_gain
     print(f"[closed loop, all three] others' history gains = {mean:+.4f} [{low:+.4f}, {high:+.4f}]")
-    loop_gain = (mean, low, high)
     fours = np.array([GAMES[group.cell].size == 4 for group in groups])
     for label, mask in (("pairs", ~fours), ("groups of four", fours)):
         mean, low, high = interval((alone - together).mean(axis=1)[mask])
@@ -421,10 +471,17 @@ def main() -> None:
             f"[closed loop, {label}] others' history gains = {mean:+.4f} [{low:+.4f}, {high:+.4f}]"
         )
 
+    real, chance = against_chance(groups)
+    for column, (label, _) in enumerate(BLOCKS):
+        low, high = np.percentile(chance[:, column], [2.5, 97.5])
+        dealt = f"{chance[:, column].mean():.4f} [{low:.4f}, {high:.4f}]"
+        print(f"[members apart, {label}] human groups = {real[column]:.4f}")
+        print(f"[members apart, {label}] re-formed at random = {dealt}")
+
     sealed = sum(data.held_out_counts().values())
     print(f"[power] held-out groups = {sealed}")
     for label, found in (("open loop", others_add), ("closed loop", loop_gain)):
-        full, half = power(found, len(groups), sealed)
+        full, half = power(found, count, sealed)
         print(f"[power] {label}: at the training effect = {full:.3f}; at half of it = {half:.3f}")
 
 

@@ -9,9 +9,11 @@ import pandas as pd
 from zoon.interaction import data
 from zoon.interaction.games import GAMES, ROUNDS
 
-# A value no seat may contribute. It fills every cell the loader must not read: the second
-# session, the rounds after the twentieth and the questionnaire columns.
-SENTINEL = 999
+# Text where a number would be. It fills every cell the loader must not use: the second
+# session, the rounds after the twentieth and the questionnaire columns. Turning any of them
+# into a number raises.
+SENTINEL = "not for reading"
+UNREADABLE = "unreadable"
 SESSION_ONE_ROUNDS = 22
 
 Key = tuple[str, str]
@@ -44,7 +46,7 @@ def write_raw(
                 rounds = intended[key] = _rounds(rng, cell)
                 for seat, label in enumerate((data.FOCAL_LABEL, f"Type2_{number:02d}")):
                     cells: list[object] = [
-                        "unreadable" if key in unreadable else row[seat] for row in rounds
+                        UNREADABLE if key in unreadable else row[seat] for row in rounds
                     ]
                     extra = [SENTINEL] * (SESSION_ONE_ROUNDS - ROUNDS + 1)
                     rows.append([number if seat == 0 else None, label, *cells, *extra])
@@ -71,7 +73,7 @@ def write_raw(
                 intended[key] = rounds
             for seat in range(4):
                 for round_ in range(ROUNDS):
-                    value: object = rounds[round_][seat] if session == 1 else SENTINEL
+                    value: object = float(rounds[round_][seat]) if session == 1 else SENTINEL
                     table.append(
                         {
                             "Treatment": treatment,
@@ -80,12 +82,17 @@ def write_raw(
                             "PlayerID": float(seat + 1),
                             "GlobalPlayerID": float(len(table)),
                             "Round": float(round_ + 1),
-                            "Contribution": "unreadable" if key in unreadable else float(value),
+                            "Contribution": UNREADABLE if key in unreadable else value,
                         }
                     )
     rng.shuffle(table)
     pd.DataFrame(table).to_pickle(raw_dir / data.FOURS_FILE)
     return intended
+
+
+def first_row(number: int) -> int:
+    """The worksheet row, counted from 1, where the block of pair `number` starts."""
+    return 2 + 4 * (number - 1)
 
 
 def read_synthetic_fours(path: Path) -> pd.DataFrame:

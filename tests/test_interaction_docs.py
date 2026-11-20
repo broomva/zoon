@@ -16,7 +16,7 @@ def _split() -> tuple[str, str]:
 
 def test_the_output_of_a_complete_run_is_pasted() -> None:
     _, paste = _split()
-    assert paste.startswith("zoon interaction: what a law about other people adds")
+    assert paste.startswith("zoon interaction: what the others' history adds")
     assert "[power] closed loop" in paste
 
 

@@ -40,9 +40,9 @@ def _gain(groups: list[Group]) -> tuple[float, float, float]:
     d = measure.decisions(groups)
     seen = {
         name: measure.out_of_sample(groups, name, leave_out_game=False)
-        for name in ("seen, own history", "seen, own and others")
+        for name in ("per game, own history", "per game, own and others")
     }
-    difference = seen["seen, own and others"] - seen["seen, own history"]
+    difference = seen["per game, own and others"] - seen["per game, own history"]
     return measure.paired(difference, d.group, len(groups))
 
 
@@ -126,6 +126,62 @@ def test_influence_in_the_data_is_found_in_both_loops() -> None:
     assert low > 2 * NOISE
 
 
+def _shared_tendency(count: int, seed: int) -> list[Group]:
+    """Synthetic groups whose members never look at each other but share a tendency from the
+    start: every member of a group gives mostly a lot, or mostly little."""
+    rng = np.random.default_rng(seed)
+    groups: list[Group] = []
+    for cell in sorted(GAMES):
+        game = GAMES[cell]
+        for g in range(count):
+            generous = rng.random() < 0.5
+            weights = [0.05, 0.05, 0.1, 0.2, 0.6] if generous else [0.6, 0.2, 0.1, 0.05, 0.05]
+            rounds = tuple(
+                tuple(_points(int(rng.choice(5, p=weights)), e) for e in game.endowments)
+                for _ in range(ROUNDS)
+            )
+            groups.append(Group(cell, f"{cell}-{g}", rounds))
+    return groups
+
+
+def _closer_than_chance(groups: list[Group]) -> list[bool]:
+    """For each block of rounds, are the real groups' members closer than every plausible
+    re-forming: below the 2.5th percentile of the re-formed groups?"""
+    real, chance = measure.against_chance(groups)
+    return [bool(r < low) for r, low in zip(real, np.percentile(chance, 2.5, axis=0), strict=True)]
+
+
+def test_influence_appears_only_after_the_first_round() -> None:
+    """POSITIVE CONTROL for the check without a model. Members who follow each other are no
+    closer than chance in the first round, and closer in every later block."""
+    assert _closer_than_chance(_groups(others=2.0, count=40, seed=31)) == [False, True, True, True]
+
+
+def test_members_who_ignore_each_other_are_never_closer_than_chance() -> None:
+    """NEGATIVE CONTROL for the check without a model."""
+    assert _closer_than_chance(_groups(others=0.0, count=40, seed=32)) == [False] * 4
+
+
+def test_a_shared_tendency_is_caught_in_the_first_round() -> None:
+    """THE CONFOUND. Members who share a tendency but never interact fool the model
+    comparison: seeing the others' history looks valuable. The check without a model catches
+    it, because they are already closer than chance in the first round."""
+    groups = _shared_tendency(count=40, seed=33)
+    _, low, _ = _gain(groups)
+    assert low > 5 * NOISE, "the model comparison alone would call this influence"
+    assert _closer_than_chance(groups)[0]
+
+
+def test_power_counts_both_tails() -> None:
+    """A strong effect is detected whichever way it points, and no effect is detected at
+    the rate of the interval's error."""
+    strong, _ = measure.power((0.05, 0.04, 0.06), 200, 200)
+    reverse, _ = measure.power((-0.05, -0.06, -0.04), 200, 200)
+    none, _ = measure.power((0.0, -0.01, 0.01), 200, 200)
+    assert strong == pytest.approx(1.0) and reverse == pytest.approx(1.0)
+    assert none == pytest.approx(0.05, abs=0.001)
+
+
 def test_a_group_is_scored_by_a_model_that_never_saw_it() -> None:
     """Changing one group's own contributions does not change the model that scores it: the
     scores of every other fold's groups move, the group's own fold-mates' model does not."""
@@ -136,7 +192,7 @@ def test_a_group_is_scored_by_a_model_that_never_saw_it() -> None:
     changed = list(groups)
     flipped = tuple(tuple(0 for _ in row) for row in groups[target].rounds)
     changed[target] = Group(groups[target].cell, groups[target].index, flipped)
-    name = "seen, own and others"
+    name = "per game, own and others"
     before = measure.out_of_sample(groups, name, leave_out_game=False)
     after = measure.out_of_sample(changed, name, leave_out_game=False)
     d = measure.decisions(groups)
