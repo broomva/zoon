@@ -30,7 +30,10 @@ How far the seal goes, by file:
   into a number.
 
 Both loaders check the files against the manifest first, so the split cannot move with a
-changed file. No function in this module returns a held-out group.
+changed file. No function in this module returns a held-out contribution, and none returns
+the opened spreadsheet or the decoded table: both stay inside the function that filters them.
+The seal is on this module. It cannot stop someone from opening the public files with other
+code.
 """
 
 import hashlib
@@ -160,18 +163,6 @@ def _by_seat(game: Game, seats: list[list[object]]) -> Rounds:
     return tuple(tuple(seat[r] for seat in points) for r in range(ROUNDS))
 
 
-def cells(sheet: Any, rows: tuple[int, int], columns: tuple[int, int]) -> list[list[object]]:
-    """Return the values of one rectangle of a worksheet, rows and columns counted from 1.
-
-    Every read of the spreadsheet goes through this function, so a test can record exactly
-    which cells were asked for.
-    """
-    found = sheet.iter_rows(
-        min_row=rows[0], max_row=rows[1], min_col=columns[0], max_col=columns[1], values_only=True
-    )
-    return [list(row) for row in found]
-
-
 ID_COLUMNS = (1, 2)
 ROUND_COLUMNS = (3, 2 + ROUNDS)
 
@@ -182,6 +173,18 @@ def _training_pairs(path: Path) -> tuple[list[Group], dict[str, int]]:
     book = openpyxl.load_workbook(path, read_only=True, data_only=True)
     groups: list[Group] = []
     counts: dict[str, int] = {}
+
+    def cells(sheet: Any, rows: tuple[int, int], columns: tuple[int, int]) -> list[list[object]]:
+        """Ask the worksheet for one rectangle, rows and columns counted from 1."""
+        found = sheet.iter_rows(
+            min_row=rows[0],
+            max_row=rows[1],
+            min_col=columns[0],
+            max_col=columns[1],
+            values_only=True,
+        )
+        return [list(row) for row in found]
+
     try:
         for treatment, name in PAIR_SHEETS.items():
             game, sheet = GAMES[f"2-{treatment}"], book[name]
@@ -211,12 +214,6 @@ def _training_pairs(path: Path) -> tuple[list[Group], dict[str, int]]:
     return groups, counts
 
 
-def fours_table(path: Path) -> pd.DataFrame:
-    """Decode the four-player file, a MATLAB table, with the optional `mat-io` package."""
-    matio: Any = importlib.import_module("matio")
-    return cast(pd.DataFrame, matio.load_from_mat(str(path))["all_data"])
-
-
 def _scalar(cell: object) -> object:
     """Unwrap the one-element arrays MATLAB text cells arrive in."""
     value: object = cast(Any, cell).tolist() if hasattr(cell, "tolist") else cell
@@ -231,10 +228,12 @@ def _scalar(cell: object) -> object:
 def _training_fours(path: Path) -> tuple[list[Group], dict[str, int]]:
     """Read the first-session training groups of four, and count the held-out ones.
 
-    The identifier columns decide which rows are wanted. Only those rows' contributions are
-    taken out of the table.
+    The file is a MATLAB table, decoded by the optional `mat-io` package. The decoded table
+    never leaves this function: the identifier columns decide which rows are wanted, and only
+    those rows' contributions are taken out of it.
     """
-    frame = fours_table(path)
+    matio: Any = importlib.import_module("matio")
+    frame = cast(pd.DataFrame, matio.load_from_mat(str(path))["all_data"])
     missing = [column for column in (*FOUR_KEYS, FOUR_VALUE) if column not in frame.columns]
     if missing:
         raise ValueError(f"{path.name} lacks the columns {missing}")

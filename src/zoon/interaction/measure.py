@@ -381,7 +381,9 @@ def apart(shares: Floats) -> Floats:
     """Return, for each block of rounds, how far apart the members of a group are.
 
     `shares` is groups by rounds by seats. The result is the mean over groups, rounds and
-    pairs of members of the absolute difference between two members' shares.
+    pairs of members of the absolute difference between two members' shares. It is a mean
+    per round, so a block of one round and a block of ten estimate the same kind of quantity;
+    the one-round block is the noisier estimate.
     """
     size = shares.shape[2]
     gaps = np.mean(
@@ -401,14 +403,24 @@ def against_chance(groups: Sequence[Group]) -> tuple[Floats, Floats]:
     Returns how far apart members are in each block of rounds, for the real groups and for
     each of `REGROUPINGS` re-formings. A re-forming keeps every person's whole session and
     seat, and deals the people of one game and seat to groups at random. Games are weighted
-    by their number of groups.
+    by their number of groups. Shares are the contributions as recorded, divided by the
+    endowment; no bands are involved.
+
+    What it can and cannot show. If the people of a game and seat are exchangeable when the
+    groups are formed, a re-forming is a draw from what the groups would look like had their
+    members never met. A tendency shared from the start makes real members closer by the
+    same expected amount in every round. Members who respond to each other start no closer
+    than chance and become closer. So the comparison is between the first round's excess and
+    the later ones. It cannot rule out a shared tendency smaller than the first round's range
+    of chance, and it does not say what kind of response draws members together.
     """
     rng = np.random.default_rng(SEED)
     real = np.zeros(len(BLOCKS))
     chance = np.zeros((REGROUPINGS, len(BLOCKS)))
     for cell in sorted(GAMES):
         mine = [group for group in groups if group.cell == cell]
-        shares = np.array(BAND_SHARE)[np.array([bands_of(group) for group in mine])]
+        endowments = np.array(GAMES[cell].endowments, dtype=np.float64)
+        shares = np.array([group.rounds for group in mine], dtype=np.float64) / endowments
         weight = len(mine) / len(groups)
         real += weight * apart(shares)
         for draw in range(REGROUPINGS):
@@ -418,6 +430,14 @@ def against_chance(groups: Sequence[Group]) -> tuple[Floats, Floats]:
             )
             chance[draw] += weight * apart(dealt)
     return real, chance
+
+
+def closer_than_chance(real: Floats, chance: Floats) -> tuple[Floats, Floats, Floats]:
+    """Return, for each block, how much closer real members are than re-formed ones: the
+    mean over re-formings and the ends of its 95% range."""
+    closer = chance - real
+    low, high = np.percentile(closer, [2.5, 97.5], axis=0)
+    return closer.mean(axis=0), low, high
 
 
 def main() -> None:
@@ -472,11 +492,14 @@ def main() -> None:
         )
 
     real, chance = against_chance(groups)
+    closer, closer_low, closer_high = closer_than_chance(real, chance)
     for column, (label, _) in enumerate(BLOCKS):
         low, high = np.percentile(chance[:, column], [2.5, 97.5])
         dealt = f"{chance[:, column].mean():.4f} [{low:.4f}, {high:.4f}]"
         print(f"[members apart, {label}] human groups = {real[column]:.4f}")
         print(f"[members apart, {label}] re-formed at random = {dealt}")
+        excess = f"{closer[column]:+.4f} [{closer_low[column]:+.4f}, {closer_high[column]:+.4f}]"
+        print(f"[members apart, {label}] closer than chance by = {excess}")
 
     sealed = sum(data.held_out_counts().values())
     print(f"[power] held-out groups = {sealed}")

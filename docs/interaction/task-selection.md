@@ -90,15 +90,17 @@ pinned by hash in `interaction/data-manifest.json`, so the assignment cannot mov
 
 `uv run --extra groups python -m zoon.interaction.data` downloads the two files, checks them
 against the manifest and prints this table. The training loader returns the training groups
-and a count of the held-out ones, and no function of the module returns a held-out group.
-Both loaders refuse files that differ from the manifest, because the ranking depends on
-which groups are in the file.
+and a count of the held-out ones. No function of the module returns a held-out
+contribution, the opened spreadsheet or the decoded table; a test calls every function,
+private ones included, and checks what comes back. Both loaders refuse files that differ
+from the manifest, because the ranking depends on which groups are in the file. The seal is
+on the module: it cannot stop anyone from opening the public files with other code.
 
 How far the seal goes differs by file, and `tests/test_interaction_data.py` checks each:
 
 - The spreadsheet of pairs is read one range of cells at a time. The loader asks for the
   identifier columns, and then for the 20 round cells of the two first-session rows of each
-  training pair. A test records every range asked for.
+  training pair. A test wraps the spreadsheet library and records every range asked for.
 - The file for groups of four is a MATLAB table that its reader library decodes whole. The
   loader keeps the first-session rows of training groups and nothing else. A test fills
   every other contribution with text and loads without error.

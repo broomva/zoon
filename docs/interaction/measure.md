@@ -6,11 +6,11 @@ Run on 2026-11-20, before any design or registration, on the 210 training groups
 **Answer: enough to test, in both directions.** Seeing what the others did last round
 improves the prediction of a person's next contribution by 0.0435 nats per decision, and
 simulated groups whose members respond to each other are closer to human groups than
-simulated groups whose members do not. A check that uses no model agrees: members of a human
-group start no closer to each other than strangers would be, are much closer from the second
-round, and after the fifth are about twice as close. The measurement also shows two things the design has to accept:
-knowing which game is played is worth little here, and a person's own past predicts ten
-times more than the other people do.
+simulated groups whose members do not. A check that uses no model points the same way: in
+the first round the members of a human group are no closer to each other than strangers, and
+in every later block of rounds they are far closer. The measurement also shows two things the
+design has to accept: knowing which game is played is worth little to these models, and a
+person's own past predicts ten times more than the other people do.
 
 What this is and is not. Every model below is an ordered logit over five bands of the share
 contributed: nothing, up to a third, up to two thirds, more but not all, and everything.
@@ -42,24 +42,42 @@ the others' history would then be a second reading of the shared tendency. A tes
 `tests/test_interaction_measure.py` builds exactly such groups and shows that the model
 comparison is fooled by them.
 
-Two things speak against that here. The experiment formed groups at random. And the data can
-be asked directly, with no model: how far apart are two members of a group, as a difference
-in the share contributed, compared with the same people dealt into groups at random?
+The data can be asked more directly, with no model and no bands: how far apart are two
+members of a group, as a difference in the share of the endowment contributed, compared with
+the same people dealt into groups at random?
 
-| Rounds | Human groups | Re-formed at random, with its 95% range |
-|---|---|---|
-| 1 | 0.4004 | 0.4055, from 0.3712 to 0.4410 |
-| 2 to 5 | 0.2432 | 0.4033, from 0.3754 to 0.4317 |
-| 6 to 15 | 0.1978 | 0.4045, from 0.3745 to 0.4305 |
-| 16 to 20 | 0.2083 | 0.4295, from 0.3999 to 0.4632 |
+| Rounds | Human groups | Re-formed at random | Closer than chance by, with its 95% range |
+|---|---|---|---|
+| 1 | 0.4180 | 0.4170 | -0.0010, from -0.0334 to 0.0344 |
+| 2 to 5 | 0.2403 | 0.4033 | 0.1630, from 0.1362 to 0.1896 |
+| 6 to 15 | 0.1953 | 0.4011 | 0.2058, from 0.1749 to 0.2320 |
+| 16 to 20 | 0.2039 | 0.4280 | 0.2242, from 0.1931 to 0.2598 |
 
-In the first round, before anyone has seen anyone else, members of a group are as far apart
-as strangers. A shared tendency would show there, and does not. From the second round they
-are much closer, and after the fifth about half as far apart as strangers. People moved
-toward the people they were grouped with.
+How to read it. Each figure is a mean per round, so the blocks estimate the same kind of
+quantity; the single first round is the noisiest. A tendency that members shared from the
+start and kept would make them closer than chance by the same expected amount in every
+round. Members who respond to each other would start at chance and become closer.
 
-This is evidence that members respond to each other. It does not say what the response is:
-reciprocity, imitation and learning what the group will sustain would all look like this.
+- In the first round, before anyone has seen anyone else, members are as far apart as
+  strangers: the range runs from -0.0334 to 0.0344.
+- In every later block they are closer than chance by at least 0.1362, the low end of the
+  lowest range. That is about four times the most the first round allows.
+
+So a shared starting tendency could account for at most a small part of the later closeness.
+Most of it arose after the members began to see each other.
+
+What this does not show, and what it assumes:
+
+- **It bounds a shared tendency; it does not exclude one.** A tendency too small to stand
+  out in one round, inside the first round's range, would pass unnoticed. A test builds such
+  groups and confirms the first round misses them.
+- **It assumes that the people of one game and seat are exchangeable when groups are
+  formed**, which random matching gives, and that members of a group share nothing over the
+  session except each other's behaviour. A shock that reached one group and not another,
+  round after round, would look the same. The experiment gave members no channel but the
+  contributions and payoffs shown after each round.
+- **It does not say what the response is.** Reciprocity, imitation and learning what the
+  group will sustain would all look like this.
 
 ## A game left out
 
@@ -83,17 +101,17 @@ What this does and does not show:
 - It is not a test of a language model's reading of the rules. No such reading was tried,
   and a reading might use more than these models can.
 - The intervals resample groups. They do not account for there being only eight games, and
-  a claim about reading rules never seen is a claim about games. Eight is too few to carry
-  one.
+  a conclusion about rules never seen generalises from games, of which there are eight.
 
 ## Closed loop: simulated groups against human groups
 
 Each fold's models play 400 groups of each game forward from the first round, with no human
 data inside the loop. Each human group is then scored against the simulated groups of its
-game on three summaries, all in shares of the endowment: the group's level over the session,
-how far apart its members are within a round, and how far the last five rounds are above the
-first five. The score is the continuous ranked probability score, a distance between one
-observed number and a simulated distribution; lower is closer.
+game on three summaries: the group's level over the session, how far apart its members are
+within a round, and how far the last five rounds are above the first five. The simulated
+groups play in bands, so here the human groups are put in the same bands, and every summary
+is in the share that stands for a band. The score is the continuous ranked probability score,
+a distance between one observed number and a simulated distribution; lower is closer.
 
 | Summary | Members ignore each other | Members respond to each other | Gain |
 |---|---|---|---|
@@ -124,17 +142,19 @@ the others than the measuring stick does, the closed-loop comparison could miss 
 
 1. **Test what the others' history adds, open and closed loop.** Both effects are present in
    the human data and large enough to detect.
-2. **Do not make the verdict depend on a model reading the rules.** With eight games that
-   differ by four numbers, such a claim could not be supported either way. Report what
-   knowing the game adds; do not gate on it. A test that needs reading and interaction
-   together needs data with far more variety in the rules.
+2. **Leave a model's reading of the rules out of this test's verdict.** This is a choice
+   about the design, not a finding. Nothing here measured what a reading adds, and no power
+   was computed for it. The reasons are that these models lose little on a game they have
+   not seen, and that any conclusion about rules never seen would generalise from eight
+   games. What the coded models lose on a game left out is reported.
 3. **The person needs a persistent level of their own.** In the open loop it can be taken
    from the person's history. In the closed loop there is no history to take it from, so it
    has to come from the person's state, drawn at the start and carried forward.
 4. **Score the closed loop on what the others change.** A score on the group's level alone
    would hardly distinguish people who respond to each other from people who do not.
-5. **Report the check without a model beside any model comparison.** It is what separates
-   influence from people who were alike from the start.
+5. **Report the check without a model beside any model comparison.** It bounds how much of
+   a group's closeness could have been there from the start, which no comparison of models
+   can do.
 6. **The prompted comparison is unmeasured.** Nothing here says how a prompted model
    predicts or plays these games. That needs model calls, and comes with the registration.
 
@@ -173,14 +193,18 @@ zoon interaction: what the others' history adds, on training groups
 [closed loop, all three] others' history gains = +0.0187 [+0.0125, +0.0250]
 [closed loop, pairs] others' history gains = +0.0197 [+0.0127, +0.0271]
 [closed loop, groups of four] others' history gains = +0.0152 [+0.0024, +0.0271]
-[members apart, round 1] human groups = 0.4004
-[members apart, round 1] re-formed at random = 0.4055 [0.3712, 0.4410]
-[members apart, rounds 2 to 5] human groups = 0.2432
-[members apart, rounds 2 to 5] re-formed at random = 0.4033 [0.3754, 0.4317]
-[members apart, rounds 6 to 15] human groups = 0.1978
-[members apart, rounds 6 to 15] re-formed at random = 0.4045 [0.3745, 0.4305]
-[members apart, rounds 16 to 20] human groups = 0.2083
-[members apart, rounds 16 to 20] re-formed at random = 0.4295 [0.3999, 0.4632]
+[members apart, round 1] human groups = 0.4180
+[members apart, round 1] re-formed at random = 0.4170 [0.3846, 0.4524]
+[members apart, round 1] closer than chance by = -0.0010 [-0.0334, +0.0344]
+[members apart, rounds 2 to 5] human groups = 0.2403
+[members apart, rounds 2 to 5] re-formed at random = 0.4033 [0.3765, 0.4299]
+[members apart, rounds 2 to 5] closer than chance by = +0.1630 [+0.1362, +0.1896]
+[members apart, rounds 6 to 15] human groups = 0.1953
+[members apart, rounds 6 to 15] re-formed at random = 0.4011 [0.3702, 0.4273]
+[members apart, rounds 6 to 15] closer than chance by = +0.2058 [+0.1749, +0.2320]
+[members apart, rounds 16 to 20] human groups = 0.2039
+[members apart, rounds 16 to 20] re-formed at random = 0.4280 [0.3969, 0.4637]
+[members apart, rounds 16 to 20] closer than chance by = +0.2242 [+0.1931, +0.2598]
 [power] held-out groups = 143
 [power] open loop: at the training effect = 1.000; at half of it = 0.969
 [power] closed loop: at the training effect = 0.998; at half of it = 0.683

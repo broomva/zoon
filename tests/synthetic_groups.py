@@ -95,6 +95,10 @@ def first_row(number: int) -> int:
     return 2 + 4 * (number - 1)
 
 
-def read_synthetic_fours(path: Path) -> pd.DataFrame:
-    """Stand in for the MATLAB reader: the synthetic four-player file is a pickled table."""
-    return pd.read_pickle(path)
+class FakeMatio:
+    """Stands in for the MATLAB reader library: the synthetic four-player file is a pickled
+    table, returned the way the library returns the real one."""
+
+    @staticmethod
+    def load_from_mat(path: str) -> dict[str, pd.DataFrame]:
+        return {"all_data": pd.read_pickle(path)}

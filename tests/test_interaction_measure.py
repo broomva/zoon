@@ -144,32 +144,91 @@ def _shared_tendency(count: int, seed: int) -> list[Group]:
     return groups
 
 
-def _closer_than_chance(groups: list[Group]) -> list[bool]:
-    """For each block of rounds, are the real groups' members closer than every plausible
-    re-forming: below the 2.5th percentile of the re-formed groups?"""
-    real, chance = measure.against_chance(groups)
-    return [bool(r < low) for r, low in zip(real, np.percentile(chance, 2.5, axis=0), strict=True)]
+def _static(count: int, seed: int, low: float, high: float) -> list[Group]:
+    """Synthetic groups with a tendency that is shared and never changes: in every round each
+    member gives everything with the group's probability, `low` or `high`, and nothing
+    otherwise. Nobody looks at anybody."""
+    rng = np.random.default_rng(seed)
+    groups: list[Group] = []
+    for cell in sorted(GAMES):
+        game = GAMES[cell]
+        for g in range(count):
+            chance = high if rng.random() < 0.5 else low
+            rounds = tuple(
+                tuple(e if rng.random() < chance else 0 for e in game.endowments)
+                for _ in range(ROUNDS)
+            )
+            groups.append(Group(cell, f"{cell}-{g}", rounds))
+    return groups
+
+
+def _closer(groups: list[Group]) -> tuple[list[float], list[float], list[float]]:
+    mean, low, high = measure.closer_than_chance(*measure.against_chance(groups))
+    return mean.tolist(), low.tolist(), high.tolist()
+
+
+def _grows(groups: list[Group]) -> bool:
+    """Is every later block's range of closeness above the first round's range?"""
+    _, low, high = _closer(groups)
+    return min(low[1:]) > high[0]
 
 
 def test_influence_appears_only_after_the_first_round() -> None:
     """POSITIVE CONTROL for the check without a model. Members who follow each other are no
     closer than chance in the first round, and closer in every later block."""
-    assert _closer_than_chance(_groups(others=2.0, count=40, seed=31)) == [False, True, True, True]
+    groups = _groups(others=2.0, count=40, seed=31)
+    _, low, high = _closer(groups)
+    assert low[0] < 0 < high[0]
+    assert _grows(groups)
 
 
 def test_members_who_ignore_each_other_are_never_closer_than_chance() -> None:
     """NEGATIVE CONTROL for the check without a model."""
-    assert _closer_than_chance(_groups(others=0.0, count=40, seed=32)) == [False] * 4
+    groups = _groups(others=0.0, count=40, seed=32)
+    _, low, high = _closer(groups)
+    assert all(lower < 0 < upper for lower, upper in zip(low, high, strict=True))
+    assert not _grows(groups)
 
 
-def test_a_shared_tendency_is_caught_in_the_first_round() -> None:
+def test_a_strong_shared_tendency_is_caught_in_the_first_round() -> None:
     """THE CONFOUND. Members who share a tendency but never interact fool the model
     comparison: seeing the others' history looks valuable. The check without a model catches
-    it, because they are already closer than chance in the first round."""
+    it, because they are already closer than chance in the first round, and no closer later."""
     groups = _shared_tendency(count=40, seed=33)
-    _, low, _ = _gain(groups)
-    assert low > 5 * NOISE, "the model comparison alone would call this influence"
-    assert _closer_than_chance(groups)[0]
+    _, gain_low, _ = _gain(groups)
+    assert gain_low > 5 * NOISE, "the model comparison alone would call this influence"
+    _, low, _ = _closer(groups)
+    assert low[0] > 0
+    assert not _grows(groups)
+
+
+def test_a_weak_shared_tendency_is_not_excluded_only_bounded() -> None:
+    """THE LIMIT of the check. A weak shared tendency is too small to stand out in one
+    round: the first round's range includes zero. What the check still shows is that the
+    closeness does not grow: the later blocks sit inside the first round's range. So a first
+    round at chance bounds a shared tendency; it does not exclude one."""
+    groups = _static(count=40, seed=1, low=0.35, high=0.65)
+    mean, low, high = _closer(groups)
+    assert low[0] < 0 < high[0], "one round cannot see it"
+    assert all(low[0] < later < high[0] for later in mean[1:])
+    assert not _grows(groups)
+
+
+def test_the_check_uses_contributions_not_bands() -> None:
+    """Members of a group all give a twelfth of their points, or all give a third. Both fall
+    in the same band, so a check on bands would see nothing. On the recorded contributions
+    the members are closer than chance in every block."""
+    rng = np.random.default_rng(5)
+    groups: list[Group] = []
+    for cell in sorted(GAMES):
+        game = GAMES[cell]
+        for g in range(30):
+            part = 12 if rng.random() < 0.5 else 3
+            row = tuple(e // part for e in game.endowments)
+            assert len({measure.band(c, e) for c, e in zip(row, game.endowments, strict=True)}) == 1
+            groups.append(Group(cell, f"{cell}-{g}", (row,) * ROUNDS))
+    _, low, _ = _closer(groups)
+    assert min(low) > 0
 
 
 def test_power_counts_both_tails() -> None:

@@ -1,22 +1,19 @@
 """The group loader: the seal on held-out groups, and the cells that are never asked for."""
 
+import dataclasses
+import importlib
 import inspect
+import sys
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
+import pandas as pd
 import pytest
 
-from tests.synthetic_groups import (
-    SENTINEL,
-    UNREADABLE,
-    first_row,
-    read_synthetic_fours,
-    write_raw,
-)
+from tests.synthetic_groups import SENTINEL, UNREADABLE, FakeMatio, first_row, write_raw
 from zoon.interaction import data, split
-from zoon.interaction.data import Group
 from zoon.interaction.games import GAMES, ROUNDS
 
 GROUPS = 11
@@ -24,7 +21,8 @@ GROUPS = 11
 
 @pytest.fixture(autouse=True)
 def synthetic_fours(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(data, "fours_table", read_synthetic_fours)
+    """The MATLAB reader library is replaced by one that reads the synthetic file."""
+    monkeypatch.setitem(sys.modules, "matio", FakeMatio)
 
 
 def _pin(monkeypatch: pytest.MonkeyPatch, raw: Path) -> None:
@@ -61,33 +59,75 @@ def test_load_returns_training_groups_only(tmp_path: Path, monkeypatch: pytest.M
     assert sum(counts.values()) == len(sealed)
 
 
-def test_no_function_returns_a_held_out_group(
+PLAIN = (type(None), bool, int, float, str)
+
+
+def _leaves(value: object) -> list[object]:
+    """Flatten a returned value to its plain leaves. Anything that is not plain data, a
+    container of plain data or a `Group` is returned as it is, for the caller to reject."""
+    if isinstance(value, PLAIN):
+        return [value]
+    if isinstance(value, data.Group):
+        return _leaves(dataclasses.astuple(value))
+    if isinstance(value, Mapping):
+        items = cast(Mapping[object, object], value)
+        return [leaf for pair in items.items() for part in pair for leaf in _leaves(part)]
+    if isinstance(value, (list, tuple, set, frozenset)):
+        parts = list[object](cast(Any, value))
+        return [leaf for part in parts for leaf in _leaves(part)]
+    return [value]
+
+
+def test_nothing_any_function_returns_holds_a_held_out_cell(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Every function of the module that returns groups, private ones included, returns
-    training groups only. There is no reader to call for the rest."""
+    """THE BOUNDARY. Every function of the module, private ones included, is called on files
+    whose held-out and unused cells are marked text. Whatever it returns or raises is plain
+    data that holds no marked cell: no held-out contribution, no opened spreadsheet and no
+    decoded table leaves the module."""
     raw = tmp_path / "raw"
-    intended = write_raw(raw, GROUPS)
+    intended = write_raw(raw, GROUPS, unreadable=frozenset(_sealed(write_raw(raw, GROUPS))))
     _pin(monkeypatch, raw)
-    sealed = {(cell, split.group_index(cell, group)) for cell, group in _sealed(intended)}
-    module: Any = data
-    returned: list[Group] = [
-        *data.load(raw),
-        *module._training(raw)[0],
-        *module._training_pairs(raw / data.PAIRS_FILE)[0],
-        *module._training_fours(raw / data.FOURS_FILE)[0],
-    ]
-    assert returned and not {(group.cell, group.index) for group in returned} & sealed
-    makers = {
-        name
+    arguments = (raw, raw / data.PAIRS_FILE, raw / data.FOURS_FILE)
+    functions = {
+        name: value
         for name, value in vars(data).items()
-        if inspect.isfunction(value)
-        and value.__module__ == data.__name__
-        and "Group" in str(inspect.signature(value).return_annotation)
+        if inspect.isfunction(value) and value.__module__ == data.__name__
     }
-    assert makers == {"load", "_training", "_training_pairs", "_training_fours"}
-    assert list(inspect.signature(data.load).parameters) == ["raw_dir"]
-    assert list(inspect.signature(data.held_out_counts).parameters) == ["raw_dir"]
+    takes_a_path = {
+        name: function
+        for name, function in functions.items()
+        if list(inspect.signature(function).parameters) in (["raw_dir"], ["path"])
+    }
+    assert set(takes_a_path) == {
+        "load",
+        "held_out_counts",
+        "verify",
+        "_training",
+        "_training_pairs",
+        "_training_fours",
+        "_sha256",
+    }
+    assert set(functions) - set(takes_a_path) == {
+        "fetch",
+        "main",
+        "_url",
+        "_points",
+        "_whole",
+        "_by_seat",
+        "_scalar",
+    }, "a new function must be added to one of the two lists and judged"
+    for name, function in takes_a_path.items():
+        for argument in arguments:
+            try:
+                leaves = _leaves(function(argument))
+            except Exception as fault:
+                leaves = [str(fault)]
+            strange = [leaf for leaf in leaves if not isinstance(leaf, PLAIN)]
+            assert not strange, f"{name} returned something that is not plain data"
+            text = " ".join(leaf for leaf in leaves if isinstance(leaf, str))
+            assert UNREADABLE not in text and SENTINEL not in text, name
+    assert len(data.load(raw)) == len(intended) - len(_sealed(intended))
 
 
 def test_held_out_groups_are_never_turned_into_numbers(
@@ -111,26 +151,48 @@ def test_held_out_groups_are_never_turned_into_numbers(
         assert UNREADABLE not in str(fault.value)
 
 
+class _RecordingSheet:
+    def __init__(self, sheet: Any, asked: list[tuple[str, tuple[int, int], tuple[int, int]]]):
+        self._sheet, self._asked = sheet, asked
+        self.max_row = sheet.max_row
+
+    def iter_rows(self, *, min_row: int, max_row: int, min_col: int, max_col: int, **rest: Any):
+        self._asked.append((str(self._sheet.title), (min_row, max_row), (min_col, max_col)))
+        return self._sheet.iter_rows(
+            min_row=min_row, max_row=max_row, min_col=min_col, max_col=max_col, **rest
+        )
+
+
+class _RecordingBook:
+    def __init__(self, book: Any, asked: list[tuple[str, tuple[int, int], tuple[int, int]]]):
+        self._book, self._asked = book, asked
+
+    def __getitem__(self, name: str) -> _RecordingSheet:
+        return _RecordingSheet(self._book[name], self._asked)
+
+    def close(self) -> None:
+        self._book.close()
+
+
 def test_only_the_cells_of_training_pairs_are_asked_for(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Every read of the spreadsheet is recorded. Round cells are asked for only in the two
-    first-session rows of training pairs: never for a held-out pair, a second-session row, a
-    round after the twentieth or a questionnaire column."""
+    """The spreadsheet library is wrapped so that every range asked of a worksheet is
+    recorded. Round cells are asked for only in the two first-session rows of training pairs:
+    never for a held-out pair, a second-session row, a round after the twentieth or a
+    questionnaire column."""
     raw = tmp_path / "raw"
     intended = write_raw(raw, GROUPS)
     _pin(monkeypatch, raw)
     sealed = _sealed(intended)
     asked: list[tuple[str, tuple[int, int], tuple[int, int]]] = []
-    real = data.cells
+    openpyxl: Any = importlib.import_module("openpyxl")
+    real = openpyxl.load_workbook
 
-    def recording(
-        sheet: Any, rows: tuple[int, int], columns: tuple[int, int]
-    ) -> list[list[object]]:
-        asked.append((str(sheet.title), rows, columns))
-        return real(sheet, rows, columns)
+    def recording(*positional: Any, **named: Any) -> _RecordingBook:
+        return _RecordingBook(real(*positional, **named), asked)
 
-    monkeypatch.setattr(data, "cells", recording)
+    monkeypatch.setattr(openpyxl, "load_workbook", recording)
     data.load(raw)
 
     assert {sheet for sheet, _, _ in asked} == set(data.PAIR_SHEETS.values())
@@ -162,7 +224,7 @@ def test_other_sessions_rounds_and_answers_are_never_used(
     groups = data.load(raw)
     assert all(len(group.rounds) == ROUNDS for group in groups)
     assert all(type(points) is int for group in groups for row in group.rounds for points in row)
-    table = read_synthetic_fours(raw / data.FOURS_FILE)
+    table = pd.read_pickle(raw / data.FOURS_FILE)
     assert SENTINEL in set(table["Contribution"]), "the synthetic second session is text"
 
 
