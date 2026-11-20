@@ -134,9 +134,10 @@ a distance between one observed number and a simulated distribution; lower is cl
 - **Most of the gain is in how far apart the members of a group are.**
 - **The gain in level is small and its interval excludes zero. The trend gets slightly
   worse.** The measuring stick has no account of why contributions drift over a session.
-  It also uses one set of cut points for the first round and the later ones, which fits the
-  first round poorly once history is in the model. The registered person model should treat
-  the first round on its own terms.
+  In the first round the models with history also predict worse than the one without:
+  -1.6650 and -1.6824 nats per decision against -1.5164. A likely reason, not tested here,
+  is that one set of cut points serves both the first round and the later ones. The
+  registered person model should treat the first round on its own terms.
 - Averaged over the three summaries the gain is 0.0187, with an interval from 0.0125 to
   0.0250. It holds for pairs and, with a wider interval, for groups of four. The average
   gives the three summaries equal weight, which is a choice.
@@ -200,6 +201,9 @@ zoon interaction: what the others' history adds, on training groups
 [open loop] others' history adds, entered second = +0.0435 [+0.0343, +0.0527]
 [open loop] others' history adds, entered first = +0.2626 [+0.2154, +0.3117]
 [open loop] own history adds, entered second = +0.2477 [+0.2133, +0.2828]
+[open loop, round 1 only] per game, no history = -1.5164 nats per decision
+[open loop, round 1 only] per game, own history = -1.6650 nats per decision
+[open loop, round 1 only] per game, own and others = -1.6824 nats per decision
 [open loop, rounds 2 to 20] others' history adds, entered second = +0.0467 [+0.0374, +0.0564]
 [open loop, game left out] pooled, own and others = -0.9748 nats per decision
 [open loop, game left out] game numbers, own and others = -0.9661 nats per decision

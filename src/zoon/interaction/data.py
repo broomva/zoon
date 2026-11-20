@@ -8,7 +8,8 @@ Three steps, and one rule about which code may do which:
 
 1. `fetch` downloads the two raw files into `data/groups/raw/` and checks each against
    `interaction/data-manifest.json`. The raw files are never committed.
-2. `seal` is the only code that opens the raw files. It writes `data/groups/training.json`,
+2. `seal`, with the private functions it calls, is the only code that reads the raw files
+   for their contents. It writes `data/groups/training.json`,
    which holds the training groups and, for the rest, a count per game. The hash of that
    file is pinned in the manifest too.
 3. `load` reads the training file and nothing else. All analysis goes through `load`.
