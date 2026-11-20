@@ -35,8 +35,9 @@ on which is entered first:
 | Own history | 0.4668 | 0.2477 |
 | Others' history | 0.2626 | 0.0435 |
 
-- **A person's own history is the stronger predictor in either order**, so whatever the
-  registered person model is, it needs state that carries a person's own level forward.
+- **A person's own history is the stronger predictor in either order.** That suggests the
+  registered person model should carry a person's own level forward. It is a proposal for
+  the design; this comparison does not show that such state is necessary.
 - **The others' history adds 0.0435 nats on top of it**, with an interval from 0.0343 to
   0.0527 over groups. Over rounds 2 to 20, where there is a history to see, it is 0.0467.
   This is the quantity the registered open-loop test would be about. The pilot's
@@ -62,17 +63,18 @@ compared with the same people dealt into groups at random?
 | 6 to 15 | 0.1953 | 0.4011 | 0.2058, from 0.1749 to 0.2320 |
 | 16 to 20 | 0.2039 | 0.4280 | 0.2242, from 0.1931 to 0.2598 |
 
-In the first round members of a group are as far apart as strangers. In every later block
-they are much closer than the same people re-formed at random.
+In the first round the difference between real groups and re-formed ones is -0.0010, with
+a range from -0.0334 to 0.0344. In every later block real members are closer, by at least
+0.1362 at the low end of the lowest range.
 
-What that does and does not establish:
+That is a description of when members of a group are closer than re-formed ones. It does
+not say why, and it excludes nothing:
 
-- It rules out one alternative: a shared tendency that is strong and already visible in the
-  first round. A test builds such groups and the first round shows it.
-- It does not rule out the others. A test builds groups that share a fixed target, express
-  it noisily in the first round and exactly afterwards, with nobody looking at anybody; the
-  table for those groups has the same shape as this one. A weak shared tendency also passes
-  the first round unnoticed.
+- A range that includes zero is not evidence of no difference. A shared tendency small
+  enough to sit inside the first round's range would go unseen; a test builds such groups.
+- A tendency that members share but that does not show in the first round gives a table of
+  the same shape, near zero first and far from it later, with nobody looking at anybody. A
+  test builds such groups too.
 - The re-formed groups in later rounds are made of people who had by then played in real
   groups. They are a reference for "these members versus other people", not a picture of
   people who never interacted.
@@ -98,10 +100,12 @@ How much does a model lose when no group of the game being played was in its fit
 | Having groups of the game in the fit at all, with one constant | 0.0064 | 0.0032 to 0.0099 |
 | Both together | 0.0137 | 0.0068 to 0.0212 |
 
-Giving the model the game's four numbers in place of a constant recovers 0.0086 of the
-0.0137. In the first round, where nothing but the rules can guide a prediction, the loss has
-an interval from -0.0077 to 0.0372: it could be nothing and it could be several times the
-average.
+With a game left out, a model given the game's four numbers scores 0.0086 nats better than
+one with a single constant. Not all of that is recovery of the left-out game: the numbers
+also tell seats apart, and the same model is ahead of the single constant when no game is
+left out. In the first round, where there is no history within the session, the loss
+from leaving a game out has an interval from -0.0077 to 0.0372: it could be nothing and it
+could be several times the average.
 
 What this does and does not show:
 
@@ -130,6 +134,9 @@ a distance between one observed number and a simulated distribution; lower is cl
 - **Most of the gain is in how far apart the members of a group are.**
 - **The gain in level is small and its interval excludes zero. The trend gets slightly
   worse.** The measuring stick has no account of why contributions drift over a session.
+  It also uses one set of cut points for the first round and the later ones, which fits the
+  first round poorly once history is in the model. The registered person model should treat
+  the first round on its own terms.
 - Averaged over the three summaries the gain is 0.0187, with an interval from 0.0125 to
   0.0250. It holds for pairs and, with a wider interval, for groups of four. The average
   gives the three summaries equal weight, which is a choice.
@@ -163,9 +170,11 @@ closed-loop comparison is the one most likely to miss it.
    about the design, not a finding. Nothing here measured what a reading adds, and no power
    was computed for it. The reasons are that these models lose little on a game left out,
    and that any conclusion about rules never seen would generalise from eight games.
-4. **The person needs a persistent level of their own.** In the open loop it can be taken
-   from the person's history. In the closed loop there is no history to take it from, so it
-   has to come from the person's state, drawn at the start and carried forward.
+4. **A persistent level for each person is proposed.** Own history is the strongest
+   predictor here. In the open loop the level can follow the person's recorded history. In
+   the closed loop a simulated person has only its own simulated history, so a level drawn
+   at the start and carried forward is one way to give it one. Whether that helps is for
+   the comparison of candidate person models before registration.
 5. **Decide before registration how the closed loop is scored.** Here the gain is mostly in
    how far apart members are. Whether the registered measure is that summary or a mean of
    several changes the power, as the table shows.

@@ -15,7 +15,8 @@ simulated societies are usually built.
 **Recommendation: the linear public goods games of Wang, Hilbe and Zhang (2026), first
 session only.** The change that adds this note also splits the groups, and keeps the held-out
 ones out of the file the analysis reads.
-Nothing about any group's behaviour has been computed yet.
+When the split was made, nothing about any group's behaviour had been computed. What has been
+measured since, on training groups only, is in `measure.md`.
 
 Verification key: **[me]** fetched and read, or computed from the files, by the author;
 **[R]** read by a research pass and quoted from it, not yet checked independently; **[U]** not
@@ -72,7 +73,8 @@ player ends the round with the same payoff. `tests/test_interaction_games.py` as
 
 ### The split
 
-A group is the unit. Its members influenced one another, so a group is never divided between
+A group is the unit. Its members played together and saw each other's contributions, so their
+records are not independent, and a group is never divided between
 training and held-out data. Within each game the groups are ranked by a salted hash of their
 identifier in the file, and the first two fifths, rounded up, are held out. The files are
 pinned by hash in `interaction/data-manifest.json`, so the assignment cannot move.
@@ -144,8 +146,8 @@ only.
 ## Risks, in order of seriousness
 
 1. **Few independent groups.** 143 held-out groups, 32 of them of four. Whether that can
-   detect what the others' history adds must be computed on training groups before
-   anything is registered.
+   detect what the others' history adds was estimated on training groups; the figures and
+   their assumptions are in `measure.md`.
 2. **There may be little for a language model to read.** The eight games differ by four
    numbers. A coded model that takes those numbers as input may predict a game it has not
    seen as well as any reading of the rules. The pilot met the same problem and it changed

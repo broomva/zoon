@@ -211,12 +211,13 @@ def test_a_weak_shared_tendency_passes_the_first_round_unnoticed() -> None:
     assert low[2] > 0, "ten rounds can see what one round cannot"
 
 
-def test_a_shared_target_that_settles_looks_exactly_like_influence() -> None:
+def test_a_shared_target_that_shows_only_later_gives_the_same_table_as_influence() -> None:
     """THE LIMIT that matters. Every group has a target share, a third or two thirds, fixed
-    from the start. In the first round each member gives everything with that probability
-    and nothing otherwise; afterwards each gives exactly the target. Nobody looks at anybody,
-    yet members are near chance in the first round and far closer later. So the check
-    describes when closeness arises and cannot say why."""
+    from the start. In the first round each member gives everything or nothing by a coin
+    flip that ignores the target; afterwards each gives exactly the target. Nobody looks at
+    anybody. The table has the shape of the human one: the first round's range includes
+    zero and every later block is far above it. So the check describes when closeness
+    arises and cannot say why."""
     rng = np.random.default_rng(9)
     groups: list[Group] = []
     for cell in sorted(GAMES):
@@ -224,8 +225,10 @@ def test_a_shared_target_that_settles_looks_exactly_like_influence() -> None:
         for g in range(40):
             third = 1 if rng.random() < 0.5 else 2
             settled = tuple(e * third // 3 for e in game.endowments)
-            first = tuple(e if rng.random() < third / 3 else 0 for e in game.endowments)
+            first = tuple(e if rng.random() < 0.5 else 0 for e in game.endowments)
             groups.append(Group(cell, f"{cell}-{g}", (first, *[settled] * (ROUNDS - 1))))
+    _, low, high = _closer(groups)
+    assert low[0] < 0 < high[0]
     assert _grows(groups)
 
 

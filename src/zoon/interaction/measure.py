@@ -410,9 +410,8 @@ def against_chance(groups: Sequence[Group]) -> tuple[Floats, Floats]:
     What it can and cannot show. If the people of a game and seat are exchangeable when the
     groups are formed, a re-forming is a draw from what the groups would look like had their
     members' sessions not depended on whom they were grouped with. The result describes when
-    members are closer than that. It does not identify why: members who respond to each
-    other, and members who share a tendency that shows only weakly or noisily in the first
-    round, can give the same table.
+    members are closer than that. It does not identify why, and a range that includes zero
+    is not evidence of no difference.
     """
     rng = np.random.default_rng(SEED)
     real = np.zeros(len(BLOCKS))

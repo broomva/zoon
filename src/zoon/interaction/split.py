@@ -1,6 +1,7 @@
 """Deterministic assignment of whole groups to the training or the held-out set.
 
-A group is the unit: the people in it influenced one another, so a group is never divided.
+A group is the unit: the people in it played together, so their records are not independent
+and a group is never divided.
 Within each game the groups are ranked by a salted hash of their raw identifier and the first
 two fifths are held out. The rank depends on which groups are in the file, and the file is
 pinned by its hash in the manifest, so the assignment cannot move.

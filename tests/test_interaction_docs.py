@@ -27,3 +27,40 @@ def test_every_quoted_number_is_in_the_pasted_output() -> None:
     quoted = {number.lstrip("+-") for number in NUMBER.findall(prose)}
     assert len(quoted) > 10, "the note quotes its figures"
     assert sorted(quoted - printed) == []
+
+
+def test_the_pasted_output_reports_what_the_note_relies_on() -> None:
+    """Both orders of entering the two histories, the check against chance for every block,
+    and power for each closed-loop measure are printed, so the note cannot quote one without
+    the other."""
+    _, paste = _split()
+    for label in (
+        "[open loop] own history adds, entered first",
+        "[open loop] own history adds, entered second",
+        "[open loop] others' history adds, entered first",
+        "[open loop] others' history adds, entered second",
+        "[members apart, round 1] closer than chance by",
+        "[members apart, rounds 16 to 20] closer than chance by",
+        "[power] closed loop, all three",
+        "[power] closed loop, members apart",
+    ):
+        assert label in paste, label
+
+
+def test_the_notes_claim_prediction_and_not_influence() -> None:
+    """The data cannot separate influence from a shared tendency, so neither note may say it
+    did. Wording that asserts influence or an exclusion is refused."""
+    notes = NOTE.parent
+    text = " ".join((notes / name).read_text() for name in ("measure.md", "task-selection.md"))
+    text = " ".join(text.split()).lower()
+    for phrase in (
+        "influenced one another",
+        "it rules out",
+        "is ruled out",
+        "separates influence",
+        "this is influence",
+        "as strangers",
+        "moved toward the people",
+    ):
+        assert phrase not in text, phrase
+    assert "neither shows that people influence each other" in text
