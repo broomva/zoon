@@ -90,12 +90,15 @@ def test_disguise_scales_every_point_without_changing_predictions(c: person.Cand
     for game in GAMES.values():
         # B uses the rules in their declared units, so canonicalise their common point unit.
         scaled = replace(game, endowments=tuple(10 * e for e in game.endowments))
-        a, b = person.State(), person.State()
-        for r in range(ROUNDS):
-            row = tuple((r * 7 + s * 3) % (e + 1) for s, e in enumerate(game.endowments))
-            assert p.probabilities(game, 0, a) == pytest.approx(p.probabilities(scaled, 0, b))
-            a = p.update(a, game, 0, row)
-            b = p.update(b, scaled, 0, tuple(10 * v for v in row))
+        for seat in range(game.size):
+            a, b = person.State(), person.State()
+            for r in range(ROUNDS):
+                row = tuple((r * 7 + s * 3) % (e + 1) for s, e in enumerate(game.endowments))
+                assert p.probabilities(game, seat, a) == pytest.approx(
+                    p.probabilities(scaled, seat, b)
+                )
+                a = p.update(a, game, seat, row)
+                b = p.update(b, scaled, seat, tuple(10 * v for v in row))
 
 
 def tiny() -> list[Group]:
@@ -240,3 +243,30 @@ def test_b_uses_the_four_game_numbers_in_the_original_point_unit() -> None:
     for game in GAMES.values():
         for seat in range(game.size):
             assert c.base(game, seat) == pytest.approx((1.0, *measure.traits(game, seat)))
+
+
+def test_a_has_both_fading_traces() -> None:
+    p, game = law("A"), GAMES["2-FE"]
+    empty = p.update(person.State(), game, 0, (0, 0))
+    own = p.update(person.State(), game, 0, (24, 0))
+    others = p.update(person.State(), game, 0, (0, 24))
+    fading = p.update(others, game, 0, (0, 0))
+    assert fading.traces == (0.0, 0.5)
+    expected = [
+        float(p.probabilities(game, 0, state) @ np.arange(5))
+        for state in (empty, own, fading, others)
+    ]
+    assert expected[0] < expected[1] < expected[3]
+    assert expected[0] < expected[2] < expected[3]
+
+
+def test_b_game_numbers_change_its_distribution_without_any_game_constant() -> None:
+    p = law("B")
+    numbers = p.numbers.copy()
+    numbers[1] = numbers[p.candidate.phase_size + 1] = 2.0
+    p = replace(p, numbers=numbers)
+    equal, unequal = GAMES["2-FE"], GAMES["2-AI"]
+    for state in (person.State(), person.State((0.5, 0.5), seen=True)):
+        a, b = p.probabilities(equal, 0, state), p.probabilities(unequal, 0, state)
+        assert b @ np.arange(5) > a @ np.arange(5)
+        assert p.probabilities(unequal, 1, state) @ np.arange(5) < a @ np.arange(5)

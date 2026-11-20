@@ -200,10 +200,85 @@ def test_live_report_has_the_pasted_labels(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    groups = generated(others=1.0, count=1, seed=51)
+    groups = generated(others=1.0, count=2, seed=51)
     monkeypatch.setattr(compare.data, "load", lambda: groups)
     monkeypatch.setattr(compare.data, "held_out_counts", lambda: {cell: 3 for cell in GAMES})
+    counts: list[tuple[int, int]] = []
+    real_power = measure.power
+
+    def checked_power(
+        found: tuple[float, float, float], training: int, sealed: int
+    ) -> tuple[float, float]:
+        counts.append((training, sealed))
+        return real_power(found, training, sealed)
+
+    monkeypatch.setattr(measure, "power", checked_power)
     compare.main(simulations=2, resamples=20)
+    assert counts == ([(16, 24)] * 6 + [(12, 18)]) * 2
     printed = capsys.readouterr().out
     _, paste = split_note()
     assert labels(printed) == labels(paste)
+
+
+@pytest.mark.parametrize(
+    "sample,covered",
+    (
+        ((0.0, 0.25, 0.5, 1.0), (0.0, 1.0, 0.0, 1.0)),
+        ((0.0, 0.0, 1.0, 1.0), (1.0, 1.0, 1.0, 1.0)),
+    ),
+)
+def test_coverage_uses_the_inclusive_central_ninety_percent(
+    monkeypatch: pytest.MonkeyPatch,
+    sample: tuple[float, ...],
+    covered: tuple[float, ...],
+) -> None:
+    from tests.test_interaction_person import law
+    from zoon.interaction.games import Game
+
+    groups = [
+        Group(
+            cell,
+            f"{cell}-{n}",
+            (tuple(e * n // 2 if n < 3 else 1 for e in game.endowments),) * ROUNDS,
+        )
+        for cell, game in GAMES.items()
+        for n in range(4)
+    ]
+
+    def fitted(groups: Sequence[Group], candidate: person.Candidate) -> person.Person:
+        return law(candidate.letter, candidate.twin)
+
+    def played(
+        game: Game,
+        agents: Sequence[kernel.Agent],
+        amounts: kernel.Amounts,
+        seed: int,
+        group: str,
+        *,
+        open_channel: bool = True,
+    ) -> kernel.Run:
+        fraction = sample[int(group.rsplit("|", 1)[1])]
+        row = tuple(int(e * fraction) for e in game.endowments)
+        return kernel.Run((row,) * ROUNDS, ())
+
+    monkeypatch.setattr(compare.person, "fit", fitted)
+    monkeypatch.setattr(compare.kernel, "play", played)
+    result = compare.evaluate(groups, person.Candidate("B"), simulations=4)
+    assert result.covered[:, 0] == pytest.approx(list(covered) * len(GAMES))
+    assert result.covered[:, 2:4] == pytest.approx(np.ones((len(groups), 2)))
+    # The productivity-only pair still has equal shares when both give one point.
+    assert np.nanmean(result.covered[:, 4]) == pytest.approx(19 / 24)
+    for n, group in enumerate(groups):
+        if group.cell.endswith("FE"):
+            assert np.isnan(result.covered[n, 4])
+        observed = (
+            (0.0, 0.5, 1.0)[n % 4]
+            if n % 4 < 3
+            else sum(1 / e for e in GAMES[group.cell].endowments) / GAMES[group.cell].size
+        )
+        brute = (
+            sum(abs(x - observed) for x in sample) / 4
+            - sum(abs(x - y) for i, x in enumerate(sample) for j, y in enumerate(sample) if i != j)
+            / 24
+        )
+        assert result.closed[n, 0] == pytest.approx(brute)

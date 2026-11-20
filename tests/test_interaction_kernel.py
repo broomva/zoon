@@ -180,3 +180,18 @@ def test_coded_prefix_cache_cannot_change_a_prediction() -> None:
     views += [views[3], views[10], kernel.View(game, 1, observations), views[0]]
     for view in views:
         assert coded(view) == pytest.approx(kernel.Coded(p)(view))
+
+
+def test_every_stream_key_part_changes_the_draw() -> None:
+    keys = [
+        (1, "2-AI", "one", 0, 0, "band"),
+        (2, "2-AI", "one", 0, 0, "band"),
+        (1, "2-MI", "one", 0, 0, "band"),
+        (1, "2-AI", "two", 0, 0, "band"),
+        (1, "2-AI", "one", 1, 0, "band"),
+        (1, "2-AI", "one", 0, 1, "band"),
+        (1, "2-AI", "one", 0, 0, "amount"),
+    ]
+    draws = [kernel.uniform(*key) for key in keys]
+    assert all(0 <= u < 1 for u in draws) and len(set(draws)) == len(keys)
+    assert [kernel.uniform(*key) for key in keys] == draws
