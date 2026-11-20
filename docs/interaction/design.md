@@ -17,13 +17,13 @@ Two hypotheses, on the held-out groups of the public goods games chosen in
   state includes what the others did predicts that person's next contribution better than
   two alternatives.
 - **H3, closed loop.** Groups of coded persons, played forward from the first round with no
-  human data inside the loop, score better against human groups, on a fixed set of
+  recorded group's play inside the loop, score better against human groups, on a fixed set of
   summaries, than two alternatives.
 
 | Arm | What it is | What beating it shows |
 |---|---|---|
 | `zoon` | A coded person: a state that carries the person's own level and what the others did, and a coded rule from state to a distribution over contributions. Every number in it is fitted to training groups of these games | — |
-| `alone` | The best coded person that is never told what the others did, chosen and fitted by the same procedure | Using the others' history improves prediction on these games |
+| `alone` | The best coded person that is never told what the others did, chosen and fitted by the same procedure | The chosen person with the others' history predicts better, on these games, than the best candidate without it |
 | `prompted` | The decision model asked directly: given the rules and the group's history as participants saw it, what will this player contribute next? | This fitted coded person predicts better than this prompt to this model |
 
 **Each hypothesis passes if the `zoon` arm beats both alternatives** by at least a smallest
@@ -85,7 +85,7 @@ contributions, in both loops.
 | Own level | A trace of the person's own past contributions, moved toward each new contribution by a fixed fraction | The error-correcting update of the main design, applied to the person's own behaviour. The fraction is fitted |
 | What the others did | A trace of the mean share the other members contributed, moved toward each round's observation by a fixed fraction | The same update. With the fraction at one it is simply the last round |
 | First contribution | A rule of its own for the first round, when there is no history | `measure.md` found that one rule for all rounds fits the first round poorly |
-| Response | An ordered rule from a score to five bands of the share contributed: nothing, up to a third, up to two thirds, more but not all, everything. The score is a constant for the game and seat type, plus weights on the traces | A convention fitted to training groups. That contributions rise with what others give is the published finding of conditional cooperation |
+| Response | An ordered logit over five bands of the share contributed: nothing, up to a third, up to two thirds, more but not all, everything. The chance of a band at or below each of four cut points is the logistic function of the cut point minus a score. The score is a constant for the game and seat type, plus weights on the traces | A convention fitted to training groups. That contributions rise with what others give is the published finding of conditional cooperation |
 
 Why five bands: a model that returns two-decimal probabilities for its declared answers
 cannot spread them over up to 37 amounts, and every arm must be scored on the same response.
@@ -98,19 +98,30 @@ The form above is a family. The candidates are fixed here, before any of them is
 |---|---|---|
 | A | The base form above | — |
 | B | The game's four numbers in place of a constant per game and seat type | Can be applied to a game not in the fit |
-| C | The others split into seats of the person's own type and seats of the other type | In groups of four with unequal seats, who gave may matter, not only how much |
-| D | What the others gave measured in points against the person's own endowment | Equal amounts as the reference, where A has equal shares |
-| E | The person's first contribution kept as a fixed part of the score | A lasting difference between persons, where A has only a fading trace |
-| F | No trace of the person's own level | Tests whether the own level is needed at all |
+| C | Two traces of the others where A has one: seats of the person's own type, and seats of the other type. Where a game has only one of the two kinds of other seat, which is every game but the two unequal games of four, the missing trace takes the value of the present one | In groups of four with unequal seats, who gave may matter, not only how much |
+| D | The others' trace in points: the others' mean contribution in points, divided by the person's own endowment and capped at one | Equal amounts as the reference, where A has equal shares |
+| E | The person's own first contribution, as a share, kept as a fixed part of the score in every later round. In the open loop it is the recorded one; in the closed loop it is the one drawn | A lasting difference between persons, where A has only a fading trace |
+| F | No trace of the person's own level. Its twin has no state at all after the first round | Tests whether the own level is needed at all |
 
 Each candidate has a twin without any trace of the others. The `zoon` arm is the best
 candidate and the `alone` arm is the best twin, each chosen by the same rule, so the
-ablation has had the same search.
+ablation has had the same search. The two may have different letters. The winner's own
+twin is therefore also reported in both loops, as the comparison that changes one thing
+only; it does not gate.
 
-The rule: the mean log-likelihood of the band chosen, on training groups, each group scored
-by a fit that left its fold out, with the five folds of `measure.py`. A tie within the
-interval of the difference goes to the candidate with fewer fitted numbers. The closed-loop
-score is computed for every candidate and reported; it does not choose.
+The rule, in full, applied once to the candidates and once to the twins:
+
+1. Score each one by the mean log-likelihood of the band chosen, on training groups, each
+   group scored by a fit that left its fold out, with the five folds of `measure.py`.
+2. Take the one with the highest score. Any other is tied with it if the 95% interval of
+   their paired difference, resampling groups as `measure.py` does, includes zero.
+3. Among the highest and those tied with it, choose the one with the fewest fitted numbers;
+   if several have the fewest, the highest score among them; if scores are equal, the
+   earliest letter.
+
+The closed-loop score is computed for every candidate and reported; it does not choose. So
+the two arms are the best one-step predictors of their kind, and neither is claimed to be
+the best simulator of its kind.
 
 The comparison is run by a committed script whose output is committed with it: every
 candidate's equation, fitted numbers, score and count of fitted numbers, the winner and
@@ -133,6 +144,9 @@ A minimal kernel, built for this test and no larger:
   band and then an amount within it. Nothing and everything are exact. For the three bands
   between, the amount is drawn from the amounts that training participants with the same
   endowment chose within that band, as a committed table. The same step serves every arm.
+  So training participants' amounts shape every simulated group, through this table and
+  through the fitted numbers. What stays outside the loop is any recorded group's play:
+  no simulated round is told what a human group did.
 - **A log.** Append-only, one record per intent, transfer and observation. Replaying a log
   under the same seed reproduces it byte for byte.
 - **A channel.** It decides what each seat's decision law is told. With the channel open, a
@@ -155,10 +169,14 @@ What the pre-registration fixes, with the files committed:
 - **What it is asked.** For the band of the next contribution, as five declared answers.
   The probabilities are the model's distribution over its declared answers, read as the
   pilot read them.
-- **Recalibration.** Five ordered bands need more than a temperature. The prompted arm gets
-  a temperature and one shift for each band, fitted by maximum likelihood on a subsample of
-  training decisions drawn by a committed rule. So it cannot lose only because its
-  probabilities are too extreme or lean toward a band.
+- **Recalibration.** Five ordered bands need more than a temperature. The decision model's
+  arm gets a temperature and one shift for each band, the shifts summing to zero, so five
+  fitted numbers. They are fitted by maximum likelihood on a subsample of training decisions
+  drawn by a committed rule. So the arm cannot lose only because its probabilities are too
+  extreme or lean toward a band.
+- **The chat model** is run in the closed loop only. It is asked for a number of points and
+  its answer is taken as it stands, with no recalibration and no band step, since that is
+  how such agents are run. It is reported and decides nothing.
 - **Unequal supervision, stated.** The coded arms fit every number on all training groups.
   The prompted arm is fitted only through its recalibration. That is the comparison being
   made, and the result says so, as the pilot's did.
@@ -169,7 +187,8 @@ What the pre-registration fixes, with the files committed:
 - **Recall.** The model is asked whether it recognises the experiment and what its average
   contributions were. If it names the study or gives the published averages, the
   comparisons with that arm are labelled "possibly recalled". The label changes no verdict.
-  Recall would help the prompted arm, so it cannot produce a pass for `zoon`.
+  Recall could help the prompted arm or hurt it, so the label is a caution to the reader
+  and not a correction.
 
 ## Measures
 
@@ -181,21 +200,28 @@ What the pre-registration fixes, with the files committed:
   depend on how many groups were simulated. The measure is the mean over these summaries,
   all in shares of the endowment and all from exact contributions:
 
-  | Summary | What it is |
+  | Summary | What it is, for one group of 20 rounds |
   |---|---|
-  | Level | The group's mean share over the session |
-  | Members apart | The mean absolute difference between two members' shares within a round |
-  | Trend | The last five rounds' mean share minus the first five |
-  | Movement | The mean absolute change in a member's share from one round to the next |
-  | Type gap | In games whose seats differ: the mean share of seats of the first type minus that of the second. Not defined for the two games with equal seats |
+  | Level | The mean share over all seats and rounds |
+  | Members apart | The mean, over rounds and over every pair of members, of the absolute difference between their shares in that round |
+  | Trend | The mean share over all seats in rounds 16 to 20, minus the same in rounds 1 to 5 |
+  | Movement | The mean, over seats and over the 19 steps from one round to the next, of the absolute change in the seat's share |
+  | Type gap | The mean share of the seats of the first type minus that of the seats of the second type, over all rounds. The first type is seat 1 in a pair and seats 1 and 2 in a group of four. Not defined for the two games with equal seats |
 
-  The mean gives each summary equal weight, which is a choice. Each summary is also reported
-  alone.
+  How they are combined. For each summary, each held-out group in a game where the summary
+  is defined gives one difference between two arms' scores, and the summary's result is the
+  mean of those differences. The measure is the mean of the five results. The type gap is
+  defined in six games: every game but the two with equal seats. In one of the six the
+  seats differ in productivity only. The interval resamples groups within each game, so
+  every resample has the same games. Equal weight for the five is a choice, and the two
+  signed summaries can range more widely than the other three. Each summary is also
+  reported alone.
 
   **Why this set, chosen now.** On training groups the gain from the others' history was
   mostly in how far apart members are, and the power for that summary alone was higher
   (`measure.md`). Gating on it alone would test one property and call it resemblance. The
-  mean of five is the broader claim and the harder one to pass. Movement and the type gap
+  mean of five is the broader claim. Whether it is easier or harder to pass is not known:
+  that depends on effects that have not been measured. Movement and the type gap
   were added in review, because the first three cannot tell a group that settles from one
   that jumps about, nor a group whose richer members give a smaller share from its reverse.
   Neither has been computed on any data yet. The power of this measure is estimated on
@@ -256,7 +282,7 @@ Listed so that none is decided after the held-out groups are read:
 - the fitting of the coded arms: the penalty, the optimiser and its convergence rule, how
   traces start, the first-round rule, which numbers are shared across games and seats, and
   the band limits;
-- the probability floor, and whether means are taken over decisions or over groups;
+- the probability floor, and for H2 whether the mean is taken over decisions or over groups;
 - the two smallest differences that count;
 - the form of the ranked probability score, the number of simulated groups per game, the
   seeds and how streams are derived, and how simulation error enters the interval;
