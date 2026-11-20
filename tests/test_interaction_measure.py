@@ -1,5 +1,7 @@
 """The training-group measurement: its pieces, a negative control and a positive control."""
 
+from typing import Any
+
 import numpy as np
 import pytest
 
@@ -315,3 +317,28 @@ def test_a_group_is_compared_with_simulations_from_a_model_that_never_saw_it() -
     same[0] = False
     assert before[same] == pytest.approx(after[same])
     assert not np.allclose(before[fold != fold[0]], after[fold != fold[0]])
+
+
+def test_a_fit_that_does_not_converge_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The optimiser can stop early and still hand back weights. Those are never used."""
+    real: Any = measure.minimize
+
+    def stopped_early(*positional: Any, **named: Any) -> Any:
+        result = real(*positional, **named)
+        result.success = False
+        return result
+
+    x, choice = np.zeros((10, 1)), np.arange(10, dtype=np.int64) % measure.BANDS
+    assert measure.fit(x, choice).shape == (5,)
+    monkeypatch.setattr(measure, "minimize", stopped_early)
+    with pytest.raises(RuntimeError, match="did not converge"):
+        measure.fit(x, choice)
+
+
+def test_the_check_against_chance_accepts_a_subset_of_the_games() -> None:
+    """Groups of one game only are compared with re-formings of that game; the games that
+    are absent are skipped and carry no weight."""
+    only = [group for group in _groups(others=2.0, count=30, seed=41) if group.cell == "4-FE"]
+    real, chance = measure.against_chance(only)
+    assert real.shape == (len(measure.BLOCKS),) and np.isfinite(chance).all()
+    assert (real[1:] < np.percentile(chance[:, 1:], 2.5, axis=0)).all()

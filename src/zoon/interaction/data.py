@@ -294,7 +294,9 @@ def seal(raw_dir: Path = RAW_DIR, training: Path = TRAINING) -> None:
         "held_out": counts,
     }
     training.parent.mkdir(parents=True, exist_ok=True)
-    training.write_text(json.dumps(document, sort_keys=True) + "\n")
+    # Bytes, not text: the hash is pinned, and text mode would end lines differently on
+    # another platform.
+    training.write_bytes((json.dumps(document, sort_keys=True) + "\n").encode())
     manifest = _manifest()
     found = {"sha256": _sha256(training), "groups": len(groups)}
     if manifest.setdefault("training", found) != found:

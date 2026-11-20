@@ -167,6 +167,25 @@ def test_the_committed_manifest_pins_both_raw_files_and_the_training_file() -> N
     assert len(committed["training"]["sha256"]) == 64
 
 
+def test_the_training_file_has_the_same_bytes_on_every_platform(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Text mode ends lines with a carriage return on some platforms. With text mode made to
+    behave that way, sealing again still matches the pinned hash, so the training file is
+    written as bytes."""
+    raw, training, _ = _prepare(tmp_path)
+    data.seal(raw, training)
+    pinned = training.read_bytes()
+
+    def carriage_returns(self: Path, text: str, *_: Any, **__: Any) -> int:
+        return self.write_bytes(text.replace("\n", "\r\n").encode())
+
+    monkeypatch.setattr(Path, "write_text", carriage_returns)
+    data.seal(raw, training)
+    assert training.read_bytes() == pinned
+    assert pinned.endswith(b"\n") and b"\r" not in pinned
+
+
 def test_a_training_group_that_cannot_be_read_stops_the_seal_without_echoing_it(
     tmp_path: Path,
 ) -> None:

@@ -199,7 +199,10 @@ def fit(x: Floats, choice: Ints) -> Floats:
     def loss(weights: Floats) -> float:
         return float(-log_likelihoods(weights, x, choice).sum() + 0.01 * (weights**2).sum())
 
-    return np.asarray(minimize(loss, start, method="L-BFGS-B").x, dtype=np.float64)
+    result = minimize(loss, start, method="L-BFGS-B")
+    if not result.success:
+        raise RuntimeError("an ordered logit did not converge")
+    return np.asarray(result.x, dtype=np.float64)
 
 
 def fold_of(group: Group) -> int:
@@ -418,6 +421,8 @@ def against_chance(groups: Sequence[Group]) -> tuple[Floats, Floats]:
     chance = np.zeros((REGROUPINGS, len(BLOCKS)))
     for cell in sorted(GAMES):
         mine = [group for group in groups if group.cell == cell]
+        if not mine:
+            continue
         endowments = np.array(GAMES[cell].endowments, dtype=np.float64)
         shares = np.array([group.rounds for group in mine], dtype=np.float64) / endowments
         weight = len(mine) / len(groups)
