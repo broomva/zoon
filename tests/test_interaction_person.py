@@ -15,6 +15,8 @@ from zoon.interaction.games import GAMES, ROUNDS
 def law(letter: str, twin: bool = False) -> person.Person:
     c = person.Candidate(letter, twin)
     numbers = c.start()
+    # Different constants and cuts in both phases exercise the live phase switch.
+    numbers[: 2 * c.phase_size] += np.linspace(-0.4, 0.6, 2 * c.phase_size)
     numbers[2 * c.phase_size : 2 * c.phase_size + len(c.features)] = np.arange(
         1, len(c.features) + 1
     )
@@ -125,6 +127,8 @@ def test_likelihood_gradient_and_live_state_agree(c: person.Candidate) -> None:
     groups = tiny()[::3]
     record = person.records(groups, c)
     numbers = c.start()
+    # Different constants and cuts in both phases exercise the live phase switch.
+    numbers[: 2 * c.phase_size] += np.linspace(-0.4, 0.6, 2 * c.phase_size)
     numbers[2 * c.phase_size : 2 * c.phase_size + len(c.features)] = 0.7
     loss, gradient, _ = person.likelihood(numbers, record, c)
     numeric = np.asarray(approx_derivative(lambda x: person.likelihood(x, record, c)[0], numbers))
@@ -172,7 +176,7 @@ def test_nonconvergence_includes_the_optimiser_message(monkeypatch: pytest.Monke
         person.fit(tiny(), person.Candidate("A"))
 
 
-def test_counts_and_shared_parameters_are_the_declared_equations() -> None:
+def test_counts_starts_and_ridge_cover_every_declared_parameter() -> None:
     counts = {"A": 40, "B": 22, "C": 42, "D": 40, "E": 41, "F": 38}
     twins = {"A": 38, "B": 20, "C": 38, "D": 38, "E": 39, "F": 36}
     for c in person.CANDIDATES:
@@ -270,3 +274,49 @@ def test_b_game_numbers_change_its_distribution_without_any_game_constant() -> N
         a, b = p.probabilities(equal, 0, state), p.probabilities(unequal, 0, state)
         assert b @ np.arange(5) > a @ np.arange(5)
         assert p.probabilities(unequal, 1, state) @ np.arange(5) < a @ np.arange(5)
+
+
+@pytest.mark.parametrize("letter", person.LETTERS)
+def test_twins_live_updates_and_fit_records_ignore_every_other_seat(letter: str) -> None:
+    p = law(letter, True)
+    for game in GAMES.values():
+        for seat in range(game.size):
+            a, b = person.State(), person.State()
+            rows_a: list[tuple[int, ...]] = []
+            rows_b: list[tuple[int, ...]] = []
+            for r in range(ROUNDS):
+                own = (r * 7) % (game.endowments[seat] + 1)
+                low = tuple(own if s == seat else 0 for s in range(game.size))
+                high = tuple(own if s == seat else e for s, e in enumerate(game.endowments))
+                rows_a.append(low)
+                rows_b.append(high)
+                a = p.update(a, game, seat, low)
+                b = p.update(b, game, seat, high)
+                assert a == b
+            ra = person.records([Group(game.cell, "a", tuple(rows_a))], p.candidate)
+            rb = person.records([Group(game.cell, "b", tuple(rows_b))], p.candidate)
+            for name in ("base", "observations", "anchor", "choice", "sources"):
+                assert np.array_equal(getattr(ra, name)[seat], getattr(rb, name)[seat])
+
+
+def test_a_c_d_twins_have_identical_likelihood_gradient_fit_and_live_law() -> None:
+    groups = tiny()[::3]
+    candidates = [person.Candidate(letter, True) for letter in "ACD"]
+    fitted = [person.fit(groups, c) for c in candidates]
+    reference = fitted[0]
+    for c, p in zip(candidates, fitted, strict=True):
+        assert p.numbers == pytest.approx(reference.numbers, abs=1e-5)
+        record = person.records(groups, c)
+        loss, gradient, logs = person.likelihood(reference.numbers, record, c)
+        expected = person.likelihood(
+            reference.numbers, person.records(groups, candidates[0]), candidates[0]
+        )
+        assert loss == expected[0]
+        assert np.array_equal(gradient, expected[1])
+        assert np.array_equal(logs, expected[2])
+        game = GAMES["4-AI"]
+        state = p.update(person.State(), game, 1, (1, 7, 4, 12))
+        assert state == reference.update(person.State(), game, 1, (1, 7, 4, 12))
+        assert p.probabilities(game, 1, state) == pytest.approx(
+            reference.probabilities(game, 1, state)
+        )

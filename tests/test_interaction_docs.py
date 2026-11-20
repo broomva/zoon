@@ -228,6 +228,5 @@ def test_candidate_findings_and_tables_match_the_report() -> None:
     }
     assert max(gains, key=lambda s: gains[s][0]) == "members apart"
     assert gains["trend"][2] < 0, "the note says trend scores worse"
-    assert f"own trace fraction {lines[f'[numbers, {winner}] trace fraction own']}" in prose
-    assert f"others' fraction {lines[f'[numbers, {winner}] trace fraction others']}" in prose
-    assert lines[f"[numbers, {twin}] trace fraction own"] in prose
+    assert "own and others' trace fractions" in prose
+    assert "expect about two\ndecimal places in fitted numbers" in prose

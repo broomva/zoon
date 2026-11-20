@@ -23,6 +23,18 @@ class Amounts:
 
     rows: Mapping[tuple[int, int], tuple[int, ...]]
 
+    def __post_init__(self) -> None:
+        for (endowment, band), values in self.rows.items():
+            if endowment <= 0 or band not in (1, 2, 3):
+                raise ValueError("amount table needs a positive endowment and a middle band")
+            for value in values:
+                if (
+                    type(value) is not int
+                    or not 0 <= value <= endowment
+                    or measure.band(value, endowment) != band
+                ):
+                    raise ValueError("amount is illegal or outside its band")
+
     @classmethod
     def build(cls, groups: Sequence[Group]) -> Amounts:
         rows: dict[tuple[int, int], list[int]] = {}
@@ -79,7 +91,10 @@ class Coded:
             state, observations = person.State(), view.history
         for observation in observations:
             # No missing contribution or payoff is inferred from the rules.
-            row = tuple(dict(observation.contributions).get(s, 0) for s in range(view.game.size))
+            visible = dict(observation.contributions)
+            if not self.law.candidate.twin and set(visible) != set(range(view.game.size)):
+                raise ValueError("a non-twin person needs an open channel")
+            row = tuple(visible.get(s, 0) for s in range(view.game.size))
             state = self.law.update(state, view.game, view.seat, row)
         self._history, self._state, self._key = view.history, state, key
         return self.law.probabilities(view.game, view.seat, state)
@@ -92,7 +107,8 @@ def uniform(seed: int, cell: str, group: str, round_: int, seat: int, purpose: s
     return integer / 2**53
 
 
-def distribution(values: Floats) -> Floats:
+def distribution(values: Floats | Sequence[float]) -> Floats:
+    values = np.asarray(values, dtype=np.float64)
     if (
         values.shape != (5,)
         or not np.isfinite(values).all()
@@ -108,7 +124,14 @@ def balance(game: Game, points: tuple[int, ...]) -> tuple[Fraction, ...]:
     payoffs = game.payoffs(points)
     pool = sum((p * c for p, c in zip(game.productivities, points, strict=True)), Fraction())
     kept = sum(game.endowments) - sum(points)
-    if sum(payoffs, Fraction()) != kept + pool:
+    expected = tuple(
+        Fraction(e - c) + pool / game.size for e, c in zip(game.endowments, points, strict=True)
+    )
+    if (
+        sum(payoffs, Fraction()) != kept + pool
+        or payoffs != expected
+        or not all(type(value) is Fraction for value in payoffs)
+    ):
         raise ArithmeticError("round ledger does not balance")
     return payoffs
 
@@ -157,7 +180,10 @@ def play(
     histories: list[tuple[Observation, ...]] = [() for _ in agents]
     rounds: list[tuple[int, ...]] = []
     for r in range(ROUNDS):
-        returned = [agent(View(game, s, histories[s])) for s, agent in enumerate(agents)]
+        returned = [
+            np.asarray(agent(View(game, s, histories[s])), dtype=np.float64)
+            for s, agent in enumerate(agents)
+        ]
         laws = [distribution(p) for p in returned]
         chosen: list[int] = []
         for s, law in enumerate(laws):
@@ -217,7 +243,14 @@ def play(
 
 
 def replay(log: bytes) -> Run:
-    """Recompute draws and transfers from logged distributions, and reject a changed log."""
+    """Check canonical rules, draws, transfers and observations, not the source of weights."""
+    try:
+        return _replay(log)
+    except (ValueError, KeyError, IndexError, TypeError, ArithmeticError) as error:
+        raise ValueError("log does not replay") from error
+
+
+def _replay(log: bytes) -> Run:
     records: list[dict[str, Any]] = [json.loads(line) for line in log.decode().splitlines()]
     header = records[0]
     game = Game(
@@ -226,6 +259,8 @@ def replay(log: bytes) -> Run:
         tuple(header["endowments"]),
         tuple(Fraction(p) for p in header["productivities"]),
     )
+    if game != GAMES[game.cell]:
+        raise ValueError("game rules differ")
     amounts = Amounts({(e, b): tuple(values) for e, b, values in header["amounts"]})
     laws = {
         (record["round"], record["seat"]): np.array(record["returned"])

@@ -19,6 +19,7 @@ RIDGE = 0.01
 LOG_GAP_LIMIT = 8.0
 MAX_ITERATIONS = 2000
 TOLERANCE = 1e-7
+FUNCTION_TOLERANCE = 1e-10
 
 
 @dataclass(frozen=True)
@@ -229,7 +230,7 @@ def states(record: Records, c: Candidate, fractions: Floats) -> tuple[Floats, Fl
     values = np.take_along_axis(values, record.sources[:, None, :], axis=2)
     if c.letter == "E":
         values = np.concatenate(
-            [values, np.broadcast_to(record.anchor[:, None, None], (n, 19, 1))], axis=2
+            [values, np.broadcast_to(record.anchor[:, None, None], (n, ROUNDS - 1, 1))], axis=2
         )
     return values - 0.5, derivative
 
@@ -250,7 +251,7 @@ def likelihood(numbers: Floats, record: Records, c: Candidate) -> tuple[float, F
         score = np.einsum("nm,m->n", x, phase[:m])
         if not first:
             score += np.einsum("nk,k->n", f, weights)
-        choices = record.choice[:, : 1 if first else ROUNDS] if first else record.choice[:, 1:]
+        choices = record.choice[:, :1] if first else record.choice[:, 1:]
         choice = choices.ravel()
         p, ds, dc = ordered(score, phase[-4:])
         rows = np.arange(len(choice))
@@ -268,7 +269,9 @@ def likelihood(numbers: Floats, record: Records, c: Candidate) -> tuple[float, F
                 np.add.at(
                     effective, (np.arange(len(record.base))[:, None], record.sources), weights[:k]
                 )
-                gradient[-k:] = np.einsum("nr,nrk,nk->k", g.reshape(-1, 19), derivatives, effective)
+                gradient[-k:] = np.einsum(
+                    "nr,nrk,nk->k", g.reshape(-1, ROUNDS - 1), derivatives, effective
+                )
     loss = float(-logs.sum() + RIDGE * (numbers**2).sum())
     return loss, gradient + 2 * RIDGE * numbers, logs
 
@@ -292,7 +295,12 @@ def fit(groups: Sequence[Group], candidate: Candidate) -> Person:
         jac=True,
         method="L-BFGS-B",
         bounds=bounds,
-        options={"maxiter": MAX_ITERATIONS, "ftol": 1e-10, "gtol": TOLERANCE, "maxls": 50},
+        options={
+            "maxiter": MAX_ITERATIONS,
+            "ftol": FUNCTION_TOLERANCE,
+            "gtol": TOLERANCE,
+            "maxls": 50,
+        },
     )
     if not result.success:
         raise RuntimeError(f"a person did not converge: {result.message}")

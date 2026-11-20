@@ -31,7 +31,8 @@ closed loop.
 
 ## Fitting choices
 
-These choices were fixed on synthetic groups before the training comparison.
+The procedure used here was to fix these choices on synthetic groups before running
+the training comparison; the repository does not establish that chronology.
 
 - Bands are exactly `measure.band`: nothing, positive shares up to a third, up to two
   thirds, more but not all, and everything.
@@ -40,9 +41,9 @@ These choices were fixed on synthetic groups before the training comparison.
   numbers in each rule. State weights, update fractions and cut points are shared across
   games and seats within their rule. There is no history in the first rule.
 - B needs a declared point unit. The mean endowment is set to 24 before calling
-  `measure.traits`. This leaves its four numbers unchanged for these eight games and
-  makes a common multiplication of all points a change of units. Productivities do not
-  change. An unseen game-seat constant in the other candidates is zero: the shared cut
+  `measure.traits`. Tests check that this leaves its four numbers unchanged for these
+  eight games and makes a common multiplication of all points a change of units.
+  Productivities do not change. An unseen game-seat constant in the other candidates is zero: the shared cut
   points give its baseline. This fixes the otherwise undefined game-left-out calculation.
 - The objective is the negative sum of decision log-likelihoods plus 0.01 times the sum
   of squares of every fitted number, including update fractions and cut-point parameters.
@@ -74,7 +75,8 @@ The design leaves C's sharing of fractions unstated. Its two fractions are fitte
 separately; a missing trace copies the present updated trace. The first-round parameter
 sharing, the absent-game baseline and B's point unit are also fixed above. Amounts are
 sampled at their frequencies, rather than uniformly over distinct amounts, so the table
-keeps the training distribution within each band. Empty support stops the run.
+keeps the training distribution within each band. A draw into an unsupported middle
+band stops the run.
 
 ## Closed loop and power
 
@@ -83,14 +85,22 @@ the other folds and builds its amount table from those groups only. Within each 
 and middle band, amounts are drawn at their observed frequencies. Nothing and everything
 are exact. Missing training support for a middle band raises an error rather than adding
 an invented amount. The full-training table is printed as points and counts in the paste;
-the fold tables exclude the groups being scored.
+the fold tables exclude the groups being scored. Tables reject any amount that is
+not a legal whole number of points in its declared endowment and band.
 
 The kernel collects a whole round's decisions before delivering any outcome. It uses
-`Game.payoffs` with exact fractions and checks the balance every round. Its append-only log
-records intents, transfers and observations. Replay recomputes the draws and ledger from
-the logged decision distributions and rejects changed records. Candidates receive every
-seat's contribution and payoff. Twins receive their own contribution and the rules, with
+`Game.payoffs` with exact fractions and checks the total and each seat's kept points
+plus equal pool share every round. Its append-only log records intents, transfers
+and observations. Replay recomputes the draws and ledger from
+the logged returned weights, checking their normalised probabilities, the canonical
+game rules, draws, transfers and observations. Malformed logs raise a single error.
+Replay does not authenticate the source of the returned weights: a consistent common
+rescaling of those weights may still replay. Candidates receive every seat's
+contribution and payoff. Twins receive their own contribution and the rules, with
 no payoff. This matters in a pair, where a payoff could disclose the partner's contribution.
+A non-twin coded person raises an error if any seat's contribution is missing.
+Returned weights are converted to double precision before normalisation and logging,
+so single-precision arrays and lists also replay consistently.
 
 Streams use a SHA-256 hash of the seed, game, group, round, seat and draw purpose. The seed
 is `measure.SEED`; simulation group names include the fold, game and simulation index.
@@ -121,7 +131,8 @@ registered test: they omit its smallest useful difference and its prompted compa
 
 The intervals and power are conditional on the realised simulated groups. They include
 neither refitting nor selection uncertainty, and do not add uncertainty for the finite
-simulation count. Groups are assumed independent. A shared lab sitting could violate that
+simulation count. A zero-width interval makes the power estimate undefined, and the
+report says so. Groups are assumed independent. A shared lab sitting could violate that
 assumption. Selection and effect estimation use the same training groups; held-out testing is still needed.
 
 ## Results
@@ -152,9 +163,11 @@ not enter selection.
 | E twin | 39 | -0.9599 [-1.0208, -0.8966] | +0.1321 [+0.1268, +0.1378] |
 | F twin | 36 | -1.4687 [-1.5227, -1.4163] | +0.1890 [+0.1823, +0.1964] |
 
-The full-training fit for B has own trace fraction +0.658827
-and others' fraction +1.000000. The twin's own fraction is
-+0.631901. Every fitted number, including both rules' cut points, is in the paste.
+The own and others' trace fractions for B, its twin's own fraction, every other
+fitted number and both rules' cut points are in the paste.
+The paste records six decimals from this run. Across platforms, expect about two
+decimal places in fitted numbers; the last digits can differ with optimiser stopping.
+The model choice and interpretation do not depend on those last digits.
 
 ### Coded-arm gains
 

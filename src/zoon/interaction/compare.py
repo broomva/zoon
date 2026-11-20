@@ -11,7 +11,7 @@ from zoon.interaction.data import Group
 from zoon.interaction.games import GAMES, ROUNDS, Game
 from zoon.interaction.measure import Floats, Ints
 
-# Proposed registered number, fixed before the training comparison.
+# Proposed registered number of simulated groups per game and fold.
 SIMULATED_GROUPS = 100
 SUMMARIES = ("level", "members apart", "trend", "movement", "type gap")
 METRICS = ("composite", *SUMMARIES)
@@ -189,7 +189,7 @@ def main(*, simulations: int = SIMULATED_GROUPS, resamples: int = measure.RESAMP
     print(f"[fit] log gap limit = {person.LOG_GAP_LIMIT}")
     print(f"[fit] iteration limit = {person.MAX_ITERATIONS}")
     print(f"[fit] gradient tolerance = {person.TOLERANCE:.8f}")
-    print("[fit] function tolerance = 0.0000000001")
+    print(f"[fit] function tolerance = {person.FUNCTION_TOLERANCE:.10f}")
 
     def found(label: str, result: Sequence[float]) -> None:
         mean, low, high = result
@@ -251,7 +251,14 @@ def main(*, simulations: int = SIMULATED_GROUPS, resamples: int = measure.RESAMP
             training_count = sum(g.cell in defined for g in groups)
             sealed_count = sum(n for cell, n in held.items() if cell in defined)
             if value[2] == value[1]:
-                full = half = float("nan")
+                print(
+                    f"[power, {comparison}, {metric}] training effect = "
+                    "undefined (zero-width interval)"
+                )
+                print(
+                    f"[power, {comparison}, {metric}] half effect = undefined (zero-width interval)"
+                )
+                continue
             else:
                 full, half = measure.power(
                     (float(value[0]), float(value[1]), float(value[2])),
