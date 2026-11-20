@@ -1,0 +1,20 @@
+{
+  "dataset": "https://zenodo.org/records/16918146",
+  "files": {
+    "LinearPGG_4P_ExperimentalData.mat": {
+      "sha256": "dcdd23e709ce1c17fadddffb84d07b9cf2f37a0a206e4665317aed31fd4e790b",
+      "size": 22347,
+      "url": "https://zenodo.org/api/records/16918146/files/LinearPGG_4P_ExperimentalData.mat/content"
+    },
+    "LinearPGG_ExperimentalData.xlsx": {
+      "sha256": "b423cda39bfd7d84f2edb7f56b4bccc0d03164743bb4df851d20f049725fb507",
+      "size": 504163,
+      "url": "https://zenodo.org/api/records/16918146/files/LinearPGG_ExperimentalData.xlsx/content"
+    }
+  },
+  "licence": "CC BY 4.0",
+  "training": {
+    "groups": 210,
+    "sha256": "1ed1f81ae169ae556e8bd7ba69434fe0abde954e566be6efb80972150b69db26"
+  }
+}

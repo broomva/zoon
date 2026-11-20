@@ -16,9 +16,14 @@ dependencies = [
 live = [
     "typesafe-sdk>=0.7.5",
 ]
+groups = [
+    "mat-io>=1.0",
+    "openpyxl>=3.1",
+]
 
 [dependency-groups]
 dev = [
+    "openpyxl>=3.1",
     "pandas-stubs>=3.1.0.261029",
     "pypdf>=7.1.0",
     "pyright>=1.1.390",
