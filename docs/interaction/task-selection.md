@@ -121,6 +121,15 @@ including the groups now held out. What was read:
 - The authors' own model: players who respond to the other's last contribution and prefer
   equal shares, with its two fitted weights.
 
+**The published averages constrain the held-out groups.** The paper gives first-session
+averages for each treatment over all groups. Anyone holding those and the training groups
+can work out the average of the held-out groups of each game. So the held-out level of each
+game is not unknown in the way a single held-out group is. The guard against using it is
+procedural: every arm is fitted on training groups by a procedure fixed in the
+pre-registration, and no number is set by hand. What the published averages cannot give is
+what the tests are about: who did what in which round, and how the members of a group moved
+relative to each other.
+
 From the files themselves, only structure was read before the split: sheet and column names,
 identifiers, counts of rows, groups and rounds, and whether cells were empty. No contribution
 of any group was printed or summarised. Since the split, only training groups can be loaded.
