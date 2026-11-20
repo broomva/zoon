@@ -191,7 +191,7 @@ def test_bad_distributions_are_refused() -> None:
             kernel.distribution(np.array(values))
 
 
-def test_coded_prefix_cache_cannot_change_a_prediction() -> None:
+def test_coded_prefix_cache_matches_fresh_predictions() -> None:
     p = law("E")
     game = GAMES["2-AI"]
     observations = tuple(kernel.Observation(((0, r), (1, r // 3)), None) for r in range(12))
@@ -350,7 +350,7 @@ def test_replay_accepts_consistently_rescaled_weights_but_checks_their_normalisa
 
 
 @pytest.mark.parametrize("kind", ("list", "single precision"))
-def test_play_coerces_returned_weights_once_and_replays(kind: str) -> None:
+def test_play_records_double_precision_weights_and_replays(kind: str) -> None:
     values = [0.1, 0.2, 0.4, 0.2, 0.1]
 
     def raw(view: kernel.View) -> Floats:

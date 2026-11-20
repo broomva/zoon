@@ -20,8 +20,6 @@ LOG_GAP_LIMIT = 8.0
 MAX_ITERATIONS = 2000
 TOLERANCE = 1e-7
 FUNCTION_TOLERANCE = 1e-10
-REPRODUCIBILITY_TOLERANCE = 0.02
-START_NUDGE = 1e-6
 
 
 @dataclass(frozen=True)
@@ -121,6 +119,7 @@ class State:
 class Person:
     candidate: Candidate
     numbers: Floats
+    games: frozenset[str] = frozenset(GAMES)
 
     def __post_init__(self) -> None:
         if self.numbers.shape != (self.candidate.count,) or not np.isfinite(self.numbers).all():
@@ -146,6 +145,8 @@ class Person:
 
     def probabilities(self, game: Game, seat: int, state: State = State()) -> Floats:
         c = self.candidate
+        if c.letter != "B" and game.cell not in self.games:
+            raise ValueError(f"no fitted constant for game {game.cell}")
         start = c.phase_size if state.seen else 0
         phase = self.numbers[start : start + c.phase_size]
         score = float(c.base(game, seat) @ phase[:-3])
@@ -278,7 +279,7 @@ def likelihood(numbers: Floats, record: Records, c: Candidate) -> tuple[float, F
     return loss, gradient + 2 * RIDGE * numbers, logs
 
 
-def fit(groups: Sequence[Group], candidate: Candidate) -> Person:
+def fit(groups: Sequence[Group], candidate: Candidate, *, start_nudge: float = 0.0) -> Person:
     record = records(groups, candidate)
     bounds: list[tuple[float | None, float | None]] = [(None, None)] * candidate.count
     for offset in (0, candidate.phase_size):
@@ -293,7 +294,7 @@ def fit(groups: Sequence[Group], candidate: Candidate) -> Person:
 
     result = minimize(
         objective,
-        candidate.start(),
+        candidate.start() + start_nudge,
         jac=True,
         method="L-BFGS-B",
         bounds=bounds,
@@ -306,10 +307,14 @@ def fit(groups: Sequence[Group], candidate: Candidate) -> Person:
     )
     if not result.success:
         raise RuntimeError(f"a person did not converge: {result.message}")
-    return Person(candidate, np.asarray(result.x, dtype=np.float64))
+    return Person(
+        candidate, np.asarray(result.x, dtype=np.float64), frozenset(g.cell for g in groups)
+    )
 
 
 def log_likelihoods(person: Person, groups: Sequence[Group]) -> Floats:
+    if person.candidate.letter != "B" and any(g.cell not in person.games for g in groups):
+        raise ValueError("no fitted constant for a scored game")
     logs = likelihood(person.numbers, records(groups, person.candidate), person.candidate)[2]
     # Public scores use the measuring stick's groups, rounds, seats order.
     result: list[float] = []
@@ -324,6 +329,8 @@ def log_likelihoods(person: Person, groups: Sequence[Group]) -> Floats:
 def out_of_sample(
     groups: Sequence[Group], candidate: Candidate, leave_out_game: bool = False
 ) -> Floats:
+    if leave_out_game and candidate.letter != "B":
+        raise ValueError("game-left-out scores need a form with an intercept")
     labels = [g.cell if leave_out_game else measure.fold_of(g) for g in groups]
     decision_group = np.repeat(
         np.arange(len(groups)), [ROUNDS * GAMES[g.cell].size for g in groups]

@@ -63,7 +63,7 @@ def summaries(rounds: Sequence[Sequence[int]], game: Game) -> Floats:
 
 
 def crps(simulated: Floats, observed: float) -> float:
-    """Fair CRPS: use distinct sample pairs, so its expectation is independent of count."""
+    """Fair CRPS from distinct sample pairs."""
     n = len(simulated)
     if n < 2 or not np.isfinite(simulated).all() or not np.isfinite(observed):
         raise ValueError("fair CRPS needs two finite draws and a finite observation")
@@ -197,6 +197,7 @@ def report(
     resamples: int = measure.RESAMPLES,
 ) -> list[Entry]:
     decisions = measure.decisions(groups)
+    start_nudge = 1e-6
     entries = [
         Entry("[data] training groups", len(groups)),
         Entry("[data] decisions", len(decisions.choice)),
@@ -208,8 +209,20 @@ def report(
         Entry("[fit] iteration limit", person.MAX_ITERATIONS),
         Entry("[fit] gradient tolerance", person.TOLERANCE, ".8f"),
         Entry("[fit] function tolerance", person.FUNCTION_TOLERANCE, ".10f"),
-        Entry("[fit check] absolute tolerance", person.REPRODUCIBILITY_TOLERANCE, ".2f"),
-        Entry("[fit check] start nudge", person.START_NUDGE, ".6f"),
+        Entry("[fit] reproducibility start nudge", start_nudge, ".6f"),
+        Entry("[fit] optimiser", "L-BFGS-B"),
+        Entry("[fit] gradient", "analytic"),
+        Entry("[fit] B mean endowment", 24),
+        Entry("[fit] line-search limit", 50),
+        Entry("[fit] first cut", 0),
+        Entry("[fit] constant, weight and log-gap start", 0),
+        Entry("[fit] trace fraction start", 0.5),
+        Entry("[fit] trace fraction bounds", "0, 1"),
+        Entry("[fit] other bounds", "none"),
+        Entry("[fit] starts per fit", 1),
+        Entry("[fit] stopping", "either successful condition; failure raises"),
+        Entry("[simulation] seed", measure.SEED),
+        Entry("[interval] resamples", resamples),
     ]
 
     def found(label: str, result: Sequence[float]) -> None:
@@ -225,7 +238,7 @@ def report(
         if c.twin and c.letter in ("C", "D"):
             a = results["A twin"]
             results[c.name] = Evaluation(
-                a.open, a.closed, a.covered, person.Person(c, a.fitted.numbers)
+                a.open, a.closed, a.covered, person.Person(c, a.fitted.numbers, a.fitted.games)
             )
         else:
             results[c.name] = evaluate(groups, c, simulations)
@@ -294,6 +307,15 @@ def report(
                 )
     for arm, name in (("candidate", winner), ("twin", alone)):
         c = next(c for c in person.CANDIDATES if c.name == name)
+        reference = results[name].fitted.numbers
+        reversed_fit = person.fit(list(reversed(groups)), c)
+        nudged_fit = person.fit(groups, c, start_nudge=start_nudge)
+        change = max(
+            float(np.max(np.abs(refit.numbers - reference))) for refit in (reversed_fit, nudged_fit)
+        )
+        entries.append(Entry(f"[reproducibility, {name}] largest absolute change", change, ".6f"))
+        if c.letter != "B":
+            continue
         left = person.out_of_sample(groups, c, leave_out_game=True)
         found(f"[game left out, {arm}] score", measure.paired(left, decisions.group, len(groups)))
         found(

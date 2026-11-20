@@ -1,159 +1,20 @@
 # Candidate persons on training groups
 
-This compares the six coded persons in `design.md` and each person's twin without the
-others' history. It is a training comparison before registration, on 210 training
-groups. The 143 held-out groups are absent from the file this comparison reads. The result
-is about prediction and the five summaries, not a cause of human play.
+This compares the six coded persons and their twins on 210 training groups before
+registration.
+The 143 held-out groups are absent from the file it reads.
 The prompted arms are not run here.
+The result concerns prediction and the five summaries, not what causes human play.
+The settings used are the labelled lines at the top of the output;
+`docs/interaction/design.md` defines the candidates, the selection rule and the measures.
 
-## What was compared
+## Selection
 
-Each person has an ordered logit for the first round, with no history, and another for
-rounds 2 to 20. In either rule the cumulative probability through a band is the logistic
-function of a cut point minus the score. Four ordered cut points give five bands. The
-first-round constants and cut points are separate from the later ones.
+Among candidates, A, B, C, D, E tie at step 2; D has the highest score;
+the rule chooses B because it has the fewest fitted numbers among those tied.
+Among twins, B twin has the highest score, is alone at step 2, and is chosen by the rule.
 
-The later score is a constant plus a weight for each state value, centred on one half.
-A has an own trace and a trace of the mean share of the others. B replaces the constants
-with an intercept and the four numbers from `measure.traits`. C has separate traces for
-others of the same and the other seat type, each with its own fitted update fraction.
-When a kind of other seat is missing, the missing trace copies the updated trace
-of the present kind. D observes others' mean points divided by the person's own endowment, capped at one before updating
-the trace. E adds the exact first contribution share as a fixed anchor in every later
-score. It keeps the own trace too. F drops the own trace. Each twin removes every weight
-and update fraction for the others. F's twin has no state in its later rule.
-
-Shares use contributions divided by endowments, including within a band. Each trace starts
-at its first observation. After a round it moves towards the new observation by its fitted
-fraction; the updated trace enters the next decision. There are no fitted starting values
-or person effects. E's anchor is recorded play in the open loop and drawn play in the
-closed loop.
-
-## Fitting choices
-
-The procedure used here was to fix these choices on synthetic groups before running
-the training comparison; the repository does not establish that chronology.
-
-- Bands are exactly `measure.band`: nothing, positive shares up to a third, up to two
-  thirds, more but not all, and everything.
-- Constants differ by game and seat type, separately in each of the two rules. There are
-  fourteen such constants in each rule. B instead has one intercept and the four game
-  numbers in each rule. State weights, update fractions and cut points are shared across
-  games and seats within their rule. There is no history in the first rule.
-- B needs a declared point unit. The mean endowment is set to 24 before calling
-  `measure.traits`. Tests check that this leaves its four numbers unchanged for these
-  eight games and makes a common multiplication of all points a change of units.
-  Productivities do not change. An unseen game-seat constant in the other candidates is zero: the shared cut
-  points give its baseline. This fixes the otherwise undefined game-left-out calculation.
-- The objective is the negative sum of decision log-likelihoods plus 0.01 times the sum
-  of squares of every fitted number, including update fractions and cut-point parameters.
-  It uses the small ridge penalty of `measure.fit`, extended to the trace fractions.
-- Each rule has a first cut point fixed at zero, followed by three positive gaps.
-  Constants, state weights and log gaps start at zero, and update fractions
-  at one half. There is one start for every fit. The fractions lie in the closed interval
-  from zero to one; the log gaps lie from -8 to 8 to avoid numerical overflow. All other
-  numbers are unbounded.
-- L-BFGS-B uses an analytic gradient, at most 2000 iterations and 50 line-search steps,
-  function tolerance 0.0000000001 and projected-gradient tolerance 0.00000010. Either
-  successful stopping condition is accepted. Any unsuccessful result raises with the
-  optimiser's message. This does not guarantee a global optimum for the fitted trace fractions.
-- Every probability is floored at 0.0000000010 and divided by the sum. H2 is a mean per
-  decision. Its paired interval uses `measure.paired`, resampling whole groups.
-- Every fitted scalar counts, including the fractions and both rules' cut points.
-  Identical twins A, C and D have the same equation, penalty and start. Their fits and
-  simulations are reused exactly.
-
-The first parameterisation fitted a cut-point origin alongside each rule's constants.
-A check of the fit's reproducibility found that reversing group order changed fitted
-numbers: shifting the origin and constants together left likelihoods unchanged.
-The first cut point is now fixed at zero and
-the constants carry the level, with two fewer fitted numbers per form and the same
-expressible predictions. This change was not made in response to a comparison result.
-
-The pasted output gives every fitted number from a fit on all training groups. These are
-not the fits that produce the scores. Each score leaves the group's fold out, using the
-five folds of `measure.fold_of`. The selection rule takes the highest mean score, using
-the earliest letter for an exact tie; collects the candidates whose paired interval with
-that reference includes zero; then chooses the fewest fitted numbers, highest score and
-earliest letter, in that order. Closed-loop scores do not choose the person.
-
-The design leaves C's sharing of fractions unstated. Its two fractions are fitted
-separately; a missing trace copies the present updated trace. The first-round parameter
-sharing, the absent-game baseline and B's point unit are also fixed above. Amounts are
-sampled at their frequencies, rather than uniformly over distinct amounts, so the table
-keeps the training distribution within each band. A draw into an unsupported middle
-band stops the run.
-
-## Closed loop and power
-
-The proposed registered value is 100 simulated groups per game and fold. Each fold fits on
-the other folds and builds its amount table from those groups only. Within each endowment
-and middle band, amounts are drawn at their observed frequencies. Nothing and everything
-are exact. Missing training support for a middle band raises an error rather than adding
-an invented amount. The full-training table is printed as points and counts in the paste;
-the fold tables exclude the groups being scored. Tables reject any amount that is
-not a legal whole number of points in its declared endowment and band.
-
-The kernel collects a whole round's decisions before delivering any outcome. It uses
-`Game.payoffs` with exact fractions and checks each seat's kept points
-plus equal pool share every round. Its append-only log records intents, transfers
-and observations. Replay recomputes the draws and ledger from
-the logged returned weights, checking their normalised probabilities, the canonical
-game rules, draws, transfers and observations. Replay rejects the changed rules and
-damaged records exercised by the tests.
-Replay does not authenticate the source of the returned weights: a consistent common
-rescaling of those weights may still replay. Candidates receive every seat's
-contribution and payoff. Twins receive their own contribution and the rules, with
-no payoff. This matters in a pair, where a payoff could disclose the partner's contribution.
-With only own contributions visible, others' traces stay centred and score zero.
-The play boundary converts returned weights to double precision before normalisation
-and logging.
-
-Streams use a SHA-256 hash of the seed, game, group, round, seat and draw purpose. The seed
-is `measure.SEED`; simulation group names include the fold, game and simulation index.
-There is a separate draw for the band and the amount. The same streams serve all arms,
-and adding another group does not consume any existing group's draws.
-
-All summaries use exact contribution shares: level, members apart, trend, movement and
-type gap, as defined in `design.md`. The type gap is absent only in the two equal-seat
-games; productivity inequality alone defines two types. For draws x and observation y,
-the fair ranked probability score is the mean of |x-y| minus the sum of |x_i-x_j| over
-ordered distinct pairs divided by twice n(n-1). Its expectation does not depend on the
-number of independent simulated groups. Lower scores are better.
-
-For a comparison, differences are averaged over groups where each summary is defined,
-then the five summary means have equal weight. Thus groups without a type gap are not
-dropped from the other summaries. Intervals use 2000 resamples of whole groups within each
-game, keeping each game's count fixed. Coverage counts human values inside the inclusive
-fifth to ninety-fifth percentiles of that fold's simulated values, using linear quantiles.
-
-Power uses `measure.power`: a normal approximation for a two-sided interval excluding
-zero, at the training effect and half of it. The error read from the training interval
-is scaled by the square root of training groups divided by held-out groups. For the
-type gap only, both counts exclude the equal-seat games. The approximation assumes the
-held-out groups have the same variability and roughly the same game mixture as training,
-treats the fitted models and simulations as fixed, and assumes the stated effect is true.
-A negative effect also counts as detectable. These are not probabilities of passing the
-registered test: they omit its smallest useful difference and its prompted comparator.
-
-The intervals and power are conditional on the realised simulated groups. They include
-neither refitting nor selection uncertainty, and do not add uncertainty for the finite
-simulation count. A zero-width interval makes the power estimate undefined, and the
-report says so. Groups are assumed independent. A shared lab sitting could violate that
-assumption. Selection and effect estimation use the same training groups; held-out testing is still needed.
-
-## Results
-
-The candidate winner is B. The twin winner is B twin.
-
-Step 2 ties among candidates: A, B, C, D, E.
-Step 2 ties among twins: B twin.
-The highest candidate score is D's. The rule chooses B because it has the fewest fitted numbers among the tied candidates. The selected
-twin is also the winner's own twin, so the two coded-arm comparisons coincide.
-
-Scores below have their group intervals. Higher is better in the open loop and lower
-is better in the closed loop. All twelve closed-loop composites are reported; they do
-not enter selection.
+## Scores and counts
 
 | Form | Fitted numbers | Open-loop nats per decision | Closed-loop composite |
 |---|---|---|---|
@@ -170,16 +31,7 @@ not enter selection.
 | E twin | 37 | -0.9599 [-1.0208, -0.8966] | +0.1322 [+0.1269, +0.1378] |
 | F twin | 34 | -1.4687 [-1.5227, -1.4162] | +0.1891 [+0.1824, +0.1965] |
 
-The own and others' trace fractions for B, its twin's own fraction, every other
-fitted number and both rules' cut points are in the paste.
-The paste records six decimals from this run. On synthetic groups, the fit test
-enforces absolute tolerance 0.02 for A and B when group order is reversed or the start
-is nudged by 0.000001.
-
-### Coded-arm gains
-
-Positive gains favour the selected candidate: candidate minus twin log-likelihood
-in the open loop, and twin minus candidate score in the closed loop.
+## Coded-arm gains
 
 | Measure | Against selected twin | Against own twin |
 |---|---|---|
@@ -191,13 +43,7 @@ in the open loop, and twin minus candidate score in the closed loop.
 | movement | +0.0012 [+0.0004, +0.0020] | +0.0012 [+0.0004, +0.0020] |
 | type gap | +0.0114 [+0.0040, +0.0184] | +0.0114 [+0.0040, +0.0184] |
 
-Both the H2 and H3 composite intervals are above zero against the coded twin.
-The largest summary gain is in members apart. Trend scores worse. This is a training
-comparison, with the selection made on these same groups, not a held-out verdict.
-
-### Coverage
-
-The fraction of human values within the simulated central 90% range:
+## Coverage
 
 | Summary | Selected candidate | Selected twin | Own twin |
 |---|---|---|---|
@@ -207,10 +53,7 @@ The fraction of human values within the simulated central 90% range:
 | movement | 0.5476 | 0.4429 | 0.4429 |
 | type gap | 0.8075 | 0.9938 | 0.9938 |
 
-Coverage for the selected candidate is below 90% on every summary. Relative gains
-do not establish adequate absolute fit.
-
-### Power
+## Power
 
 | Measure | Selected twin, training effect | Selected twin, half effect | Own twin, training effect | Own twin, half effect |
 |---|---|---|---|---|
@@ -222,14 +65,9 @@ do not establish adequate absolute fit.
 | movement | 0.639 | 0.212 | 0.639 | 0.212 |
 | type gap | 0.731 | 0.251 | 0.731 | 0.251 |
 
-These are two-sided detection estimates under the assumptions above. A printed
-1.000 is not certainty. They do not include a smallest useful difference or a
-comparison with a prompted arm.
+## A game left out
 
-### A game left out
-
-Each game is scored by a fit to the other seven games. The loss is the ordinary
-fold score minus this score, paired by decision. The intervals vary groups, not games.
+The game-left-out calculation is defined only for forms with an intercept.
 
 | Arm | Nats per decision | Loss from leaving the game out |
 |---|---|---|
@@ -247,17 +85,23 @@ fold score minus this score, paired by decision. The intervals vary groups, not 
 | 4-FE | -1.1331 | -1.1582 |
 | 4-MI | -1.0728 | -1.1012 |
 
+## Parameterisation
+
+The first parameterisation fitted a cut origin beside each rule's constants.
+A check of reproducibility showed that the two were redundant.
+The first cut is now fixed at 0.
+As a matter of procedure, this change was not made in response to a comparison result.
+
+The largest absolute fitted-number changes over reversed groups and a nudged start
+are 0.006276 for B and 0.004199 for B twin.
+
 ## What this means for the pre-registration
 
-- Use B as the coded person and B twin as the coded comparator. The winner's own
-  twin is also B twin; keep that comparison explicit.
-- Fix the first-round rule, exact-share state, fitting choices, bands, probability floor,
-  decision weighting, fair score and summary combination described here.
-- Take the printed full-training amount table, seed streams and simulation count as the
-  proposed registered choices. The treatment of finite simulation error still needs an
-  explicit registered decision.
-- The smallest differences, prompted arms, rendered instructions, recalibration, recall
-  check, spending bound and stopping rules remain open. No result here decides them.
+This settles the choice of the coded person and coded comparator for this comparison.
+The labelled settings and amount table are the proposed registered choices.
+The smallest differences, prompted arms, rendered instructions, recalibration, recall
+check, spending bound, stopping rules and treatment of finite simulation error remain open.
+No result here decides them.
 
 ## Reproduce
 
@@ -279,8 +123,20 @@ zoon interaction: candidates on training groups
 [fit] iteration limit = 2000
 [fit] gradient tolerance = 0.00000010
 [fit] function tolerance = 0.0000000001
-[fit check] absolute tolerance = 0.02
-[fit check] start nudge = 0.000001
+[fit] reproducibility start nudge = 0.000001
+[fit] optimiser = L-BFGS-B
+[fit] gradient = analytic
+[fit] B mean endowment = 24
+[fit] line-search limit = 50
+[fit] first cut = 0
+[fit] constant, weight and log-gap start = 0
+[fit] trace fraction start = 0.5
+[fit] trace fraction bounds = 0, 1
+[fit] other bounds = none
+[fit] starts per fit = 1
+[fit] stopping = either successful condition; failure raises
+[simulation] seed = 20261120
+[interval] resamples = 2000
 [amounts, endowment 12, band 1] points:count = 1:73, 2:96, 3:77, 4:73
 [amounts, endowment 12, band 2] points:count = 5:84, 6:171, 7:62, 8:153
 [amounts, endowment 12, band 3] points:count = 9:99, 10:307, 11:86
@@ -902,6 +758,7 @@ zoon interaction: candidates on training groups
 [power, own twin, movement] half effect = 0.212
 [power, own twin, type gap] training effect = 0.731
 [power, own twin, type gap] half effect = 0.251
+[reproducibility, B] largest absolute change = 0.006276
 [game left out, candidate] score = -0.9357 [-0.9981, -0.8714]
 [game left out, candidate] loss = +0.0058 [+0.0018, +0.0098]
 [game left out, candidate, 2-AI] score = -0.8812
@@ -912,6 +769,7 @@ zoon interaction: candidates on training groups
 [game left out, candidate, 4-AI] score = -0.9518
 [game left out, candidate, 4-FE] score = -1.1331
 [game left out, candidate, 4-MI] score = -1.0728
+[reproducibility, B twin] largest absolute change = 0.004199
 [game left out, twin] score = -0.9586 [-1.0218, -0.8944]
 [game left out, twin] loss = +0.0033 [-0.0003, +0.0072]
 [game left out, twin, 2-AI] score = -0.8915

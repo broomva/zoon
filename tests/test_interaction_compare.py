@@ -21,7 +21,9 @@ def simulation_stand_ins(
     rows: Callable[[Game, str, kernel.Amounts, bool, person.Candidate], Sequence[Sequence[int]]]
     | None = None,
 ) -> None:
-    def fitted(groups: Sequence[Group], c: person.Candidate) -> person.Person:
+    def fitted(
+        groups: Sequence[Group], c: person.Candidate, *, start_nudge: float = 0.0
+    ) -> person.Person:
         return law(c.letter, c.twin)
 
     monkeypatch.setattr(person, "fit", fitted)
@@ -47,7 +49,7 @@ def simulation_stand_ins(
 
 
 def generated(others: float, count: int = 8, seed: int = 31) -> list[Group]:
-    """An independent last-round law. No fitting or person-state helper generates play."""
+    """Generate groups with a last-round law."""
     amounts = kernel.Amounts.build(training())
 
     def independent(view: kernel.View) -> Floats:
@@ -232,6 +234,11 @@ def test_live_report_labels_and_power_use_defined_training_and_sealed_counts(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     groups = generated(others=1.0, count=2, seed=51)
+    for i, group in enumerate(groups):
+        index = next(
+            str(n) for n in range(100) if measure.fold_of(replace(group, index=str(n))) == i % 2
+        )
+        groups[i] = replace(group, index=index)
     monkeypatch.setattr(compare.data, "load", lambda: groups)
     monkeypatch.setattr(compare.data, "held_out_counts", lambda: {cell: 3 for cell in GAMES})
     counts: list[tuple[int, int]] = []
@@ -429,7 +436,7 @@ def test_game_left_out_fits_exclude_every_group_of_the_scored_game(
     assert observed_calls == [tuple(sorted(set(GAMES) - {cell})) for cell in sorted(GAMES)]
 
 
-def test_report_recomputes_every_entry_and_main_only_prints_it(
+def test_report_entries_selection_refits_and_main_rendering(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
@@ -443,20 +450,42 @@ def test_report_recomputes_every_entry_and_main_only_prints_it(
     calls: list[str] = []
     results: dict[str, compare.Evaluation] = {}
 
-    def fitted(train: Sequence[Group], c: person.Candidate) -> person.Person:
+    refits: list[tuple[str, bool, float]] = []
+
+    def fitted(
+        train: Sequence[Group], c: person.Candidate, *, start_nudge: float = 0.0
+    ) -> person.Person:
         p = law(c.letter, c.twin)
         # Train composition changes both rules; a game-left-out fit differs from a fold fit.
         shift = sum((list(GAMES).index(g.cell) + 1) ** 2 for g in train) / 1000
         index = 0 if c.twin and c.letter in "CD" else person.LETTERS.index(c.letter)
-        return replace(p, numbers=p.numbers + shift + index / 100 + c.twin / 1000)
+        reversed_order = list(train) == list(reversed(groups))
+        if reversed_order or start_nudge:
+            assert list(train) == (list(reversed(groups)) if reversed_order else groups)
+            assert start_nudge == (0.0 if reversed_order else 1e-6)
+            refits.append((c.name, reversed_order, start_nudge))
+        # Opposite perturbations dominate for the two chosen forms.
+        change = (-0.03 if c.twin else 0.01) if reversed_order else 0.0
+        if start_nudge:
+            change = 0.02 if c.twin else -0.04
+        numbers = p.numbers + shift + index / 100 + c.twin / 1000
+        numbers[0] += change
+        return replace(p, numbers=numbers)
 
     def evaluated(
         groups: Sequence[Group], c: person.Candidate, simulations: int
     ) -> compare.Evaluation:
+        assert simulations == 2
         calls.append(c.name)
         n = person.LETTERS.index(c.letter)
-        base = -0.1 if c.name == "E" else -0.4 if c.name == "B twin" else -2.0 - n / 10
+        base = -0.1 if c.name in ("B", "D") else -0.4 if c.name == "E twin" else -2.0 - n / 10
         opened = base + (n + 1 + c.twin) * decisions.group / 1000
+        if c.name in ("B", "D"):
+            opened = -0.1 + (1 if c.letter == "D" else -1) * np.where(
+                decisions.group % 2, 0.5, -0.5
+            )
+            if c.letter == "D":
+                opened += 0.001
         closed = np.full((len(groups), 5), 0.1 + n / 10 + c.twin / 20)
         closed += np.arange(len(groups))[:, None] * (n + 1 + c.twin) / 1000
         covered = np.broadcast_to(
@@ -502,8 +531,23 @@ def test_report_recomputes_every_entry_and_main_only_prints_it(
         ("function tolerance", 2e-10, ".10f"),
     ):
         add(f"[fit] {label}", value, fmt)
-    add("[fit check] absolute tolerance", 0.02, ".2f")
-    add("[fit check] start nudge", 1e-6, ".6f")
+    add("[fit] reproducibility start nudge", 1e-6, ".6f")
+    for label, value in (
+        ("optimiser", "L-BFGS-B"),
+        ("gradient", "analytic"),
+        ("B mean endowment", 24),
+        ("line-search limit", 50),
+        ("first cut", 0),
+        ("constant, weight and log-gap start", 0),
+        ("trace fraction start", 0.5),
+        ("trace fraction bounds", "0, 1"),
+        ("other bounds", "none"),
+        ("starts per fit", 1),
+        ("stopping", "either successful condition; failure raises"),
+    ):
+        add(f"[fit] {label}", value)
+    add("[simulation] seed", measure.SEED)
+    add("[interval] resamples", 100)
     from collections import Counter
 
     for (e, band), values in kernel.Amounts.build(groups).rows.items():
@@ -552,10 +596,11 @@ def test_report_recomputes_every_entry_and_main_only_prints_it(
         add(f"[selection, {label}] highest", selected.reference)
         add(f"[selection, {label}] tied at step 2", ", ".join(selected.tied))
         add(f"[selection, {label}] winner", selected.winner)
-    assert [selection.winner for selection in selections] == ["E", "B twin"]
+    assert selections[0].reference == "D" and selections[0].tied == ("B", "D")
+    assert [selection.winner for selection in selections] == ["B", "E twin"]
     expected_power_calls: list[tuple[tuple[float, float, float], int, int]] = []
-    for comparison, opponent in (("selected twin", "B twin"), ("own twin", "E twin")):
-        a, b = results["E"], results[opponent]
+    for comparison, opponent in (("selected twin", "E twin"), ("own twin", "B twin")):
+        a, b = results["B"], results[opponent]
         h2 = measure.paired(a.open - b.open, decisions.group, len(groups))
         add(f"[gain, {comparison}, open loop] candidate minus twin", h2)
         h3 = compare.interval(b.closed - a.closed, groups, 100)
@@ -574,8 +619,24 @@ def test_report_recomputes_every_entry_and_main_only_prints_it(
             full, half = real_power(effect_interval, n, sealed)
             for effect, power in (("training effect", full), ("half effect", half)):
                 add(f"[power, {comparison}, {metric}] {effect}", power, ".3f")
-    for arm, name in (("candidate", "E"), ("twin", "B twin")):
+    assert refits == [
+        ("B", True, 0.0),
+        ("B", False, 1e-6),
+        ("E twin", True, 0.0),
+        ("E twin", False, 1e-6),
+    ]
+    for arm, name in (("candidate", "B"), ("twin", "E twin")):
         c = next(c for c in person.CANDIDATES if c.name == name)
+        # The larger perturbation changes only the first fitted number.
+        reference = fitted(groups, c).numbers
+        delta = 0.03 if c.twin else 0.04
+        add(
+            f"[reproducibility, {name}] largest absolute change",
+            abs(float((reference[0] - delta) - reference[0])),
+            ".6f",
+        )
+        if c.letter != "B":
+            continue
         left = person.out_of_sample(groups, c, leave_out_game=True)
         add(f"[game left out, {arm}] score", measure.paired(left, decisions.group, len(groups)))
         add(

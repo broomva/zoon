@@ -92,7 +92,7 @@ class Agent(Protocol):
 
 @dataclass
 class Coded:
-    """With only own contributions visible, others' traces stay centred and score zero."""
+    """A fitted person called with a view."""
 
     law: person.Person
     _history: tuple[Observation, ...] = field(default=(), init=False, repr=False)
@@ -100,7 +100,7 @@ class Coded:
     _key: tuple[Game, int] | None = field(default=None, init=False, repr=False)
 
     def __call__(self, view: View) -> Floats:
-        # Reuse only a verified prefix. An arbitrary view still works on its own.
+        # Reuse a matching prefix.
         key = (view.game, view.seat)
         if key == self._key and view.history and view.history[:-1] == self._history:
             state, observations = self._state, view.history[-1:]
@@ -260,7 +260,7 @@ def play(
 
 
 def replay(log: bytes) -> Run:
-    """Check canonical rules, draws, transfers and observations, not the source of weights."""
+    """Replay the logged game and compare its bytes."""
     records: list[dict[str, Any]] = [json.loads(line) for line in log.decode().splitlines()]
     header = records[0]
     game = Game(
