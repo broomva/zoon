@@ -113,7 +113,8 @@ The rule, in full, applied once to the candidates and once to the twins:
 
 1. Score each one by the mean log-likelihood of the band chosen, on training groups, each
    group scored by a fit that left its fold out, with the five folds of `measure.py`.
-2. Take the one with the highest score. Any other is tied with it if the 95% interval of
+2. Take the one with the highest score; if several have exactly that score, the earliest
+   letter among them. Any other is tied with it if the 95% interval of
    their paired difference, resampling groups as `measure.py` does, includes zero.
 3. Among the highest and those tied with it, choose the one with the fewest fitted numbers;
    if several have the fewest, the highest score among them; if scores are equal, the
