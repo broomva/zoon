@@ -364,8 +364,8 @@ def test_log_scores_refuse_invalid_probability_totals(row: list[float]) -> None:
         score.log_scores(np.array([row], dtype=float), np.array([0]))
 
 
-def test_log_scores_allow_decision_rounding_before_flooring() -> None:
-    row = np.array([[0, 0.001, 0.004, 0.005, 1.02]])
+def test_log_scores_floor_normalised_rows() -> None:
+    row = np.array([[0, 0.001, 0.004, 0.005, 0.99]])
     expected = np.maximum(row, score.SCORING_FLOOR)
     np.testing.assert_array_equal(
         score.log_scores(row, np.array([0])), np.log(expected[:, 0] / expected.sum(axis=1))
@@ -482,3 +482,50 @@ def test_coded_validates_returned_probabilities(monkeypatch: pytest.MonkeyPatch)
     monkeypatch.setattr(person.Person, "probabilities", probabilities)
     with pytest.raises(ValueError, match="distribution"):
         score.coded(law("B"), synthetic())
+
+
+@pytest.mark.parametrize("offset", [-2e-9, 2e-9, -0.01, 0.01])
+def test_log_scores_refuse_unnormalised_rows(offset: float) -> None:
+    with pytest.raises(ValueError, match="distribution"):
+        score.log_scores(np.array([[0, 0, 0, 0, 1 + offset]]), np.array([0]))
+
+
+@pytest.mark.parametrize("offset", [-5e-10, 5e-10])
+def test_log_scores_allow_small_row_sum_error(offset: float) -> None:
+    row = np.array([[0, 0, 0, 0, 1 + offset]])
+    raised = np.maximum(row, score.SCORING_FLOOR)
+    np.testing.assert_array_equal(
+        score.log_scores(row, np.array([0])), np.log(raised[:, 0] / raised.sum(axis=1))
+    )
+
+
+@pytest.mark.parametrize(("lower", "threshold"), [(np.nan, 0.0052), (0.01, np.nan)])
+def test_comparison_passes_refuses_nonfinite_lower_or_threshold(
+    lower: float, threshold: float
+) -> None:
+    with pytest.raises(ValueError, match="non-finite"):
+        score.comparison_passes(np.array([0.02]), np.array([lower]), threshold)
+
+
+def test_validate_ensemble_refuses_excess_groups() -> None:
+    simulations = ensembles()["zoon"]
+    simulations["2-AI"] = np.vstack((simulations["2-AI"], simulations["2-AI"][:1]))
+    with pytest.raises(ValueError, match="ensemble"):
+        score.validate_ensemble(simulations)
+
+
+@pytest.mark.parametrize("kind", ["missing", "zero"])
+def test_h2_indices_refuses_missing_game_or_zero_replicates(kind: str) -> None:
+    counts = dict.fromkeys(GAMES, 3)
+    if kind == "missing":
+        counts.pop("2-AI")
+    with pytest.raises(ValueError, match="every game and positive replicates"):
+        score.h2_indices(counts, 0 if kind == "zero" else SMALL_R)
+
+
+def test_difference_refuses_mismatched_estimate_shapes() -> None:
+    with pytest.raises(ValueError, match="paired"):
+        score.difference(
+            score.Interval(np.ones(1), np.ones((2, 2))),
+            score.Interval(np.ones(2), np.ones((2, 2))),
+        )
