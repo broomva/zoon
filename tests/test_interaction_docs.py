@@ -652,8 +652,10 @@ def test_draft_status_does_not_reopen_completed_chat_work() -> None:
     readme = (root / "README.md").read_text()
     assert (
         "chat requests, transcripts and replay, scoring and intervals, the fitted files, "
-        "and power and coverage under the registered rules are implemented and tested; "
-        "the second seal, run guards and step state, and the report remain open" in readme
+        "power and coverage under the registered rules, the second seal, "
+        "run guards and step state, "
+        "and calibration are implemented and tested; closed-loop, recall, held-out and report "
+        "remain open" in readme
     )
     design = " ".join((NOTE.parent / "design.md").read_text().split())
     assert (

@@ -73,7 +73,13 @@ def test_interaction_registration_links_and_existing_paths() -> None:
     document = root / "interaction" / "registration.md"
     check_interaction_registration(root, document)
     text = document.read_text()
-    for path in ("src/zoon/interaction/chat.py", "interaction/chat-requests/"):
+    for path in (
+        "src/zoon/interaction/chat.py",
+        "interaction/chat-requests/",
+        "src/zoon/interaction/run.py",
+        "src/zoon/interaction/guard.py",
+        "src/zoon/interaction/decisions.py",
+    ):
         assert f"| `{path}` | Existing today |" in text
         assert f"- `{path}`" not in text
 
@@ -197,3 +203,12 @@ These paths do not exist today and are exempt from the existing-path check:
     document.write_text(text)
     with pytest.raises(AssertionError):
         check_interaction_registration(root, document)
+
+
+def test_interaction_run_status_matches_the_first_slice() -> None:
+    root = NOTES.parent.parent
+    text = " ".join((root / "interaction" / "registration.md").read_text().split())
+    assert (
+        "The second sealing step, scoring and intervals, run guards, step state and "
+        "calibration are implemented; closed-loop, recall, held-out and report remain open work."
+    ) in text

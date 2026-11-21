@@ -4,20 +4,22 @@ Data: Wang, Hilbe and Zhang, "Dataset and computer code for 'The dynamics of coo
 asymmetric public goods games'", https://zenodo.org/records/16918146, CC BY 4.0.
 Paper: https://doi.org/10.1073/pnas.2525760123
 
-Three steps, and one rule about which code may do which:
+Four steps, with separate training and held-out readers:
 
 1. `fetch` downloads the two raw files into `data/groups/raw/` and checks each against
    `interaction/data-manifest.json`. The raw files are never committed.
-2. `seal`, with the private functions it calls, is the only code that reads the raw files
-   for their contents. It writes `data/groups/training.json`,
+2. `seal`, with its private helpers, reads training contents from the raw files.
+   It writes `data/groups/training.json`,
    which holds the training groups and, for the rest, a count per game. The hash of that
    file is pinned in the manifest too.
-3. `load` reads the training file and nothing else. All analysis goes through `load`.
+3. `load` reads the training file and nothing else.
+4. `open_held_out` is the second seal, accessible only with a live held-out guard permit.
 
-So the contributions of the held-out groups are absent from the only file the analysis
-reads. That is the guarantee, and it is a guard against accident. It is not a defence
-against the person running the code: the raw files are public, and anyone can open them with
-this module's private functions or with other code. Nothing here claims otherwise.
+So held-out contributions are absent from the training file. Until the guarded
+held-out step, analysis can read only that file. This is a guard against accident.
+It is not a defence against the person running the code: the raw files are public,
+and anyone can open them with this module's private functions or with other code.
+Nothing here claims otherwise.
 
 What `seal` uses from the raw files, and what it does not:
 
@@ -37,18 +39,23 @@ Each raw file is checked against the manifest by the function that opens it, so 
 cannot move with a changed file.
 """
 
+from __future__ import annotations
+
 import hashlib
 import importlib
 import json
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import pandas as pd
 
 from zoon.interaction.games import GAMES, ROUNDS, Game
 from zoon.interaction.split import group_index, held_out
+
+if TYPE_CHECKING:
+    from zoon.interaction.guard import HeldOutPermit
 
 REPO = Path(__file__).resolve().parents[3]
 RAW_DIR = REPO / "data" / "groups" / "raw"
@@ -86,7 +93,7 @@ class RecordFault(ValueError):
 
 @dataclass(frozen=True)
 class Group:
-    """One training group: its game, an opaque index, and each round's contributions by seat."""
+    """One group: its game, an opaque index, and each round's contributions by seat."""
 
     cell: str
     index: str
@@ -131,10 +138,11 @@ def fetch(raw_dir: Path = RAW_DIR) -> None:
     _record(document)
 
 
-def _check(path: Path) -> None:
+def _check(path: Path, manifest: Path | None = None) -> None:
     """Refuse a raw file that is missing from the manifest or differs from it."""
-    entry = _manifest()["files"].get(path.name)
-    if entry is None or entry["sha256"] != _sha256(path):
+    document = _manifest() if manifest is None else json.loads(manifest.read_bytes())
+    entry = document["files"].get(path.name)
+    if entry is None or entry["sha256"] != _sha256(path) or entry["size"] != path.stat().st_size:
         raise ValueError(f"{path.name} does not match {MANIFEST.name}")
 
 
@@ -171,9 +179,14 @@ def _by_seat(game: Game, seats: list[list[object]]) -> Rounds:
     return tuple(tuple(seat[r] for seat in points) for r in range(ROUNDS))
 
 
-def _pairs(path: Path) -> tuple[list[Group], dict[str, int]]:
-    """Read the first-session training pairs, and count the held-out ones."""
-    _check(path)
+def _pairs(path: Path, permit: HeldOutPermit | None = None) -> tuple[list[Group], dict[str, int]]:
+    """Read training pairs, or held-out pairs under the second seal's permit."""
+    manifest = None
+    if permit is not None:
+        from zoon.interaction.guard import require_permit
+
+        manifest = require_permit(permit).root / "interaction" / "data-manifest.json"
+    _check(path, manifest)
     openpyxl: Any = importlib.import_module("openpyxl")
     book = openpyxl.load_workbook(path, read_only=True, data_only=True)
     groups: list[Group] = []
@@ -211,7 +224,7 @@ def _pairs(path: Path) -> tuple[list[Group], dict[str, int]]:
             sealed = held_out(game.cell, first_row)
             counts[game.cell] = len(sealed)
             for raw_group, row in first_row.items():
-                if raw_group not in sealed:
+                if (raw_group in sealed) == (permit is not None):
                     rounds = _by_seat(game, cells(sheet, (row, row + 1), ROUND_COLUMNS))
                     groups.append(Group(game.cell, group_index(game.cell, raw_group), rounds))
     finally:
@@ -230,14 +243,19 @@ def _scalar(cell: object) -> object:
     return cast(object, value)
 
 
-def _fours(path: Path) -> tuple[list[Group], dict[str, int]]:
-    """Read the first-session training groups of four, and count the held-out ones.
+def _fours(path: Path, permit: HeldOutPermit | None = None) -> tuple[list[Group], dict[str, int]]:
+    """Read training fours, or held-out fours under the second seal's permit.
 
     The file is a MATLAB table, decoded by the optional `mat-io` package. The decoded table
     never leaves this function: the identifier columns decide which rows are wanted, and only
     those rows' contributions are taken out of it.
     """
-    _check(path)
+    manifest = None
+    if permit is not None:
+        from zoon.interaction.guard import require_permit
+
+        manifest = require_permit(permit).root / "interaction" / "data-manifest.json"
+    _check(path, manifest)
     matio: Any = importlib.import_module("matio")
     frame = cast(pd.DataFrame, matio.load_from_mat(str(path))["all_data"])
     missing = [column for column in (*FOUR_KEYS, FOUR_VALUE) if column not in frame.columns]
@@ -264,7 +282,7 @@ def _fours(path: Path) -> tuple[list[Group], dict[str, int]]:
         counts[cell] = len(sealed)
         wanted = [(s, r) for s in range(1, game.size + 1) for r in range(1, ROUNDS + 1)]
         for (game_cell, raw_group), place in places.items():
-            if game_cell != cell or raw_group in sealed:
+            if game_cell != cell or (raw_group in sealed) != (permit is not None):
                 continue
             if set(place) != set(wanted):
                 raise RecordFault(f"a group of {cell} is not {game.size} seats by {ROUNDS} rounds")
@@ -306,18 +324,26 @@ def seal(raw_dir: Path = RAW_DIR, training: Path = TRAINING) -> None:
     _record(manifest)
 
 
-def _read(training: Path) -> dict[str, Any]:
+def _read(training: Path, manifest: Path | None = None) -> dict[str, Any]:
     """Return the training file's contents after checking its hash against the manifest."""
-    entry = _manifest().get("training")
+    if manifest is None:
+        candidate = training.parent.parent.parent / "interaction" / "data-manifest.json"
+        manifest = candidate if candidate.is_file() else MANIFEST
+    document = json.loads(manifest.read_bytes())
+    entry = document.get("training")
     if entry is None or entry["sha256"] != _sha256(training):
         raise ValueError(f"{training.name} does not match {MANIFEST.name}")
     return cast(dict[str, Any], json.loads(training.read_text()))
 
 
 def load(training: Path = TRAINING) -> list[Group]:
-    """Return the training groups of all eight games, in a fixed order."""
+    """Read training groups in loader order, using their checkout's pinned manifest."""
+    return _training_groups(_read(training))
+
+
+def _training_groups(document: dict[str, Any]) -> list[Group]:
     groups: list[Group] = []
-    for record in _read(training)["groups"]:
+    for record in document["groups"]:
         game = GAMES[record["cell"]]
         seats = [[row[seat] for row in record["rounds"]] for seat in range(game.size)]
         groups.append(Group(game.cell, str(record["index"]), _by_seat(game, seats)))
@@ -327,6 +353,39 @@ def load(training: Path = TRAINING) -> list[Group]:
 def held_out_counts(training: Path = TRAINING) -> dict[str, int]:
     """Return how many groups of each game are held out. Nothing else is known about them."""
     return {str(cell): int(count) for cell, count in _read(training)["held_out"].items()}
+
+
+def open_held_out(permit: object = None) -> list[Group]:
+    """Second seal: the sole route to held-out contents, under a live guard permit.
+
+    Raw hashes fix the identifiers to which the split is applied. Counts and
+    disjoint indices are then checked against the pinned training document.
+    No source or manifest is written, and no partial set escapes on a fault.
+    """
+    from zoon.interaction.guard import require_permit
+
+    guard = require_permit(permit)
+    # Narrowing after require_permit deliberately keeps the public argument opaque.
+    capability = cast("HeldOutPermit", permit)
+    directory = guard.root / "data" / "groups"
+    manifest = guard.root / "interaction" / "data-manifest.json"
+    document = _read(directory / "training.json", manifest)
+    pairs, pair_counts = _pairs(directory / "raw" / PAIRS_FILE, capability)
+    fours, four_counts = _fours(directory / "raw" / FOURS_FILE, capability)
+    groups = sorted([*pairs, *fours], key=lambda g: (g.cell, g.index))
+    counts = {**pair_counts, **four_counts}
+    indices = {(g.cell, g.index) for g in groups}
+    training = {(g["cell"], g["index"]) for g in document["groups"]}
+    if (
+        counts != document["held_out"]
+        or set(counts) != set(GAMES)
+        or len(groups) != 143
+        or len(indices) != len(groups)
+        or indices & training
+        or {c: sum(g.cell == c for g in groups) for c in GAMES} != counts
+    ):
+        raise RecordFault("held-out groups do not match the pinned split and counts")
+    return groups
 
 
 def main() -> None:

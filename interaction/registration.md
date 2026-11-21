@@ -437,7 +437,9 @@ lists the report's output path outside the registered inputs.
 | `src/zoon/interaction/registered.py` | Existing today | Committed material readers and regeneration |
 | `src/zoon/interaction/power.py` | Existing today | Training power and coverage calculation |
 | `docs/interaction/power.md` | Existing today | Power assumptions and one recorded run |
-| `src/zoon/interaction/run.py` | Added by the analysis code | The run steps |
+| `src/zoon/interaction/run.py` | Existing today | Calibration and the command line |
+| `src/zoon/interaction/guard.py` | Existing today | Run guards, repairs, state and lock |
+| `src/zoon/interaction/decisions.py` | Existing today | Budgeted decision calls and append-only records |
 | `src/zoon/interaction/chat.py` | Existing today | The chat request renderer |
 | `docs/interaction/result.md` | Added by the analysis code | The report, outside the registered directory |
 | `interaction/chat-requests/` | Existing today | Committed chat request fixtures |
@@ -446,12 +448,12 @@ lists the report's output path outside the registered inputs.
 
 These paths do not exist today and are exempt from the existing-path check:
 
-- `src/zoon/interaction/run.py`
 - `docs/interaction/result.md`
 
-The new run module supplies the steps below. The existing spending script
+The run module supplies calibration today. The existing spending script
 `src/zoon/interaction/budget.py` produces both bounds. The second sealing step,
-scoring and intervals, run guards, step state and report remain open work. A material-regeneration test must compare registered instructions,
+scoring and intervals, run guards, step state and calibration are implemented;
+closed-loop, recall, held-out and report remain open work. A material-regeneration test must compare registered instructions,
 fixtures and the amount table with their committed bytes; the fit test uses the
 probability tolerance above.
 
@@ -619,8 +621,8 @@ The current script's proposed ceiling and pilot cap do not fix this run's caps.
 ## Order of work
 
 Merge the registration, analysis code and registered materials, then create the
-tag as specified above. These commands name a run module to be added; they are
-not runnable today. Run them in this order:
+tag as specified above. Only calibration is implemented today; the later commands
+remain requirements. Run them in this order:
 
 1. `python -m zoon.interaction.run calibrate`: make the recalibration calls and the
    disguise calls; fit and save recalibration. Do not refit the primary coded arms.
@@ -791,8 +793,8 @@ nothing and is not run closed loop.
 
 - **DONE:** the caps and chat bound are filled from the spending script's
   output with dated chat prices. Vertex price confirmation remains due at registration.
-- The analysis code and its files, including the paths marked as added above,
-  the second seal and run machinery, and the required checks.
+- The later run steps and report, including the path marked as added above,
+  and the required checks.
 - **DONE:** the format check of the chat request with the committed renderer;
   see [Calls made before registration](registration.md#calls-made-before-registration).
 - Replacement of the path test by tests that bind every constant and number in

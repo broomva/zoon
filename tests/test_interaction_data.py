@@ -349,3 +349,10 @@ def test_fetch_downloads_a_missing_file_with_a_time_limit(
     assert asked == [(files[filename]["url"], data.DOWNLOAD_TIMEOUT) for filename in data.FILES]
     assert data.DOWNLOAD_TIMEOUT > 0
     assert {p.name: p.read_bytes() for p in raw.iterdir()} == dict.fromkeys(data.FILES, content)
+
+
+@pytest.mark.parametrize("length", [19, 21])
+def test_a_seat_has_exactly_the_registered_round_count(length: int) -> None:
+    module: Any = data
+    with pytest.raises(data.RecordFault, match="20 rounds"):
+        module._by_seat(GAMES["2-FE"], [[0] * ROUNDS, [0] * length])
