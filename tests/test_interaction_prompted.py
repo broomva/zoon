@@ -996,7 +996,9 @@ def test_polish_refuses_a_point_that_stays_outside_and_a_gradient_that_is_not_a_
 
     # Within the gradient limit already, but outside: the bound alone makes it step.
     assert polish(shallow, curvature, np.array([-1e-12]))[0] == -1e-12
-    assert polish(shallow, curvature, np.array([-1e-12]), lower=0.0)[0] == pytest.approx(1e-12)
+    inside = polish(shallow, curvature, np.array([-1e-12]), lower=0.0)[0]
+    # Stepped to the optimum, not clipped to the bound: the tolerance is far below both.
+    assert inside == pytest.approx(1e-12, abs=1e-18)
 
     def broken(numbers: measure.Floats) -> tuple[float, measure.Floats]:
         return 0.0, np.array([float("nan")])
