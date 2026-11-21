@@ -1,0 +1,23 @@
+MADE-UP HISTORY: seeded; no participant record.
+
+General rules
+You will play 2 sessions of decision-making games.
+In each session, the system will randomly match another player for you.
+There are two roles in the games. You and the co-player are randomly assigned the role of player 1 and player 2.
+Neither of you knows each other's true identities.
+Your bonus will be determined by the choices made by you and the co-player.
+Your total income = 20 Yuan (show-up fee) + 0.03 Yuan × (the cumulative points from two sessions + the survey points).
+
+Introduction to Session 1
+In the first round, you and a co-player are randomly assigned the role of player 1 and player 2.
+You will repeat the game for at least 20 rounds. After the 20th round, there will be a 50% chance that the game will continue for another round. Neither of your roles will be changed during the game.
+In each round, player 1 has an initial 24 points and player 2 has an initial 24 points. You each decide how many points you would like to contribute to the common pool and how many to keep for yourself.
+For every point that player 1 contributes, the common pool will increase by 1.9 points. For every point that player 2 contributes, the common pool will increase by 1.3 points.
+In each round, the points in the common pool will be split evenly between the two players. Your payoff per round is the sum of the points you keep for yourself in that round and the points you receive from the common pool.
+At the end of each round, both of you can see the results about your contributions and payoffs in the round, the group total contribution and returns from the common pool.
+
+You are Player 1.
+
+Round 1: there is no earlier history.
+
+How many of your 24 points do you contribute to the common pool in round 1? Answer with one whole number of points and nothing else.

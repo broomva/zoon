@@ -317,14 +317,15 @@ def test_prompted_table_and_quoted_figures_match_the_paste() -> None:
     rows: list[str] = []
     for line in paste.splitlines():
         match = re.fullmatch(
-            r"\[(open loop|recalibration|disguise|closed loop|recall|total)\] calls = (\d+) "
+            r"\[(open loop|recalibration|disguise|closed loop|total|"
+            r"chat closed loop|chat recall|chat total)\] calls = (\d+) "
             r"\| input tokens <= (\d+) \| output tokens <= (\d+) \| USD <= (\S+)",
             line,
         )
         if match:
             rows.append("| " + " | ".join(match.groups()) + " |")
     quoted = [line for line in prose.splitlines() if re.match(r"\| (?!Call|---)", line)]
-    assert len(rows) == 5
+    assert len(rows) == 8
     assert quoted == rows
     # Attribution identifies the source and its licence; these are not measured figures.
     # It is exempt from the digit rule, so it is pinned whole.

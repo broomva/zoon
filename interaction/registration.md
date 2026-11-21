@@ -430,9 +430,9 @@ lists the report's output path outside the registered inputs.
 | `interaction/fitted.json` | Added by the analysis code | B and twin numbers, from the committed fitting procedure |
 | `interaction/amounts.json` | Added by the analysis code | The training band-to-points table |
 | `src/zoon/interaction/run.py` | Added by the analysis code | The run steps |
-| `src/zoon/interaction/chat.py` | Added by the analysis code | The chat request renderer |
+| `src/zoon/interaction/chat.py` | Existing today | The chat request renderer |
 | `docs/interaction/result.md` | Added by the analysis code | The report, outside the registered directory |
-| `interaction/chat-requests/` | Added by the analysis code | Committed chat request fixtures |
+| `interaction/chat-requests/` | Existing today | Committed chat request fixtures |
 
 ### Paths to be added by the analysis code
 
@@ -441,8 +441,6 @@ These paths do not exist today and are exempt from the existing-path check:
 - `interaction/fitted.json`
 - `interaction/amounts.json`
 - `src/zoon/interaction/run.py`
-- `src/zoon/interaction/chat.py`
-- `interaction/chat-requests/`
 - `docs/interaction/result.md`
 
 The new run module supplies the steps below. The existing spending script
@@ -458,7 +456,7 @@ probability tolerance above.
 | Arm | Model | Settings |
 |---|---|---|
 | `prompted`, which gates | `jev-1.14.0` | Declared-answer probabilities, as above |
-| `chat`, reported | `gemini-4-carbon` on Vertex, location global | Thinking level low; temperature 1.0; at most 2,048 output tokens |
+| `chat`, reported | `gemini-4-carbon` on Vertex, location global | Thinking level low; temperature 1.0; at most 256 output tokens (`chat.MAX_OUTPUT_TOKENS = 256`), including recall. A reply cut off at the limit follows the same reply rule |
 
 Record the version each response reports. The decision model must report exactly
 its name above. For chat, fix the version to the first response's reported version,
@@ -527,8 +525,8 @@ same H3 composite, difference and interval. It changes no verdict.
 ## Spending
 
 Each model has its own cap, so that an arm that decides nothing cannot end the
-run. **Decision-model cap in US dollars: CAP.** **Chat-model cap in US dollars,
-recall included: CHAT CAP.** Count spending from reported tokens in recorded
+run. **Decision-model cap in US dollars: 17.** **Chat-model cap in US dollars,
+recall included: 966.** Count spending from reported tokens in recorded
 responses at the fixed prices. Retain and count unusable chat replies before
 retrying them. As in the pilot, do not send a call if that model's spent tokens'
 cost plus the call's estimate and reservations for calls in flight would exceed
@@ -551,8 +549,9 @@ Output costs zero at the fixed decision-model price.
 
 The prices in prompted.md and `src/zoon/pilot/prices.py` are 0.042 US dollars per
 million input tokens and zero per million output tokens, read on 2026-11-15.
-**Chat-model bound in US dollars: CHAT BOUND.** The committed spending script
-must produce it before registration, including retries and the recall requests.
+**Chat-model bound in US dollars: 965.85657600.** The committed spending script
+produces this for one pass, including the recall requests, with at most 256
+output tokens per call. Retries are paid from the same chat cap.
 Read the published [Vertex pricing page](https://cloud.google.com/vertex-ai/generative-ai/pricing)
 on the day of registration and record the prices and read date with the bound.
 Prices for `gemini-4-carbon` were read on 2026-11-21 from the provider's
@@ -560,9 +559,11 @@ Prices for `gemini-4-carbon` were read on 2026-11-21 from the provider's
 on the Vertex page on the day of registration. Its listed price changes on
 2026-12-01; the bound uses the higher price.
 
-Registration goes ahead only when the three placeholders are filled from the
-script's output and four times each model's bound is at most its cap. The current script's proposed
-ceiling and pilot cap do not fix this run's cap.
+The decision-model cap is four times its bound, rounded up to a whole dollar.
+The chat cap is its one-pass bound at the maximum output tokens, rounded up to a
+whole dollar; retries are paid from this same cap, and reaching it only makes
+chat unusable. The caps and chat bound above are filled from the script's output.
+The current script's proposed ceiling and pilot cap do not fix this run's caps.
 
 ## Order of work
 
@@ -721,8 +722,8 @@ nothing and is not run closed loop.
   are fixed here. Coverage is the central 90%, not an unspecified range.
 - Disguise uses the recalibration subsample and fitted map, with the exchange
   rate adjusted. Game-left-out scoring uses the omitted game's held-out groups.
-- Run-ending cases and the new tag are fixed here. The spending placeholders
-  remain open; the earlier proposed ceiling is not adopted.
+- Run-ending cases and the new tag are fixed here. The spending caps
+  are filled from the committed bounds; the earlier proposed ceiling is not adopted.
 
 ## Open before registration
 
@@ -730,8 +731,8 @@ nothing and is not run closed loop.
   [Calls made before registration](registration.md#calls-made-before-registration). This satisfies
   the design note's order of work.
 
-- The three placeholders, **CAP**, **CHAT CAP** and **CHAT BOUND**, filled from
-  the spending script's output with dated chat prices.
+- **DONE:** the caps and chat bound are filled from the spending script's
+  output with dated chat prices. Vertex price confirmation remains due at registration.
 - The analysis code and its files, including the paths marked as added above,
   the second seal and run machinery, and the required checks.
 - A format check of the chat request with the committed renderer.
