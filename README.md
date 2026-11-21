@@ -18,6 +18,7 @@ design's first hypothesis: its notes, its pre-registration, its analysis code an
 | Design | Accepted as the basis for the pilot, in [docs/design.md](docs/design.md). Reviewed by models, not yet by people outside the project |
 | Pilot (hypothesis H1) | Run as registered. The verdict defined in [prereg/h1.md](prereg/h1.md) is a pass: the evaluative zoon predicted held-out choices better than its three reduced versions. The strict hypothesis, the one the design first wrote, failed, and the second model family was excluded. The full output is in [docs/pilot/result.md](docs/pilot/result.md); how it was run, and what should be read with the verdict, is in [docs/pilot/run-log.md](docs/pilot/run-log.md) |
 | First interaction test | Data chosen and the held-out groups sealed: repeated public goods games in pairs and groups of four, in [docs/interaction/task-selection.md](docs/interaction/task-selection.md). A measurement on training groups, in [docs/interaction/measure.md](docs/interaction/measure.md), finds that what the others in a group did predicts a person's next move well enough to test. The design of the test is in [docs/interaction/design.md](docs/interaction/design.md). Nothing is registered yet |
+| Candidate persons | Compared on training groups, with the selected coded arms, closed-loop scores and power in [docs/interaction/candidates.md](docs/interaction/candidates.md) |
 | Kernel and social simulation | Not started |
 | Licence | [Apache-2.0](LICENSE) |
 

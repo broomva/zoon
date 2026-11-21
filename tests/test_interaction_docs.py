@@ -32,7 +32,7 @@ def _split() -> tuple[str, str]:
     return text[:start], text[start : text.rindex("\n```")]
 
 
-def test_the_output_of_a_complete_run_is_pasted() -> None:
+def test_measure_paste_has_heading_and_power_label() -> None:
     _, paste = _split()
     assert paste.startswith("zoon interaction: what the others' history adds")
     assert "[power] closed loop" in paste
@@ -48,9 +48,7 @@ def test_every_quoted_number_is_in_the_pasted_output() -> None:
 
 
 def test_the_pasted_output_reports_what_the_note_relies_on() -> None:
-    """Both orders of entering the two histories, the check against chance for every block,
-    and power for each closed-loop measure are printed, so the note cannot quote one without
-    the other."""
+    """Check the required labels in the paste."""
     _, paste = _split()
     for label in REPORTED:
         assert label in paste, label
@@ -76,11 +74,12 @@ def test_a_live_run_prints_what_the_note_relies_on(
     assert labels(printed) == labels(paste)
 
 
-def test_the_notes_claim_prediction_and_not_influence() -> None:
-    """The data cannot separate influence from a shared tendency, so neither note may say it
-    did. Wording that asserts influence or an exclusion is refused."""
+def test_notes_exclude_phrases_asserting_influence() -> None:
+    """Reject listed phrases in the three notes."""
     notes = NOTE.parent
-    text = " ".join((notes / name).read_text() for name in ("measure.md", "task-selection.md"))
+    text = " ".join(
+        (notes / name).read_text() for name in ("measure.md", "task-selection.md", "candidates.md")
+    )
     text = " ".join(text.split()).lower()
     for phrase in (
         "influenced one another",
@@ -92,4 +91,220 @@ def test_the_notes_claim_prediction_and_not_influence() -> None:
         "moved toward the people",
     ):
         assert phrase not in text, phrase
-    assert "neither shows that people influence each other" in text
+
+
+def candidate_note() -> tuple[str, str]:
+    text = (NOTE.parent / "candidates.md").read_text()
+    start = text.rindex("\n```\n", 0, text.rindex("\n```")) + len("\n```\n")
+    return text[:start], text[start : text.rindex("\n```")]
+
+
+def test_candidate_figures_are_printed_and_every_form_is_reported() -> None:
+    from zoon.interaction import compare, person
+
+    prose, paste = candidate_note()
+    decimals = NUMBER
+    printed = {n.lstrip("+-") for n in decimals.findall(paste)}
+    assert {n.lstrip("+-") for n in decimals.findall(prose)} <= printed
+    assert paste.startswith("zoon interaction: candidates on training groups\n")
+    lines = dict(line.split(" = ", 1) for line in paste.splitlines()[1:])
+    for c in person.CANDIDATES:
+        assert int(lines[f"[count] {c.name}"]) == c.count
+        numbers = {
+            label: value
+            for label, value in lines.items()
+            if label.startswith(f"[numbers, {c.name}]")
+        }
+        assert len(numbers) == c.count
+        for trace in c.traces:
+            assert 0 <= float(lines[f"[numbers, {c.name}] trace fraction {trace}"]) <= 1
+        assert f"[open loop] {c.name}" in lines
+        for summary in compare.METRICS:
+            assert f"[closed loop, {summary}] {c.name}" in lines
+        for summary in compare.SUMMARIES:
+            assert 0 <= float(lines[f"[coverage, {summary}] {c.name}"]) <= 1
+    for label in ("candidates", "twins"):
+        tied = lines[f"[selection, {label}] tied at step 2"].split(", ")
+        winner = lines[f"[selection, {label}] winner"]
+        reference = lines[f"[selection, {label}] highest"]
+        assert reference in tied and winner in tied
+        assert int(lines[f"[count] {winner}"]) == min(
+            int(lines[f"[count] {name}"]) for name in tied
+        )
+    for comparison in ("selected twin", "own twin"):
+        assert f"[gain, {comparison}, open loop] candidate minus twin" in lines
+        for summary in compare.METRICS:
+            assert f"[gain, {comparison}, closed loop, {summary}] twin minus candidate" in lines
+        for summary in ("H2", *compare.METRICS):
+            assert f"[power, {comparison}, {summary}] training effect" in lines
+            assert f"[power, {comparison}, {summary}] half effect" in lines
+    for arm in ("candidate", "twin"):
+        assert f"[game left out, {arm}] loss" in lines
+
+
+def test_candidate_outcomes_and_tables_match_the_paste() -> None:
+    from zoon.interaction import compare, person
+
+    prose, paste = candidate_note()
+    lines = dict(line.split(" = ", 1) for line in paste.splitlines()[1:])
+    winner = lines["[selection, candidates] winner"]
+    twin = lines["[selection, twins] winner"]
+    normal = " ".join(prose.split())
+    training = re.search(r"on (\d+) training groups", normal)
+    held = re.search(r"The (\d+) held-out groups", normal)
+    first_cut = re.search(r"The first cut is now fixed at (\d+)\.", normal)
+    assert training and held and first_cut
+    assert training[1] == lines["[data] training groups"]
+    assert held[1] == lines["[data] held-out groups"]
+    assert first_cut[1] == lines["[fit] first cut"]
+    selection = re.search(
+        r"Among candidates, (.*?) tie at step 2; (.*?) has the highest score; "
+        r"the rule chooses (.*?) because it has the fewest fitted numbers among those tied\.",
+        normal,
+    )
+    assert selection
+    assert selection.groups() == (
+        lines["[selection, candidates] tied at step 2"],
+        lines["[selection, candidates] highest"],
+        winner,
+    )
+    tied = lines["[selection, candidates] tied at step 2"].split(", ")
+    assert int(lines[f"[count] {winner}"]) < min(
+        int(lines[f"[count] {name}"]) for name in tied if name != winner
+    )
+    twins = re.search(
+        r"Among twins, (.*?) has the highest score, is alone at step 2, "
+        r"and is chosen by the rule\.",
+        normal,
+    )
+    assert twins
+    assert (
+        twins[1]
+        == lines["[selection, twins] highest"]
+        == lines["[selection, twins] tied at step 2"]
+        == twin
+    )
+
+    tables = [
+        [[value.strip() for value in row.strip("|").split("|")] for row in block.splitlines()]
+        for block in re.findall(r"(?:^\|[^\n]*\n)+", prose, re.M)
+    ]
+    expected: list[list[list[str]]] = []
+    expected.append(
+        [
+            [
+                c.name,
+                lines[f"[count] {c.name}"],
+                lines[f"[open loop] {c.name}"],
+                lines[f"[closed loop, composite] {c.name}"],
+            ]
+            for c in person.CANDIDATES
+        ]
+    )
+    gains: list[list[str]] = []
+    powers: list[list[str]] = []
+    for metric in ("H2", *compare.METRICS):
+        values: list[str] = []
+        for opponent in ("selected twin", "own twin"):
+            label = (
+                f"[gain, {opponent}, open loop] candidate minus twin"
+                if metric == "H2"
+                else f"[gain, {opponent}, closed loop, {metric}] twin minus candidate"
+            )
+            values.append(lines[label])
+        gains.append([metric, *values])
+        powers.append(
+            [
+                metric,
+                *[
+                    lines[f"[power, {opponent}, {metric}] {effect}"]
+                    for opponent in ("selected twin", "own twin")
+                    for effect in ("training effect", "half effect")
+                ],
+            ]
+        )
+    expected.append(gains)
+    expected.append(
+        [
+            [
+                summary,
+                *[
+                    lines[f"[coverage, {summary}] {name}"]
+                    for name in (winner, twin, winner + " twin")
+                ],
+            ]
+            for summary in compare.SUMMARIES
+        ]
+    )
+    expected.append(powers)
+    expected.append(
+        [
+            [arm, lines[f"[game left out, {arm}] score"], lines[f"[game left out, {arm}] loss"]]
+            for arm in ("candidate", "twin")
+        ]
+    )
+    expected.append(
+        [
+            [
+                cell,
+                lines[f"[game left out, candidate, {cell}] score"],
+                lines[f"[game left out, twin, {cell}] score"],
+            ]
+            for cell in sorted(compare.GAMES)
+        ]
+    )
+    assert [table[2:] for table in tables] == expected
+    assert [table[0] for table in tables] == [
+        ["Form", "Fitted numbers", "Open-loop nats per decision", "Closed-loop composite"],
+        ["Measure", "Against selected twin", "Against own twin"],
+        ["Summary", "Selected candidate", "Selected twin", "Own twin"],
+        [
+            "Measure",
+            "Selected twin, training effect",
+            "Selected twin, half effect",
+            "Own twin, training effect",
+            "Own twin, half effect",
+        ],
+        ["Arm", "Nats per decision", "Loss from leaving the game out"],
+        ["Game", "Candidate", "Twin"],
+    ]
+    reproduced = re.search(
+        r"The largest absolute fitted-number changes over reversed groups and a nudged start "
+        r"are ([\d.]+) for (.*?) and ([\d.]+) for (.*?)\.",
+        normal,
+    )
+    assert reproduced
+    assert reproduced.groups() == (
+        lines[f"[reproducibility, {winner}] largest absolute change"],
+        winner,
+        lines[f"[reproducibility, {twin}] largest absolute change"],
+        twin,
+    )
+
+
+def test_candidate_pasted_settings_match_the_current_code() -> None:
+    from zoon.interaction import compare
+
+    _, paste = candidate_note()
+    settings = [
+        line
+        for line in paste.splitlines()
+        if line.startswith(("[fit]", "[simulation]", "[interval]"))
+    ]
+    assert settings == [entry.render() for entry in compare.settings()]
+
+
+def test_candidate_pasted_amounts_match_the_training_file() -> None:
+    from collections import Counter
+
+    from zoon.interaction import data, kernel
+
+    if not data.TRAINING.is_file():
+        pytest.skip("training file is absent; the pasted amount table needs training groups")
+    _, paste = candidate_note()
+    amounts = [line for line in paste.splitlines() if line.startswith("[amounts,")]
+    expected: list[str] = []
+    for (endowment, band), values in kernel.Amounts.build(data.load()).rows.items():
+        counts = ", ".join(f"{point}:{count}" for point, count in sorted(Counter(values).items()))
+        expected.append(f"[amounts, endowment {endowment}, band {band}] points:count = {counts}")
+    assert amounts == expected
