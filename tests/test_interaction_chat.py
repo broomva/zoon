@@ -210,7 +210,7 @@ def test_generate_content_wire_settings_and_thinking_billed_as_output() -> None:
         "generationConfig": {
             "temperature": 1.0,
             "thinkingConfig": {"thinkingLevel": "low"},
-            "maxOutputTokens": 256,
+            "maxOutputTokens": 2048,
         },
         "safetySettings": chat.SAFETY_SETTINGS,
     }

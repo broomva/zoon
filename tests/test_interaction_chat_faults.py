@@ -70,14 +70,14 @@ def test_admission_estimate_independent_high_price_and_maximum_output() -> None:
     text = "a\u00d7b\n"
     assert (
         chat.estimate(text)
-        == (Decimal(len(text.encode("utf-8")) + 400) * 4 + Decimal(256) * 20) / 1_000_000
+        == (Decimal(len(text.encode("utf-8")) + 400) * 4 + Decimal(2048) * 20) / 1_000_000
     )
 
 
 def test_admission_cap_is_latched_during_play_and_across_processes(tmp_path: Path) -> None:
     # Round 1 fits; the larger round 2 request is refused at admission.
     client = Replies([response("0"), response("0")])
-    run = session(tmp_path, client, Decimal("0.0145"))
+    run = session(tmp_path, client, Decimal("0.0503"))
     with pytest.raises(chat.Unusable) as caught:
         chat.play(GAMES["2-AI"], run, GROUP)
     assert caught.value.cause == run.terminal == chat.Cause.CAP
@@ -376,7 +376,7 @@ def test_live_wire_with_patched_urlopen_and_token_refresh(monkeypatch: pytest.Mo
             "generationConfig": {
                 "temperature": 1.0,
                 "thinkingConfig": {"thinkingLevel": "low"},
-                "maxOutputTokens": 256,
+                "maxOutputTokens": 2048,
             },
             "safetySettings": chat.SAFETY_SETTINGS,
         }

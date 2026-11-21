@@ -1,0 +1,72 @@
+Calls made on 2026-11-21 to gemini-4-carbon to set the output limit. Each line is one
+call on a committed made-up request. Cost columns are omitted.
+
+second run with at most 256 output tokens:
+[smoke 2-AI-type-0-round-1.txt 1] version = gemini-4-carbon | text = "" | usable = False | points = None | input tokens = 463 | output tokens = 3 | thinking tokens = 253
+[smoke 2-AI-type-0-round-1.txt 2] version = gemini-4-carbon | text = "36" | usable = True | points = 36 | input tokens = 463 | output tokens = 6 | thinking tokens = 0
+[smoke 2-AI-type-0-round-1.txt 3] version = gemini-4-carbon | text = "" | usable = False | points = None | input tokens = 463 | output tokens = 3 | thinking tokens = 253
+[smoke 2-AI-type-0-round-20.txt 1] version = gemini-4-carbon | text = "0" | usable = True | points = 0 | input tokens = 1854 | output tokens = 5 | thinking tokens = 0
+[smoke 2-AI-type-0-round-20.txt 2] version = gemini-4-carbon | text = "15" | usable = True | points = 15 | input tokens = 1854 | output tokens = 6 | thinking tokens = 0
+[smoke 2-AI-type-0-round-20.txt 3] version = gemini-4-carbon | text = "15" | usable = True | points = 15 | input tokens = 1854 | output tokens = 6 | thinking tokens = 0
+[smoke 4-AI-type-0-round-1.txt 1] version = gemini-4-carbon | text = "36" | usable = True | points = 36 | input tokens = 447 | output tokens = 6 | thinking tokens = 90
+[smoke 4-AI-type-0-round-1.txt 2] version = gemini-4-carbon | text = "36" | usable = True | points = 36 | input tokens = 447 | output tokens = 6 | thinking tokens = 72
+[smoke 4-AI-type-0-round-1.txt 3] version = gemini-4-carbon | text = "36" | usable = True | points = 36 | input tokens = 447 | output tokens = 6 | thinking tokens = 116
+[smoke 4-AI-type-0-round-20.txt 1] version = gemini-4-carbon | text = "15" | usable = True | points = 15 | input tokens = 1946 | output tokens = 6 | thinking tokens = 0
+[smoke 4-AI-type-0-round-20.txt 2] version = gemini-4-carbon | text = "25" | usable = True | points = 25 | input tokens = 1946 | output tokens = 6 | thinking tokens = 0
+[smoke 4-AI-type-0-round-20.txt 3] version = gemini-4-carbon | text = "0" | usable = True | points = 0 | input tokens = 1946 | output tokens = 5 | thinking tokens = 0
+
+probe with at most 4096 output tokens:
+[smoke 2-AI-type-0-round-1.txt 1] version = gemini-4-carbon | text = "36" | usable = True | points = 36 | input tokens = 463 | output tokens = 6 | thinking tokens = 0
+[smoke 2-AI-type-0-round-1.txt 2] version = gemini-4-carbon | text = "36" | usable = True | points = 36 | input tokens = 463 | output tokens = 6 | thinking tokens = 0
+[smoke 2-AI-type-0-round-1.txt 3] version = gemini-4-carbon | text = "36" | usable = True | points = 36 | input tokens = 463 | output tokens = 6 | thinking tokens = 0
+[smoke 2-AI-type-0-round-1.txt 4] version = gemini-4-carbon | text = "36" | usable = True | points = 36 | input tokens = 463 | output tokens = 6 | thinking tokens = 384
+[smoke 2-AI-type-0-round-1.txt 5] version = gemini-4-carbon | text = "36" | usable = True | points = 36 | input tokens = 463 | output tokens = 6 | thinking tokens = 0
+[smoke 2-AI-type-0-round-1.txt 6] version = gemini-4-carbon | text = "36" | usable = True | points = 36 | input tokens = 463 | output tokens = 6 | thinking tokens = 0
+[smoke 2-AI-type-0-round-1.txt 7] version = gemini-4-carbon | text = "36" | usable = True | points = 36 | input tokens = 463 | output tokens = 6 | thinking tokens = 0
+[smoke 2-AI-type-0-round-1.txt 8] version = gemini-4-carbon | text = "36" | usable = True | points = 36 | input tokens = 463 | output tokens = 6 | thinking tokens = 329
+[smoke 2-AI-type-0-round-1.txt 9] version = gemini-4-carbon | text = "36" | usable = True | points = 36 | input tokens = 463 | output tokens = 6 | thinking tokens = 0
+[smoke 2-AI-type-0-round-1.txt 10] version = gemini-4-carbon | text = "36" | usable = True | points = 36 | input tokens = 463 | output tokens = 6 | thinking tokens = 0
+[smoke 2-AI-type-0-round-20.txt 1] version = gemini-4-carbon | text = "12" | usable = True | points = 12 | input tokens = 1854 | output tokens = 6 | thinking tokens = 0
+[smoke 2-AI-type-0-round-20.txt 2] version = gemini-4-carbon | text = "10" | usable = True | points = 10 | input tokens = 1854 | output tokens = 6 | thinking tokens = 0
+[smoke 2-AI-type-0-round-20.txt 3] version = gemini-4-carbon | text = "0" | usable = True | points = 0 | input tokens = 1854 | output tokens = 5 | thinking tokens = 0
+[smoke 2-AI-type-0-round-20.txt 4] version = gemini-4-carbon | text = "0" | usable = True | points = 0 | input tokens = 1854 | output tokens = 5 | thinking tokens = 0
+[smoke 2-AI-type-0-round-20.txt 5] version = gemini-4-carbon | text = "15" | usable = True | points = 15 | input tokens = 1854 | output tokens = 6 | thinking tokens = 0
+[smoke 2-AI-type-0-round-20.txt 6] version = gemini-4-carbon | text = "0" | usable = True | points = 0 | input tokens = 1854 | output tokens = 5 | thinking tokens = 0
+[smoke 2-AI-type-0-round-20.txt 7] version = gemini-4-carbon | text = "15" | usable = True | points = 15 | input tokens = 1854 | output tokens = 6 | thinking tokens = 0
+[smoke 2-AI-type-0-round-20.txt 8] version = gemini-4-carbon | text = "0" | usable = True | points = 0 | input tokens = 1854 | output tokens = 5 | thinking tokens = 0
+[smoke 2-AI-type-0-round-20.txt 9] version = gemini-4-carbon | text = "0" | usable = True | points = 0 | input tokens = 1854 | output tokens = 5 | thinking tokens = 0
+[smoke 2-AI-type-0-round-20.txt 10] version = gemini-4-carbon | text = "0" | usable = True | points = 0 | input tokens = 1854 | output tokens = 5 | thinking tokens = 0
+[smoke 4-AI-type-0-round-1.txt 1] version = gemini-4-carbon | text = "36" | usable = True | points = 36 | input tokens = 447 | output tokens = 6 | thinking tokens = 104
+[smoke 4-AI-type-0-round-1.txt 2] version = gemini-4-carbon | text = "36" | usable = True | points = 36 | input tokens = 447 | output tokens = 6 | thinking tokens = 132
+[smoke 4-AI-type-0-round-1.txt 3] version = gemini-4-carbon | text = "36" | usable = True | points = 36 | input tokens = 447 | output tokens = 6 | thinking tokens = 81
+[smoke 4-AI-type-0-round-1.txt 4] version = gemini-4-carbon | text = "36" | usable = True | points = 36 | input tokens = 447 | output tokens = 6 | thinking tokens = 59
+[smoke 4-AI-type-0-round-1.txt 5] version = gemini-4-carbon | text = "36" | usable = True | points = 36 | input tokens = 447 | output tokens = 6 | thinking tokens = 167
+[smoke 4-AI-type-0-round-1.txt 6] version = gemini-4-carbon | text = "36" | usable = True | points = 36 | input tokens = 447 | output tokens = 6 | thinking tokens = 73
+[smoke 4-AI-type-0-round-1.txt 7] version = gemini-4-carbon | text = "36" | usable = True | points = 36 | input tokens = 447 | output tokens = 6 | thinking tokens = 101
+[smoke 4-AI-type-0-round-1.txt 8] version = gemini-4-carbon | text = "36" | usable = True | points = 36 | input tokens = 447 | output tokens = 6 | thinking tokens = 59
+[smoke 4-AI-type-0-round-1.txt 9] version = gemini-4-carbon | text = "36" | usable = True | points = 36 | input tokens = 447 | output tokens = 6 | thinking tokens = 89
+[smoke 4-AI-type-0-round-1.txt 10] version = gemini-4-carbon | text = "36" | usable = True | points = 36 | input tokens = 447 | output tokens = 6 | thinking tokens = 90
+[smoke 4-AI-type-0-round-20.txt 1] version = gemini-4-carbon | text = "15" | usable = True | points = 15 | input tokens = 1946 | output tokens = 6 | thinking tokens = 0
+[smoke 4-AI-type-0-round-20.txt 2] version = gemini-4-carbon | text = "25" | usable = True | points = 25 | input tokens = 1946 | output tokens = 6 | thinking tokens = 0
+[smoke 4-AI-type-0-round-20.txt 3] version = gemini-4-carbon | text = "24" | usable = True | points = 24 | input tokens = 1946 | output tokens = 6 | thinking tokens = 0
+[smoke 4-AI-type-0-round-20.txt 4] version = gemini-4-carbon | text = "25" | usable = True | points = 25 | input tokens = 1946 | output tokens = 6 | thinking tokens = 0
+[smoke 4-AI-type-0-round-20.txt 5] version = gemini-4-carbon | text = "4" | usable = True | points = 4 | input tokens = 1946 | output tokens = 5 | thinking tokens = 0
+[smoke 4-AI-type-0-round-20.txt 6] version = gemini-4-carbon | text = "24" | usable = True | points = 24 | input tokens = 1946 | output tokens = 6 | thinking tokens = 0
+[smoke 4-AI-type-0-round-20.txt 7] version = gemini-4-carbon | text = "15" | usable = True | points = 15 | input tokens = 1946 | output tokens = 6 | thinking tokens = 0
+[smoke 4-AI-type-0-round-20.txt 8] version = gemini-4-carbon | text = "4" | usable = True | points = 4 | input tokens = 1946 | output tokens = 5 | thinking tokens = 0
+[smoke 4-AI-type-0-round-20.txt 9] version = gemini-4-carbon | text = "4" | usable = True | points = 4 | input tokens = 1946 | output tokens = 5 | thinking tokens = 0
+[smoke 4-AI-type-0-round-20.txt 10] version = gemini-4-carbon | text = "18" | usable = True | points = 18 | input tokens = 1946 | output tokens = 6 | thinking tokens = 0
+
+check with at most 2048 output tokens:
+[smoke 2-AI-type-0-round-1.txt 1] version = gemini-4-carbon | text = "36" | usable = True | points = 36 | input tokens = 463 | output tokens = 6 | thinking tokens = 0
+[smoke 2-AI-type-0-round-1.txt 2] version = gemini-4-carbon | text = "36" | usable = True | points = 36 | input tokens = 463 | output tokens = 6 | thinking tokens = 359
+[smoke 2-AI-type-0-round-1.txt 3] version = gemini-4-carbon | text = "36" | usable = True | points = 36 | input tokens = 463 | output tokens = 6 | thinking tokens = 0
+[smoke 2-AI-type-0-round-20.txt 1] version = gemini-4-carbon | text = "0" | usable = True | points = 0 | input tokens = 1854 | output tokens = 5 | thinking tokens = 0
+[smoke 2-AI-type-0-round-20.txt 2] version = gemini-4-carbon | text = "15" | usable = True | points = 15 | input tokens = 1854 | output tokens = 6 | thinking tokens = 0
+[smoke 2-AI-type-0-round-20.txt 3] version = gemini-4-carbon | text = "12" | usable = True | points = 12 | input tokens = 1854 | output tokens = 6 | thinking tokens = 0
+[smoke 4-AI-type-0-round-1.txt 1] version = gemini-4-carbon | text = "36" | usable = True | points = 36 | input tokens = 447 | output tokens = 6 | thinking tokens = 84
+[smoke 4-AI-type-0-round-1.txt 2] version = gemini-4-carbon | text = "36" | usable = True | points = 36 | input tokens = 447 | output tokens = 6 | thinking tokens = 101
+[smoke 4-AI-type-0-round-1.txt 3] version = gemini-4-carbon | text = "36" | usable = True | points = 36 | input tokens = 447 | output tokens = 6 | thinking tokens = 106
+[smoke 4-AI-type-0-round-20.txt 1] version = gemini-4-carbon | text = "18" | usable = True | points = 18 | input tokens = 1946 | output tokens = 6 | thinking tokens = 0
+[smoke 4-AI-type-0-round-20.txt 2] version = gemini-4-carbon | text = "18" | usable = True | points = 18 | input tokens = 1946 | output tokens = 6 | thinking tokens = 0
+[smoke 4-AI-type-0-round-20.txt 3] version = gemini-4-carbon | text = "26" | usable = True | points = 26 | input tokens = 1946 | output tokens = 6 | thinking tokens = 0

@@ -1,4 +1,4 @@
-Shape of two replies from gemini-4-carbon at the registered settings, 2026-11-21.
+Shape of two replies from gemini-4-carbon, 2026-11-21, with at most 256 output tokens.
 Values of text fields, identifiers and times are omitted; counts are as returned.
 
 reply without thinking:

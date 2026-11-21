@@ -510,7 +510,7 @@ def test_registered_format_check_counts_equal_committed_record() -> None:
     lines = raw.decode().splitlines()
     normal = " ".join((NOTE.parents[2] / "interaction" / "registration.md").read_text().split())
     paragraph = re.search(
-        r"was run once at the settings fixed here: (\d+) calls, .*?"
+        r"was run once with at most 256 output tokens, the limit first chosen: (\d+) calls, .*?"
         r"All (\d+) replies were usable whole numbers\. (\w+) reported thinking tokens, "
         r"from (\d+) to (\d+)",
         normal,
@@ -526,12 +526,11 @@ def test_registered_format_check_counts_equal_committed_record() -> None:
     shape_raw = (NOTE.parent / "reply-shape.txt").read_bytes()
     assert (
         hashlib.sha256(shape_raw).hexdigest()
-        == "b1d5ea178b6bbc7de8cdfcb824eda64562542c74ade7390c225641ea11bbeca3"
+        == "3655492d7bfeba544e188e1ff34bc1522510f5c294af128ff5c0d6bf74889fd5"
     )
     shape_count = len(re.findall(r"^reply (?:with|without) thinking:$", shape_raw.decode(), re.M))
     sentence = re.search(
-        "On (\\d{4}-\\d{2}-\\d{2}) (\\w+) further calls at the registered sett"
-        "ings were made to record "
+        "On (\\d{4}-\\d{2}-\\d{2}) (\\w+) further calls at that limit were made to record "
         r"which usage fields a reply carries; the record is "
         r"\[`docs/interaction/reply-shape.txt`\]\(../docs/interaction/reply-shape.txt\)\.",
         normal,
@@ -544,6 +543,69 @@ def test_registered_format_check_counts_equal_committed_record() -> None:
         "[`docs/interaction/format-check-chat.txt`](../docs/interaction/format-check-chat.txt)"
         in normal
     )
+
+
+def test_output_limit_paragraph_counts_equal_committed_record() -> None:
+    import hashlib
+
+    from zoon.interaction import chat
+
+    raw = (NOTE.parent / "output-limit.txt").read_bytes()
+    assert (
+        hashlib.sha256(raw).hexdigest()
+        == "448de8ed4571fe337008d4c267c225be77c8ff7b1f1706aee80389a34dac9eed"
+    )
+    sections: dict[int, list[str]] = {}
+    for block in raw.decode().split("\n\n")[1:]:
+        head, *lines = block.splitlines()
+        limit = re.fullmatch(r"(?:second run|probe|check) with at most (\d+) output tokens:", head)
+        assert limit and all(line.startswith("[smoke ") for line in lines)
+        sections[int(limit[1])] = lines
+    assert list(sections) == [256, 4096, chat.MAX_OUTPUT_TOKENS]
+
+    def thinking(lines: list[str]) -> list[int]:
+        return [int(re.search(r"thinking tokens = (\d+)", line)[1]) for line in lines]  # type: ignore[index]
+
+    def usable(lines: list[str]) -> int:
+        return sum("usable = True" in line for line in lines)
+
+    second, probe, check = sections.values()
+    normal = " ".join((NOTE.parents[2] / "interaction" / "registration.md").read_text().split())
+    paragraph = re.search(
+        r"A second run of the same (\d+) calls with at most (\d+) output tokens returned (\d+) "
+        r"empty replies, each with (\d+) thinking tokens\. The same four requests were then sent "
+        r"(\d+) times each with at most (\d+) output tokens: all (\d+) replies were usable, and "
+        r"the most thinking tokens in one reply was (\d+)\. The limit was set to (\d+) and the "
+        r"(\d+) calls were run again at it: all (\d+) replies were usable, and the most "
+        r"thinking tokens in one reply was (\d+)\. These (\d+) calls are recorded in "
+        r"\[`docs/interaction/output-limit.txt`\]\(../docs/interaction/output-limit.txt\)\.",
+        normal,
+    )
+    assert paragraph
+    stated = [int(value) for value in paragraph.groups()]
+    empty = [line for line in second if 'text = ""' in line]
+    assert len(empty) == len(second) - usable(second) and len(set(thinking(empty))) == 1
+    names = {line.split()[1] for line in probe}
+    assert len(names) == 4 and len(probe) == 4 * stated[4]
+    assert stated == [
+        len(second),
+        256,
+        len(empty),
+        thinking(empty)[0],
+        len(probe) // 4,
+        4096,
+        usable(probe),
+        max(thinking(probe)),
+        chat.MAX_OUTPUT_TOKENS,
+        len(check),
+        usable(check),
+        max(thinking(check)),
+        len(second) + len(probe) + len(check),
+    ]
+    assert len(probe) == usable(probe) and len(check) == usable(check)
+    assert len(second) == len(check) == len(chat.smoke(chat.StubClient()))
+    assert max(thinking(probe)) > 256 and max(thinking(check)) > 256
+    assert 4 * max(thinking(probe) + thinking(check)) < chat.MAX_OUTPUT_TOKENS
 
 
 def test_prompted_prose_is_scope_and_record_only() -> None:

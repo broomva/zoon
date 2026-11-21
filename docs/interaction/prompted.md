@@ -24,9 +24,9 @@ on registration day. The format checks are outside the bound.
 | disguise | 512 | 962253 | 512 | 0.04041463 |
 | closed loop | 44000 | 81940800 | 44000 | 3.44151360 |
 | total | 52024 | 96878135 | 52024 | 4.06888167 |
-| chat closed loop | 44000 | 185117000 | 11264000 | 965.74800000 |
-| chat recall | 8 | 16904 | 2048 | 0.10857600 |
-| chat total | 44008 | 185133904 | 11266048 | 965.85657600 |
+| chat closed loop | 44000 | 185117000 | 90112000 | 2542.70800000 |
+| chat recall | 8 | 16904 | 16384 | 0.39529600 |
+| chat total | 44008 | 185133904 | 90128384 | 2543.10329600 |
 
 Output of `python -m zoon.interaction.budget`:
 
@@ -58,7 +58,7 @@ zoon interaction: prompted spending bound
 [settings] chat location = global
 [settings] chat temperature = 1.0
 [settings] chat thinking level = low
-[settings] chat maximum output tokens = 256
+[settings] chat maximum output tokens = 2048
 [settings] chat transport attempts = 4
 [settings] chat transport pauses = (1.0, 2.0, 4.0)
 [settings] chat reply attempts = 3
@@ -86,9 +86,9 @@ zoon interaction: prompted spending bound
 [budget] largest component = closed loop | USD <= 3.44151360
 [budget] share of proposed ceiling = 0.03390735
 [budget] total at most proposed ceiling = True
-[chat closed loop] calls = 44000 | input tokens <= 185117000 | output tokens <= 11264000 | USD <= 965.74800000
-[chat recall] calls = 8 | input tokens <= 16904 | output tokens <= 2048 | USD <= 0.10857600
-[chat total] calls = 44008 | input tokens <= 185133904 | output tokens <= 11266048 | USD <= 965.85657600
+[chat closed loop] calls = 44000 | input tokens <= 185117000 | output tokens <= 90112000 | USD <= 2542.70800000
+[chat recall] calls = 8 | input tokens <= 16904 | output tokens <= 16384 | USD <= 0.39529600
+[chat total] calls = 44008 | input tokens <= 185133904 | output tokens <= 90128384 | USD <= 2543.10329600
 [caps] decision USD = 17
-[caps] chat USD = 966
+[caps] chat USD = 2544
 ```

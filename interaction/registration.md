@@ -455,7 +455,7 @@ probability tolerance above.
 | Arm | Model | Settings |
 |---|---|---|
 | `prompted`, which gates | `jev-1.14.0` | Declared-answer probabilities, as above |
-| `chat`, reported | `gemini-4-carbon` on Vertex, location global | Thinking level low; temperature 1.0; at most 256 output tokens (`chat.MAX_OUTPUT_TOKENS = 256`), including recall. A reply cut off at the limit follows the same reply rule |
+| `chat`, reported | `gemini-4-carbon` on Vertex, location global | Thinking level low; temperature 1.0; at most 2048 output tokens (`chat.MAX_OUTPUT_TOKENS = 2048`), including recall. A reply cut off at the limit follows the same reply rule |
 
 Record the version each response reports. The decision model must report exactly
 its name above. For chat, fix the version to the first response's reported version,
@@ -495,16 +495,23 @@ to turn thinking off. The replies are not kept in the repository. No participant
 record was sent to any model, and no held-out group has been read.
 
 Later on 2026-11-21, after the chat renderer was committed, the chat format check
-was run once at the settings fixed here: 12 calls, the first and twentieth rounds
-of two games' committed made-up requests, three times each. All 12 replies were
-usable whole numbers. Three reported thinking tokens, from 45 to 111, and the
-others were printed as zero; the output limit of 256 tokens was chosen before
-this check and was
-not changed after it. The exact output is committed in
+was run once with at most 256 output tokens, the limit first chosen: 12 calls, the
+first and twentieth rounds of two games' committed made-up requests, three times
+each. All 12 replies were usable whole numbers. Three reported thinking tokens,
+from 45 to 111, and the others were printed as zero. The exact output is committed in
 [`docs/interaction/format-check-chat.txt`](../docs/interaction/format-check-chat.txt).
-On 2026-11-21 two further calls at the registered settings were made to record
+On 2026-11-21 two further calls at that limit were made to record
 which usage fields a reply carries; the record is
 [`docs/interaction/reply-shape.txt`](../docs/interaction/reply-shape.txt).
+
+The output limit was then raised, before registration and after seeing replies.
+Thinking tokens count against the limit. A second run of the same 12 calls with at
+most 256 output tokens returned 2 empty replies, each with 253 thinking tokens. The
+same four requests were then sent 10 times each with at most 4096 output tokens:
+all 40 replies were usable, and the most thinking tokens in one reply was 384. The
+limit was set to 2048 and the 12 calls were run again at it: all 12 replies were
+usable, and the most thinking tokens in one reply was 359. These 64 calls are recorded in
+[`docs/interaction/output-limit.txt`](../docs/interaction/output-limit.txt).
 
 ### The chat arm
 
@@ -560,7 +567,7 @@ same H3 composite, difference and interval. It changes no verdict.
 
 Each model has its own cap, so that an arm that decides nothing cannot end the
 run. **Decision-model cap in US dollars: 17.** **Chat-model cap in US dollars,
-recall included: 966.** Count spending from reported tokens in recorded
+recall included: 2544.** Count spending from reported tokens in recorded
 responses at the fixed prices. Retain and count unusable chat replies before
 retrying them. As in the pilot, do not send a call if that model's spent tokens'
 cost plus the call's estimate and reservations for calls in flight would exceed
@@ -585,8 +592,8 @@ Output costs zero at the fixed decision-model price.
 
 The prices in prompted.md and `src/zoon/pilot/prices.py` are 0.042 US dollars per
 million input tokens and zero per million output tokens, read on 2026-11-15.
-**Chat-model bound in US dollars: 965.85657600.** The committed spending script
-produces this for one pass, including the recall requests, with at most 256
+**Chat-model bound in US dollars: 2543.10329600.** The committed spending script
+produces this for one pass, including the recall requests, with at most 2048
 output tokens per call. Retries are paid from the same chat cap.
 Read the published [Vertex pricing page](https://cloud.google.com/vertex-ai/generative-ai/pricing)
 on the day of registration and record the prices and read date with the bound.

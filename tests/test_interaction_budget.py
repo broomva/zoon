@@ -231,7 +231,7 @@ def test_chat_bound_counts_each_seat_and_recall_at_maximum_output(small: list[Gr
     game = budget.GAMES["2-FE"]
     rows = budget.chat_estimate()
     assert [r.calls for r in rows] == [18, 1]
-    assert [r.output_tokens for r in rows] == [18 * 256, 256]
+    assert [r.output_tokens for r in rows] == [18 * 2048, 2048]
     expected = 3 * sum(
         chat.input_tokens(budget.chat_bound_request(game, s, r))
         for s in range(game.size)
