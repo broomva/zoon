@@ -107,8 +107,9 @@ changes. This is the only operator decision the run allows, and it cannot be
 taken once `held-out` has started.
 
 Recall questions are sent unless the model is withdrawn, its version has changed,
-or the chat cap is reached. An arm made unusable by the three-reply rule or the
-operator's decision is still asked. `closed-loop` and `recall` complete with the
+or the chat cap is reached. An arm made unusable by the three-reply rule, or ended
+by the operator during `closed-loop`, is still asked. If the operator ends the arm
+during `recall`, the questions not yet answered are recorded "not asked". `closed-loop` and `recall` complete with the
 chat status recorded and "not asked" for each recall question not sent, and later
 steps proceed. This changes no hypothesis verdict. The chat reply rule is under
 The chat arm.
@@ -456,9 +457,10 @@ The outcomes for withdrawal and version change are under Data.
 
 ### Calls made before this file
 
-On 2026-11-21 the decision model was sent the four committed format-check
-requests, which use made-up histories. All four replies were usable five-band
-distributions.
+The decision model was sent format-check requests twice, four calls each time,
+all on made-up histories: once before the request renderer was written, and on
+2026-11-21 with the four committed format-check requests. All eight replies were
+usable five-band distributions.
 
 On the same day four candidate chat models (`gemini-4-hydrogen`, `gemini-4-argon`,
 `gemini-4-neon`, `gemini-4-carbon`) were sent a toy question and two requests built
