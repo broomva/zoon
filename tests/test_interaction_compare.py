@@ -638,7 +638,8 @@ def test_report_entries_selection_refits_and_main_rendering(
             abs(float((reference + delta) - reference)),
             ".6f",
         )
-        if c.letter != "B":
+        if not c.has_intercept:
+            add(f"[game left out, {arm}] score", "undefined (chosen form has no intercept)")
             continue
         left = person.out_of_sample(groups, c, leave_out_game=True)
         add(f"[game left out, {arm}] score", measure.paired(left, decisions.group, len(groups)))

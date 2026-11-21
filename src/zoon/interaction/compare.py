@@ -255,6 +255,16 @@ def settings(
     ]
 
 
+def amount_entries(groups: Sequence[Group]) -> list[Entry]:
+    return [
+        Entry(
+            f"[amounts, endowment {endowment}, band {band}] points:count",
+            ", ".join(f"{points}:{count}" for points, count in sorted(Counter(values).items())),
+        )
+        for (endowment, band), values in kernel.Amounts.build(groups).rows.items()
+    ]
+
+
 def report(
     groups: Sequence[Group],
     held: Mapping[str, int],
@@ -275,9 +285,7 @@ def report(
     def found(label: str, result: Sequence[float]) -> None:
         entries.append(Entry(label, tuple(float(v) for v in result)))
 
-    for (endowment, band), values in kernel.Amounts.build(groups).rows.items():
-        counts = ", ".join(f"{points}:{count}" for points, count in sorted(Counter(values).items()))
-        entries.append(Entry(f"[amounts, endowment {endowment}, band {band}] points:count", counts))
+    entries.extend(amount_entries(groups))
 
     results: dict[str, Evaluation] = {}
     for c in person.CANDIDATES:
@@ -361,7 +369,13 @@ def report(
             float(np.max(np.abs(refit.numbers - reference))) for refit in (reversed_fit, nudged_fit)
         )
         entries.append(Entry(f"[reproducibility, {name}] largest absolute change", change, ".6f"))
-        if c.letter != "B":
+        if not c.has_intercept:
+            entries.append(
+                Entry(
+                    f"[game left out, {arm}] score",
+                    "undefined (chosen form has no intercept)",
+                )
+            )
             continue
         left = person.out_of_sample(groups, c, leave_out_game=True)
         found(f"[game left out, {arm}] score", measure.paired(left, decisions.group, len(groups)))

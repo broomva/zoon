@@ -107,7 +107,6 @@ class Coded:
         else:
             state, observations = person.State(), view.history
         for observation in observations:
-            # No missing contribution or payoff is inferred from the rules.
             visible = dict(observation.contributions)
             row = tuple(visible.get(s, 0) for s in range(view.game.size))
             state = self.law.update(state, view.game, view.seat, row)

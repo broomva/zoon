@@ -162,17 +162,20 @@ def test_absent_game_predictions_need_an_intercept(c: person.Candidate) -> None:
     assert p.games == frozenset(GAMES) - {"2-MI"}
     unseen = [g for g in tiny() if g.cell == "2-MI"]
     mixed = [groups[0], unseen[0]]
+    assert c.has_intercept == (c.letter == "B")
     if c.letter == "B":
         assert np.isfinite(p.probabilities(GAMES["2-MI"], 0)).all()
         assert np.isfinite(person.log_likelihoods(p, unseen)).all()
-        assert np.isfinite(person.log_likelihoods(p, mixed)).all()
+        for ordered in (mixed, list(reversed(mixed))):
+            assert np.isfinite(person.log_likelihoods(p, ordered)).all()
     else:
         with pytest.raises(ValueError, match="no fitted constant"):
             p.probabilities(GAMES["2-MI"], 0)
         with pytest.raises(ValueError, match="no fitted constant"):
             person.log_likelihoods(p, unseen)
-        with pytest.raises(ValueError, match="no fitted constant"):
-            person.log_likelihoods(p, mixed)
+        for ordered in (mixed, list(reversed(mixed))):
+            with pytest.raises(ValueError, match="no fitted constant"):
+                person.log_likelihoods(p, ordered)
         with pytest.raises(ValueError, match="intercept"):
             person.out_of_sample(tiny(), c, leave_out_game=True)
     assert np.isfinite(p.probabilities(GAMES["2-FE"], 0)).all()
