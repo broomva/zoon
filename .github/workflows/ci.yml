@@ -17,8 +17,15 @@ jobs:
         with:
           version: "0.13.6"
           python-version: "3.12"
-      - run: uv sync --locked
+      - run: uv sync --locked --extra groups
       - run: uv run ruff check
       - run: uv run ruff format --check
       - run: uv run pyright
-      - run: uv run pytest
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: data/groups/raw
+          key: groups-raw-${{ hashFiles('interaction/data-manifest.json') }}
+      - run: uv run --extra groups python -m zoon.interaction.data
+      - run: uv run --extra groups pytest
+        env:
+          ZOON_REQUIRE_TRAINING: "1"

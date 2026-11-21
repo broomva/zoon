@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from tests.test_interaction_measure import played_groups
+from tests.test_interaction_training import require_training
 from zoon.interaction import measure
 
 NOTE = Path(__file__).parent.parent / "docs" / "interaction" / "measure.md"
@@ -297,8 +298,7 @@ def test_candidate_pasted_settings_match_the_current_code() -> None:
 def test_candidate_pasted_amounts_match_the_training_file() -> None:
     from zoon.interaction import compare, data
 
-    if not data.TRAINING.is_file():
-        pytest.skip("training file is absent; the pasted amount table needs training groups")
+    require_training()
     _, paste = candidate_note()
     amounts = [line for line in paste.splitlines() if line.startswith("[amounts,")]
     assert amounts == [entry.render() for entry in compare.amount_entries(data.load())]
@@ -322,12 +322,12 @@ def test_prompted_table_and_quoted_figures_match_the_paste() -> None:
         if match:
             rows.append("| " + " | ".join(match.groups()) + " |")
     quoted = [line for line in prose.splitlines() if re.match(r"\| (?!Call|---)", line)]
-    assert len(rows) == 6
+    assert len(rows) == 5
     assert quoted == rows
     # Attribution identifies the source and its licence; these are not measured figures.
     prose = re.sub(r"The instructions are used under CC BY.*?\n\n", "", prose, flags=re.S)
-    pattern = re.compile(r"\d+(?:\.\d+)?")
-    assert set(pattern.findall(prose)) <= set(pattern.findall(paste))
+    prose = "\n".join(line for line in prose.splitlines() if not line.startswith("|"))
+    assert not re.search(r"\d", prose)
     assert paste.startswith("zoon interaction: prompted spending bound\n")
     assert "[budget] total at most proposed ceiling = " in paste
 
@@ -344,7 +344,6 @@ def test_prompted_pasted_settings_match_current_objects() -> None:
 def test_prompted_full_paste_matches_training_only_bound() -> None:
     from zoon.interaction import budget, data
 
-    if not data.TRAINING.is_file():
-        pytest.skip("training file is absent; the pasted bound needs training groups and counts")
+    require_training()
     _, paste = prompted_note()
     assert paste == "\n".join(budget.report(data.load(), data.held_out_counts()))

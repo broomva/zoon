@@ -1,5 +1,6 @@
 """Decision-model spending bound from training groups and held-out counts."""
 
+import sys
 from collections.abc import Mapping, Sequence
 from decimal import ROUND_CEILING, Decimal
 from functools import cache
@@ -13,8 +14,6 @@ from zoon.pilot import clients, prices, prompts
 
 CEILING = pilot_budget.CEILING
 SIMULATED_GROUPS = compare.SIMULATED_GROUPS
-RECALL_OUTPUT_TOKENS = 40
-RECALL_REQUESTS_PER_GAME = 1
 
 
 @cache
@@ -37,6 +36,8 @@ def bound_request(game: Game, seat: int, round_: int) -> prompts.Decision:
 
 
 def estimate(groups: Sequence[Group], held: Mapping[str, int]) -> list[pilot_budget.Cost]:
+    if set(held) != set(GAMES):
+        raise ValueError("held-out counts must contain exactly the games in the test")
     tallies = {
         step: [0, 0, 0]
         for step in (
@@ -44,23 +45,21 @@ def estimate(groups: Sequence[Group], held: Mapping[str, int]) -> list[pilot_bud
             "recalibration",
             "disguise",
             "closed loop",
-            "recall",
         )
     }
 
-    def add(step: str, request: prompts.Decision | str, count: int = 1) -> None:
+    def add(step: str, request: prompts.Decision, count: int = 1) -> None:
         row = tallies[step]
         row[0] += count
         row[1] += pilot_budget.input_tokens(request, "decision") * count
-        row[2] += (RECALL_OUTPUT_TOKENS if isinstance(request, str) else 1) * count
+        row[2] += count
 
     for cell, game in GAMES.items():
         for r in range(1, ROUNDS + 1):
             for seat in range(game.size):
                 request = bound_request(game, seat, r)
-                add("open loop", request, held.get(cell, 0))
+                add("open loop", request, held[cell])
                 add("closed loop", request, SIMULATED_GROUPS)
-        add("recall", prompted.recall(game), RECALL_REQUESTS_PER_GAME)
     for decision in prompted.subsample(groups):
         view = prompted.training_view(decision.group, decision.seat, decision.round)
         add("recalibration", prompted.request(view))
@@ -68,49 +67,37 @@ def estimate(groups: Sequence[Group], held: Mapping[str, int]) -> list[pilot_bud
     return [pilot_budget.Cost("decision", step, *values) for step, values in tallies.items()]
 
 
+SETTINGS: tuple[tuple[str, object, str], ...] = (
+    ("rounds", sys.modules[__name__], "ROUNDS"),
+    ("simulated groups per game", sys.modules[__name__], "SIMULATED_GROUPS"),
+    ("recalibration count limit", prompted, "SUBSAMPLE_COUNT"),
+    ("recalibration salt", prompted, "SUBSAMPLE_SALT"),
+    ("disguise points multiplier", prompted, "DISGUISE"),
+    ("fixture seed", prompted, "FIXTURE_SEED"),
+    ("smoke games", prompted, "SMOKE_GAMES"),
+    ("recalibration start coordinates", prompted, "FIT_START"),
+    ("recalibration optimiser", prompted, "FIT_METHOD"),
+    ("recalibration optimiser options", prompted, "FIT_OPTIONS"),
+    ("recalibration bounds", prompted, "FIT_BOUNDS"),
+    ("recalibration penalty", prompted, "PENALTY"),
+    ("probability floor before recalibration", person, "FLOOR"),
+    ("model", prices, "DECISION.model"),
+    ("input USD per million", prices, "DECISION.input_per_million"),
+    ("output USD per million", prices, "DECISION.output_per_million"),
+    ("price read", prices, "DECISION.read"),
+    ("proposed ceiling USD", sys.modules[__name__], "CEILING"),
+    ("pilot cap USD", clients, "CAP"),
+)
+
+
 def settings() -> list[str]:
-    identity = prompted.Recalibration()
-    values: dict[str, object] = {
-        "rounds": ROUNDS,
-        "simulated groups per game": SIMULATED_GROUPS,
-        "recalibration count limit": prompted.SUBSAMPLE_COUNT,
-        "recalibration salt": prompted.SUBSAMPLE_SALT,
-        "subsample reason": "bounded training supervision before registration",
-        "simulation count reason": "same per-game count as the coded comparison",
-        "hash coordinates": "game label; group index; zero-based seat; one-based round",
-        "quota allocation": "largest remainder; ties by game label",
-        "disguise points multiplier": prompted.DISGUISE,
-        "fixture seed": prompted.FIXTURE_SEED,
-        "fixture seed reason": "fixed made-up histories for inspection",
-        "salt reason": "fixed ordering before model probabilities are obtained",
-        "quota reason": "integer allocation within one decision of each proportional quota",
-        "smoke games": ", ".join(prompted.SMOKE_GAMES),
-        "smoke games reason": "the two games with printed instructions",
-        "recalibration optimiser reason": "analytic likelihood gradient; no penalty",
-        "reproducibility reason": "compare all fitted coordinates across starts and row order",
-        "recall allowance reason": "one wording per game; free-text renderer only",
-        "recalibration start coordinates": prompted.FIT_START,
-        "recalibration optimiser": prompted.FIT_METHOD,
-        "recalibration gradient tolerance": prompted.FIT_OPTIONS["gtol"],
-        "recalibration iteration limit": prompted.FIT_OPTIONS["maxiter"],
-        "recalibration objective": "mean negative log likelihood; no penalty",
-        "recalibration coordinates": "log temperature; four shifts; fifth is minus their sum",
-        "probability floor before recalibration": person.FLOOR,
-        "identity temperature": identity.temperature,
-        "identity shifts": ", ".join(f"{v:g}" for v in identity.shifts),
-        "reproducibility start nudge": prompted.START_NUDGE,
-        "reproducibility tolerance": prompted.REPRODUCIBILITY_TOLERANCE,
-        "recall requests per game": RECALL_REQUESTS_PER_GAME,
-        "recall output token bound": RECALL_OUTPUT_TOKENS,
-        "history bound": "longest legal round rendering, repeated; all earlier rounds",
-        "model": prices.DECISION.model,
-        "input USD per million": prices.DECISION.input_per_million,
-        "output USD per million": prices.DECISION.output_per_million,
-        "price read": prices.DECISION.read,
-        "proposed ceiling USD": CEILING,
-        "pilot cap USD": clients.CAP,
-    }
-    return [f"[settings] {key} = {value}" for key, value in values.items()]
+    lines: list[str] = []
+    for label, source, path in SETTINGS:
+        value = source
+        for attribute in path.split("."):
+            value = getattr(value, attribute)
+        lines.append(f"[settings] {label} = {value}")
+    return lines
 
 
 def dollars(value: Decimal) -> str:

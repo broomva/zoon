@@ -12,7 +12,7 @@ import numpy as np
 from scipy.optimize import minimize
 from scipy.special import logsumexp, softmax
 
-from zoon.interaction import data, kernel, measure
+from zoon.interaction import data, kernel, measure, person
 from zoon.interaction.data import Group
 from zoon.interaction.games import GAMES, ROUNDS, Game
 from zoon.interaction.measure import Floats
@@ -24,18 +24,20 @@ SUBSAMPLE_SALT = "interaction-recalibration-1"
 FIXTURE_SEED = 711
 DISGUISE = 10
 SMOKE_GAMES = ("2-AI", "4-AI")
-FIT_METHOD: Literal["BFGS"] = "BFGS"
+FIT_METHOD: Literal["L-BFGS-B"] = "L-BFGS-B"
 
 
 class FitOptions(TypedDict):
+    ftol: float
     gtol: float
     maxiter: int
 
 
-FIT_OPTIONS: FitOptions = {"gtol": 1e-9, "maxiter": 1000}
-FIT_START = 0.0
-START_NUDGE = 0.1
-REPRODUCIBILITY_TOLERANCE = 1e-6
+FIT_OPTIONS: FitOptions = {"ftol": 1e-12, "gtol": 1e-8, "maxiter": 1000}
+FIT_START = (1.0, 0.0, 0.0, 0.0, 0.0)
+FIT_BOUNDS = ((0.0, None),) + ((None, None),) * 4
+PENALTY = 1e-4
+FIXTURE_LABEL = "MADE-UP HISTORY: seeded; no participant record.\n\n"
 ANSWERS = (
     "Nothing",
     "Some, up to a third",
@@ -155,14 +157,30 @@ def training_view(group: Group, seat: int, round_: int) -> kernel.View:
     )
 
 
+def _probability_logs(probabilities: Floats) -> Floats:
+    probabilities = np.asarray(probabilities, dtype=float)
+    if (
+        probabilities.ndim == 0
+        or probabilities.shape[-1] != len(ANSWERS)
+        or not np.isfinite(probabilities).all()
+        or (probabilities < 0).any()
+        or (probabilities.sum(axis=-1) <= 0).any()
+    ):
+        raise ValueError("five finite non-negative probabilities are required")
+    floored = np.maximum(probabilities, person.FLOOR)
+    return np.log(floored / floored.sum(axis=-1, keepdims=True))
+
+
 @dataclass(frozen=True)
 class Recalibration:
-    log_temperature: float = 0.0
+    beta: float = 1.0
     free_shifts: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
 
-    @property
-    def temperature(self) -> float:
-        return float(np.exp(self.log_temperature))
+    def __post_init__(self) -> None:
+        if not np.isfinite(self.beta) or self.beta < 0:
+            raise ValueError("inverse temperature must be finite and non-negative")
+        if len(self.free_shifts) != 4 or not np.isfinite(self.shifts).all():
+            raise ValueError("four finite free shifts are required")
 
     @property
     def shifts(self) -> Floats:
@@ -170,57 +188,45 @@ class Recalibration:
 
     @property
     def numbers(self) -> Floats:
-        return np.r_[self.log_temperature, self.free_shifts]
+        return np.r_[self.beta, self.free_shifts]
 
     def apply(self, probabilities: Floats) -> Floats:
-        if (
-            probabilities.shape[-1] != len(ANSWERS)
-            or not np.isfinite(probabilities).all()
-            or (probabilities < 0).any()
-            or (probabilities.sum(axis=-1) <= 0).any()
-        ):
-            raise ValueError("five finite non-negative probabilities are required")
         return np.asarray(
-            softmax(
-                np.log(
-                    probabilities, where=probabilities > 0, out=np.full_like(probabilities, -np.inf)
-                )
-                / self.temperature
-                + self.shifts,
-                axis=-1,
-            ),
+            softmax(self.beta * _probability_logs(probabilities) + self.shifts, axis=-1),
             dtype=float,
         )
 
 
-def fit(pairs: Sequence[tuple[Floats, int]], start_nudge: float = 0.0) -> Recalibration:
+def fit(
+    pairs: Sequence[tuple[Floats, int]], *, start: Sequence[float] | Floats = FIT_START
+) -> Recalibration:
     if not pairs:
         raise ValueError("recalibration needs training decisions")
-    probabilities = np.array([p for p, _ in pairs])
-    Recalibration().apply(probabilities)
+    logs = _probability_logs(np.array([p for p, _ in pairs]))
     choices = np.array([band for _, band in pairs])
     if ((choices < 0) | (choices >= len(ANSWERS))).any():
         raise ValueError("observed band outside the declared answers")
-    probabilities = np.array([kernel.distribution(p) for p in probabilities])
-    logs: Floats = np.log(probabilities)
 
     def objective(numbers: Floats) -> tuple[float, Floats]:
-        scaled: Floats = logs * np.exp(-numbers[0])
-        logits: Floats = scaled + np.r_[numbers[1:], -numbers[1:].sum()]
+        shifts: Floats = np.r_[numbers[1:], -numbers[1:].sum()]
+        logits: Floats = numbers[0] * logs + shifts
         residual: Floats = softmax(logits, axis=1)
         loss = float(np.mean(logsumexp(logits, axis=1) - logits[np.arange(len(pairs)), choices]))
+        loss += PENALTY * ((float(numbers[0]) - 1) ** 2 + float(np.sum(shifts**2)))
         residual[np.arange(len(pairs)), choices] -= 1
         gradient = np.r_[
-            np.mean(np.sum(residual * -scaled, axis=1)),
+            np.mean(np.sum(residual * logs, axis=1)),
             (residual[:, :4] - residual[:, 4:]).mean(axis=0),
         ]
+        gradient += PENALTY * np.r_[2 * (numbers[0] - 1), 2 * (shifts[:4] - shifts[4])]
         return loss, gradient
 
     result = minimize(
         objective,
-        np.full(5, FIT_START + start_nudge),
+        np.asarray(start, dtype=float),
         jac=True,
         method=FIT_METHOD,
+        bounds=FIT_BOUNDS,
         options={**FIT_OPTIONS},
     )
     if not result.success:
@@ -238,9 +244,7 @@ class Prompted:
         decision = request(view)
         response = self.client.ask(decision)
         clients.validate(decision, response)
-        return self.recalibration.apply(
-            kernel.distribution(np.array([response.probabilities[a] for a in ANSWERS]))
-        )
+        return self.recalibration.apply(np.array([response.probabilities[a] for a in ANSWERS]))
 
 
 @dataclass(frozen=True)
@@ -302,7 +306,7 @@ def fixtures() -> dict[str, prompts.Decision]:
                 decision = request(training_view(group, seat, r))
                 result[f"{cell}-type-{kind}-round-{r}.json"] = replace(
                     decision,
-                    state="MADE-UP HISTORY: seeded; no participant record.\n\n" + decision.state,
+                    state=FIXTURE_LABEL + decision.state,
                 )
     return result
 
@@ -316,7 +320,7 @@ def write_fixtures() -> None:
         name, content = f"{cell}.txt", instructions(game).encode()
         (instruction_dir / name).write_bytes(content)
         digests[name] = hashlib.sha256(content).hexdigest()
-    (instruction_dir / "sha256.json").write_text(json.dumps(digests, indent=2) + "\n")
+    (instruction_dir / "sha256.json").write_bytes((json.dumps(digests, indent=2) + "\n").encode())
     for name, decision in fixtures().items():
         (request_dir / name).write_bytes(prompts.decision_bytes(decision))
 
@@ -328,7 +332,7 @@ def smoke(client: clients.Client) -> list[str]:
             name = f"{cell}-type-0-round-{r}.json"
             value = json.loads((DIRECTORY / "requests" / name).read_text())
             decision = prompts.Decision(
-                value["state"],
+                value["state"].removeprefix(FIXTURE_LABEL),
                 value["question"],
                 tuple(prompts.Answer(**a) for a in value["answers"]),
             )
@@ -354,12 +358,14 @@ def smoke(client: clients.Client) -> list[str]:
 def main(arguments: Sequence[str] | None = None) -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("command", choices=("fixtures", "smoke"))
-    parser.add_argument("--stub", action="store_true")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--stub", action="store_true")
+    mode.add_argument("--live", action="store_true")
     args = parser.parse_args(arguments)
     if args.command == "fixtures":
         write_fixtures()
     else:
-        client = clients.StubClient("decision") if args.stub else clients.DecisionClient()
+        client = clients.DecisionClient() if args.live else clients.StubClient("decision")
         print("\n".join(smoke(client)))
 
 

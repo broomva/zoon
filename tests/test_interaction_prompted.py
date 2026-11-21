@@ -5,13 +5,15 @@ import json
 from dataclasses import replace
 from fractions import Fraction
 from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
 
 import numpy as np
 import pytest
 from scipy.special import softmax
 
 from tests.test_interaction_kernel import training
-from zoon.interaction import kernel, measure, prompted
+from zoon.interaction import kernel, measure, person, prompted
 from zoon.interaction.data import Group
 from zoon.interaction.games import GAMES, ROUNDS
 from zoon.pilot import clients, prices, prompts
@@ -203,14 +205,16 @@ def test_kernel_stub_calls_each_seat_each_round_and_replays() -> None:
 
 def test_identity_and_zero_sum_shifts() -> None:
     p = np.array([[0, 0.1, 0.2, 0.3, 0.4], [0.2] * 5])
-    assert prompted.Recalibration().apply(p) == pytest.approx(p, abs=1e-15)
-    value = prompted.Recalibration(np.log(2), (0.2, -0.3, 0.4, -0.1))
+    assert prompted.Recalibration().apply(p) == pytest.approx(
+        np.array([kernel.distribution(row) for row in p]), abs=1e-15
+    )
+    value = prompted.Recalibration(0.5, (0.2, -0.3, 0.4, -0.1))
     assert value.shifts.sum() == pytest.approx(0, abs=1e-15)
-    assert value.temperature == pytest.approx(2)
+    assert value.beta == pytest.approx(0.5)
     assert value.numbers.shape == (5,)
     assert value.apply(p) == pytest.approx(
         softmax(
-            np.log(np.maximum(p, 1e-300)) / 2 + value.shifts,
+            np.log(np.array([kernel.distribution(row) for row in p])) / 2 + value.shifts,
             axis=1,
         ),
         abs=1e-15,
@@ -222,7 +226,7 @@ def synthetic_pairs() -> tuple[list[tuple[measure.Floats, int]], prompted.Recali
     weights = np.array([1, 2, 3, 4, 5])
     shifts = np.log(weights) - np.log(weights).mean()
     known = prompted.Recalibration(
-        np.log(0.5), (float(shifts[0]), float(shifts[1]), float(shifts[2]), float(shifts[3]))
+        2.0, (float(shifts[0]), float(shifts[1]), float(shifts[2]), float(shifts[3]))
     )
     pairs: list[tuple[measure.Floats, int]] = []
     for _ in range(20):
@@ -236,13 +240,14 @@ def synthetic_pairs() -> tuple[list[tuple[measure.Floats, int]], prompted.Recali
 def test_fit_recovers_known_numbers_and_reproduces_identified_coordinates() -> None:
     pairs, known = synthetic_pairs()
     reference = prompted.fit(pairs)
-    assert reference.numbers == pytest.approx(known.numbers, abs=2e-6)
+    assert reference.numbers == pytest.approx(known.numbers, abs=0.01)
     assert reference.shifts.sum() == pytest.approx(0, abs=1e-15)
-    for other in (prompted.fit(pairs, prompted.START_NUDGE), prompted.fit(list(reversed(pairs)))):
+    for other in (
+        prompted.fit(pairs, start=np.array(prompted.FIT_START) + 0.1),
+        prompted.fit(list(reversed(pairs))),
+    ):
         assert other.numbers.shape == (5,)
-        assert (
-            np.max(np.abs(other.numbers - reference.numbers)) < prompted.REPRODUCIBILITY_TOLERANCE
-        )
+        assert np.max(np.abs(other.numbers - reference.numbers)) < 1e-4
     # All five coordinates change the probabilities on this varying input.
     probes = np.array([p for p, _ in pairs[::100]])
     columns: list[measure.Floats] = []
@@ -304,6 +309,10 @@ def test_disguise_scales_points_and_preserves_productivities() -> None:
     assert "contribution 10 points; payoff 372.5 points" in text
     assert "contribution 20 points; payoff 122.5 points" in text
     assert "0.003 Yuan" in text
+    assert (
+        "Group total contribution: 30 points; common pool: 45 points; "
+        "return per player: 22.5 points."
+    ) in text
 
 
 def test_recall_instructions_and_question() -> None:
@@ -328,9 +337,11 @@ def test_smoke_stub_committed_requests_and_usage(capsys: pytest.CaptureFixture[s
     assert len(lines) == len(expected) == len(client.requests)
     for name, decision, line in zip(expected, client.requests, lines, strict=True):
         assert isinstance(decision, prompts.Decision)
-        assert (
-            prompts.decision_bytes(decision)
-            == (prompted.DIRECTORY / "requests" / name).read_bytes()
+        assert prompts.decision_bytes(decision) == prompts.decision_bytes(
+            replace(
+                prompted.fixtures()[name],
+                state=prompted.fixtures()[name].state.removeprefix(prompted.FIXTURE_LABEL),
+            )
         )
         response = clients.StubClient("decision").ask(decision)
         assert f"version = {response.version}" in line
@@ -381,6 +392,7 @@ def test_smoke_raw_sum_and_no_writes(monkeypatch: pytest.MonkeyPatch) -> None:
                 zip(prompted.ANSWERS, (0.1, 0.2, 0.3, 0.1, 0.29), strict=True)
             )
             total = sum(raw.values())
+            decision = replace(decision, state=decision.state.removeprefix(prompted.FIXTURE_LABEL))
             client.recorded[clients.key(decision)] = clients.Response(
                 {a: p / total for a, p in raw.items()},
                 total,
@@ -417,8 +429,247 @@ def test_subsample_quota_ties_use_game_label(monkeypatch: pytest.MonkeyPatch) ->
 def test_fixture_writer_regenerates_bytes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     original = prompted.DIRECTORY
     monkeypatch.setattr(prompted, "DIRECTORY", tmp_path)
+
+    def refuse_text_write(*args: object, **kwargs: object) -> None:
+        raise AssertionError("fixtures must be written as bytes")
+
+    monkeypatch.setattr(Path, "write_text", refuse_text_write)
     prompted.write_fixtures()
     for directory in ("instructions", "requests"):
         expected = {p.name: p.read_bytes() for p in (original / directory).iterdir()}
         written = {p.name: p.read_bytes() for p in (tmp_path / directory).iterdir()}
         assert written == expected
+
+
+@pytest.mark.parametrize("seat, rounds", [(-1, 0), (2, 0), (0, ROUNDS)])
+def test_request_refuses_seat_or_round_outside_test(seat: int, rounds: int) -> None:
+    game = GAMES["2-FE"]
+    observation = kernel.Observation(((0, 0), (1, 0)), game.payoffs((0, 0)))
+    with pytest.raises(ValueError, match="seat or round"):
+        prompted.request(kernel.View(game, seat, (observation,) * rounds))
+
+
+@pytest.mark.parametrize("damage", ["seat", "payoffs", "inconsistent"])
+def test_request_refuses_incomplete_or_inconsistent_history(damage: str) -> None:
+    game = GAMES["2-FE"]
+    observation = kernel.Observation(((0, 1), (1, 2)), game.payoffs((1, 2)))
+    if damage == "seat":
+        observation = replace(observation, contributions=((1, 2),))
+    elif damage == "payoffs":
+        observation = replace(observation, payoffs=None)
+    else:
+        observation = replace(observation, payoffs=game.payoffs((0, 0)))
+    with pytest.raises(
+        ValueError, match="history payoffs" if damage == "inconsistent" else "every contribution"
+    ):
+        prompted.request(kernel.View(game, 0, (observation,)))
+
+
+class InvalidClient:
+    family: clients.Family = "decision"
+
+    def __init__(self, probabilities: dict[str, float]) -> None:
+        self.probabilities = probabilities
+
+    def ask(self, request: clients.Request) -> clients.Response:
+        return clients.Response(self.probabilities, None, "", "example", 1, 1)
+
+
+@pytest.mark.parametrize("damage", ["sum", "missing", "extra"])
+@pytest.mark.parametrize("smoke", [False, True])
+def test_prompted_and_smoke_validate_raw_responses(damage: str, smoke: bool) -> None:
+    probabilities: dict[str, float] = dict.fromkeys(prompted.ANSWERS, 0.2)
+    if damage == "sum":
+        probabilities[prompted.ANSWERS[0]] = 0.1
+    elif damage == "missing":
+        probabilities.pop(prompted.ANSWERS[0])
+        probabilities[prompted.ANSWERS[1]] += 0.2
+    else:
+        probabilities["unexpected"] = 0.1
+        probabilities[prompted.ANSWERS[0]] -= 0.1
+    client = InvalidClient(probabilities)
+    with pytest.raises(clients.StepFailure):
+        if smoke:
+            prompted.smoke(client)
+        else:
+            prompted.Prompted(client)(kernel.View(GAMES["2-FE"], 0, ()))
+
+
+@pytest.mark.parametrize("arguments", [["smoke"], ["smoke", "--stub"], ["smoke", "--live"]])
+def test_smoke_client_selection_without_constructing_live_client(
+    arguments: list[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    chosen: list[str] = []
+    stub = clients.StubClient("decision")
+
+    def offline() -> clients.StubClient:
+        chosen.append("live selected")
+        return stub
+
+    def inspect_client(client: clients.Client) -> list[str]:
+        assert isinstance(client, clients.StubClient)
+        assert client.family == "decision"
+        return []
+
+    monkeypatch.setattr(clients, "DecisionClient", offline)
+    monkeypatch.setattr(prompted, "smoke", inspect_client)
+    prompted.main(arguments)
+    assert chosen == (["live selected"] if "--live" in arguments else [])
+
+
+def test_smoke_requests_equal_rendered_made_up_groups() -> None:
+    rng = np.random.default_rng(prompted.FIXTURE_SEED)
+    groups = {
+        cell: Group(
+            cell,
+            "made-up",
+            tuple(tuple(int(rng.integers(e + 1)) for e in game.endowments) for _ in range(ROUNDS)),
+        )
+        for cell, game in sorted(GAMES.items())
+    }
+    client = RecordingClient()
+    prompted.smoke(client)
+    expected = [
+        prompted.request(prompted.training_view(groups[cell], 0, round_))
+        for cell in prompted.SMOKE_GAMES
+        for round_ in (1, ROUNDS)
+    ]
+    assert [
+        prompts.decision_bytes(d) for d in client.requests if isinstance(d, prompts.Decision)
+    ] == [prompts.decision_bytes(d) for d in expected]
+
+
+@pytest.mark.parametrize("beta", [-1, float("nan"), float("inf")])
+def test_recalibration_refuses_invalid_beta(beta: float) -> None:
+    with pytest.raises(ValueError, match="inverse temperature"):
+        prompted.Recalibration(beta)
+
+
+@pytest.mark.parametrize("shift", [float("nan"), float("inf"), -float("inf")])
+def test_recalibration_refuses_nonfinite_shifts(shift: float) -> None:
+    with pytest.raises(ValueError, match="finite free shifts"):
+        prompted.Recalibration(1, (shift, 0, 0, 0))
+
+
+@pytest.mark.parametrize(
+    "values", [[1, 2, 3, 4], [0] * 5, [-1, 1, 1, 1, 1], [float("nan")] * 5, [float("inf")] * 5]
+)
+def test_apply_refuses_invalid_probabilities(values: list[float]) -> None:
+    with pytest.raises(ValueError, match="five finite non-negative"):
+        prompted.Recalibration().apply(np.array(values))
+
+
+def test_apply_accepts_integers_and_zero_beta() -> None:
+    assert prompted.Recalibration().apply(np.array([0, 1, 2, 3, 4])) == pytest.approx(
+        np.maximum([0, 1, 2, 3, 4], person.FLOOR) / (10 + person.FLOOR)
+    )
+    assert prompted.Recalibration(0).apply(np.array([0, 1, 2, 3, 4])) == pytest.approx([0.2] * 5)
+
+
+def test_fit_refuses_empty_input_and_outside_band() -> None:
+    with pytest.raises(ValueError, match="training decisions"):
+        prompted.fit([])
+    for band in (-1, 5):
+        with pytest.raises(ValueError, match="observed band"):
+            prompted.fit([(np.full(5, 0.2), band)])
+
+
+def test_fit_objective_gradient_start_bounds_and_options(monkeypatch: pytest.MonkeyPatch) -> None:
+    probabilities = np.array([[0, 0.1, 0.2, 0.3, 0.4], [0.5, 0.1, 0.1, 0.1, 0.2], [0.2] * 5])
+    choices = np.array([0, 3, 4])
+    start = np.array([1.1, 0.1, 0.1, 0.1, 0.1])
+    called = False
+
+    def inspect_objective(fun: Any, x0: measure.Floats, **kwargs: Any) -> Any:
+        nonlocal called
+        called = True
+        assert np.array_equal(x0, start)
+        assert kwargs == {
+            "jac": True,
+            "method": "L-BFGS-B",
+            "bounds": ((0, None),) + ((None, None),) * 4,
+            "options": {"ftol": 1e-12, "gtol": 1e-8, "maxiter": 1000},
+        }
+        for numbers in (
+            start,
+            np.array([0.3, -0.8, 0.7, 0.2, -0.5]),
+            np.array([2.0, 0.1, -0.5, 0.9, 0.3]),
+        ):
+            shifts = np.r_[numbers[1:], -numbers[1:].sum()]
+            logs = np.log(
+                np.maximum(probabilities, 1e-9)
+                / np.maximum(probabilities, 1e-9).sum(axis=1, keepdims=True)
+            )
+            expected = -np.log(
+                softmax(numbers[0] * logs + shifts, axis=1)[np.arange(3), choices]
+            ).mean()
+            expected += 1e-4 * ((numbers[0] - 1) ** 2 + (shifts**2).sum())
+            loss, gradient = fun(numbers)
+            assert loss == pytest.approx(expected, abs=1e-12)
+            step = 1e-6
+            finite = np.array(
+                [
+                    (fun(numbers + step * axis)[0] - fun(numbers - step * axis)[0]) / (2 * step)
+                    for axis in np.eye(5)
+                ]
+            )
+            assert gradient == pytest.approx(finite, abs=1e-8)
+        return SimpleNamespace(success=True, x=start)
+
+    monkeypatch.setattr(prompted, "minimize", inspect_objective)
+    assert prompted.fit(
+        list(zip(probabilities, choices.tolist(), strict=True)), start=start
+    ).numbers == pytest.approx(start)
+    assert called
+
+
+def test_fit_raises_unsuccessful_optimizer_message(monkeypatch: pytest.MonkeyPatch) -> None:
+    def unsuccessful(*args: object, **kwargs: object) -> SimpleNamespace:
+        return SimpleNamespace(success=False, message="stopped before convergence")
+
+    monkeypatch.setattr(prompted, "minimize", unsuccessful)
+    with pytest.raises(RuntimeError, match="stopped before convergence"):
+        prompted.fit([(np.full(5, 0.2), 0)])
+
+
+def test_fit_reproduces_across_many_well_specified_samples() -> None:
+    start_nudge, tolerance = 0.1, 1e-4
+    for seed in range(200):
+        rng = np.random.default_rng(seed)
+        probabilities = rng.dirichlet(np.ones(5) * rng.uniform(0.3, 3), size=512)
+        if seed % 10 == 0:
+            probabilities[rng.random(probabilities.shape) < 0.05] = 0
+            probabilities[probabilities.sum(axis=1) == 0] = 0.2
+            probabilities /= probabilities.sum(axis=1, keepdims=True)
+        true = softmax(
+            rng.uniform(0.4, 2.5) * np.log(np.maximum(probabilities, 1e-9)) + rng.normal(0, 0.5, 5),
+            axis=1,
+        )
+        bands = [int(rng.choice(5, p=row)) for row in true]
+        pairs = list(zip(probabilities, bands, strict=True))
+        first = prompted.fit(pairs)
+        second = prompted.fit(pairs, start=np.array(prompted.FIT_START) + start_nudge)
+        assert np.isfinite(first.numbers).all(), seed
+        assert np.max(np.abs(first.numbers - second.numbers)) < tolerance, seed
+
+
+def test_degenerate_fits_reproduce_and_anti_informative_bound() -> None:
+    rng = np.random.default_rng(1)
+    bands = rng.integers(0, 5, 512).tolist()
+    unrelated = rng.dirichlet(np.ones(5), size=512)
+    for probabilities, choices in (
+        (np.full((512, 5), 0.2), bands),
+        (np.tile([0.1, 0.2, 0.4, 0.2, 0.1], (512, 1)), bands),
+        (unrelated, bands),
+        (unrelated, [max(1, band) for band in bands]),
+    ):
+        pairs = list(zip(probabilities, choices, strict=True))
+        first = prompted.fit(pairs)
+        second = prompted.fit(pairs, start=np.array(prompted.FIT_START) + 0.1)
+        assert np.isfinite(first.numbers).all()
+        assert first.numbers == pytest.approx(second.numbers, abs=1e-4)
+    probabilities = np.full((500, 5), 0.24)
+    choices = np.arange(500) % 5
+    probabilities[np.arange(500), choices] = 0.04
+    result = prompted.fit(list(zip(probabilities, choices.tolist(), strict=True)))
+    assert result.beta == 0
