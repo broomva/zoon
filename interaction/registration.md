@@ -488,6 +488,13 @@ varied even at temperature 0, and the thinking level, because the service refuse
 to turn thinking off. The replies are not kept in the repository. No participant
 record was sent to any model, and no held-out group has been read.
 
+Later on 2026-11-21, after the chat renderer was committed, the chat format check
+was run once at the settings fixed here: 12 calls, the first and twentieth rounds
+of two games' committed made-up requests, three times each. All 12 replies were
+usable whole numbers. Three reported thinking tokens, from 45 to 111, and the
+others none; the output limit of 256 tokens was chosen before this check and was
+not changed after it.
+
 ### The chat arm
 
 It plays one seat at a time. Its request is the participant instructions, the
@@ -735,7 +742,8 @@ nothing and is not run closed loop.
   output with dated chat prices. Vertex price confirmation remains due at registration.
 - The analysis code and its files, including the paths marked as added above,
   the second seal and run machinery, and the required checks.
-- A format check of the chat request with the committed renderer.
+- **DONE:** the format check of the chat request with the committed renderer;
+  see [Calls made before registration](registration.md#calls-made-before-registration).
 - Replacement of the path test by tests that bind every constant and number in
   this file to the code.
 - Power and coverage under the registered rules, computed on training groups by

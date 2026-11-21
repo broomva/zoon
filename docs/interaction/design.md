@@ -311,14 +311,15 @@ there is none. Whatever happens is published, as with the pilot.
 
 The draft pre-registration fixes the arms, fitting and committed numbers, band table,
 measures, thresholds, intervals, streams, prompted and chat rules, controls, stopping rules
-and order of work. Its "Open before registration" list is exhaustive: the decision-model
-cap, chat bound and cap with dated prices; the analysis code and its files and required
-checks; a format check of the chat request with the
-committed renderer; replacement of the path test by tests binding every registered constant
+and order of work. Its "Open before registration" list is exhaustive: confirmation of the
+chat price on the day of registration; the analysis code and its files and required
+checks; replacement of the path test by tests binding every registered constant
 and number to the code; and power and coverage under the registered rules, computed on
 training groups by a committed script and quoted in the registration. That script must
-reproduce the H2 training estimate 0.0209 under the common scoring floor. The
-decision-model request format check is DONE; the registration's "Calls made before registration" records it, satisfying the order below.
+reproduce the H2 training estimate 0.0209 under the common scoring floor. The caps and
+the chat bound are filled from the spending script, and both format checks are DONE;
+the registration's "Calls made before registration" records them, satisfying the order
+below.
 
 ## What this changes in the main design
 
