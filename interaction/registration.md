@@ -429,6 +429,10 @@ lists the report's output path outside the registered inputs.
 | `interaction/requests/` | Existing today | Rendered request fixtures |
 | `interaction/fitted.json` | Existing today | B and twin numbers, from the committed fitting procedure |
 | `interaction/amounts.json` | Existing today | The training band-to-points table |
+| `src/zoon/interaction/score.py` | Existing today | Registered scores, intervals and verdicts |
+| `src/zoon/interaction/registered.py` | Existing today | Committed material readers and regeneration |
+| `src/zoon/interaction/power.py` | Existing today | Training power and coverage calculation |
+| `docs/interaction/power.md` | Existing today | Power assumptions and one recorded run |
 | `src/zoon/interaction/run.py` | Added by the analysis code | The run steps |
 | `src/zoon/interaction/chat.py` | Added by the analysis code | The chat request renderer |
 | `docs/interaction/result.md` | Added by the analysis code | The report, outside the registered directory |

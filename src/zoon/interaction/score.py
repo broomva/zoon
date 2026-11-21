@@ -32,11 +32,12 @@ def finite(values: Floats) -> None:
 
 
 def log_scores(probabilities: Floats, chosen: Ints, floor: float = SCORING_FLOOR) -> Floats:
+    """Floor then normalise; allow the decision answer rounding tolerance of 0.05."""
     finite(probabilities)
     if (
         probabilities.shape != (len(chosen), measure.BANDS)
         or (probabilities < 0).any()
-        or (probabilities.sum(axis=1) <= 0).any()
+        or (np.abs(probabilities.sum(axis=1) - 1) > 0.05).any()
         or not np.isfinite(floor)
         or floor <= 0
         or ((chosen < 0) | (chosen >= measure.BANDS)).any()
@@ -130,34 +131,68 @@ class Interval:
         return np.stack((self.estimate, *self.bounds()), axis=-1)
 
 
+def interval_groups(groups: Sequence[Group]) -> dict[str, Ints]:
+    cells = by_game(groups)
+    if set(cells) != set(GAMES):
+        raise ValueError("intervals require every game")
+    if len({(g.cell, g.index) for g in groups}) != len(groups):
+        raise ValueError("repeated group index within a game")
+    return cells
+
+
+def h2_indices(counts: Mapping[str, int], resamples: int = RESAMPLES) -> dict[str, Ints]:
+    """Registered index draws, in sorted game order, from the registered seed."""
+    if set(counts) != set(GAMES) or resamples <= 0:
+        raise ValueError("every game and positive replicates are required")
+    rng = np.random.default_rng(SEED)
+    result: dict[str, Ints] = {}
+    for cell in sorted(counts):
+        n_g = counts[cell]
+        if n_g <= HUMAN_DEFICIT:
+            raise ValueError("each resampled game needs at least two groups")
+        result[cell] = rng.integers(0, n_g, size=(resamples, n_g - HUMAN_DEFICIT))
+    return result
+
+
 def h2_interval(
     differences: Floats, groups: Sequence[Group], resamples: int = RESAMPLES
 ) -> Interval:
-    """Rows are group mean differences, columns are paired comparisons."""
+    """Group mean rows, comparison columns; require every game and no repeated indices."""
     finite(differences)
     if differences.ndim != 2 or len(differences) != len(groups) or resamples <= 0:
         raise ValueError("one row per group and positive replicates are required")
-    rng = np.random.default_rng(SEED)
+    cells = interval_groups(groups)
+    draws = h2_indices({cell: len(mine) for cell, mine in cells.items()}, resamples)
     weights = h2_weights(groups)
     values = np.zeros((resamples, differences.shape[1]))
     estimate = np.zeros(differences.shape[1])
-    for cell, mine in by_game(groups).items():
-        n_g = len(mine)
-        if n_g <= HUMAN_DEFICIT:
-            raise ValueError("each resampled game needs at least two groups")
-        idx = rng.integers(0, n_g, size=(resamples, n_g - HUMAN_DEFICIT))
+    for cell, mine in cells.items():
+        idx = draws[cell]
         values += weights[cell] * differences[mine][idx].mean(axis=1)
         estimate += weights[cell] * differences[mine].mean(axis=0)
     finite(values)
     return Interval(estimate, values)
 
 
+def comparison_passes(
+    estimates: Floats, lowers: Floats, threshold: float
+) -> np.typing.NDArray[np.bool_]:
+    """Shared scalar and batch comparison rule, including finite input checks."""
+    finite(estimates)
+    finite(lowers)
+    finite(np.array([threshold]))
+    return (estimates >= threshold) & (lowers > 0)
+
+
 def comparison_verdict(estimate: float, lower: float, threshold: float) -> Verdict:
-    finite(np.array([estimate, lower, threshold]))
-    return "passed" if estimate >= threshold and lower > 0 else "failed"
+    return (
+        "passed" if comparison_passes(np.array(estimate), np.array(lower), threshold) else "failed"
+    )
 
 
 def hypothesis_verdict(first: Verdict | None, second: Verdict | None) -> Verdict:
+    if any(v not in (None, "passed", "failed", "no verdict") for v in (first, second)):
+        raise ValueError("unknown verdict")
     if first in (None, "no verdict") or second in (None, "no verdict"):
         return "no verdict"
     return "passed" if first == second == "passed" else "failed"
@@ -169,9 +204,7 @@ class Simulation:
     summaries: Mapping[str, Floats]
 
 
-def simulate(
-    agent: kernel.Agent, amounts: kernel.Amounts, *, open_channel: bool = True
-) -> Simulation:
+def simulate(agent: kernel.Agent, amounts: kernel.Amounts, *, open_channel: bool) -> Simulation:
     logs: dict[str, tuple[kernel.Run, ...]] = {}
     values: dict[str, Floats] = {}
     for cell in sorted(GAMES):
@@ -274,7 +307,15 @@ def distances(human: Floats, simulated: Floats, cell: str) -> Distances:
     )
 
 
+def validate_ensemble(simulated: Mapping[str, Floats]) -> None:
+    if set(simulated) != set(GAMES):
+        raise ValueError("ensemble requires exactly the known games")
+    if any(v.shape != (SIMULATED_GROUPS, len(compare.SUMMARIES)) for v in simulated.values()):
+        raise ValueError("the registered ensemble size is required")
+
+
 def fair_scores(groups: Sequence[Group], simulated: Mapping[str, Floats]) -> Floats:
+    validate_ensemble(simulated)
     values = np.full((len(groups), len(compare.SUMMARIES)), np.nan)
     for cell, mine in by_game(groups).items():
         human = np.array([compare.summaries(groups[int(i)].rounds, GAMES[cell]) for i in mine])
@@ -286,9 +327,12 @@ def fair_scores(groups: Sequence[Group], simulated: Mapping[str, Floats]) -> Flo
 def h3_interval(
     groups: Sequence[Group], arms: Mapping[str, Mapping[str, Floats]], resamples: int = RESAMPLES
 ) -> dict[str, Interval]:
-    """Arm scores, composite then summaries; subtract arms to form paired differences."""
+    """Arm scores, composite then summaries; require every game and no repeated indices."""
     if not arms or resamples <= 0:
         raise ValueError("arms and positive replicates are required")
+    interval_groups(groups)
+    for simulations in arms.values():
+        validate_ensemble(simulations)
     humans = observed(groups)
     weights = h3_weights(groups)
     rng = np.random.default_rng(SEED)
@@ -303,8 +347,6 @@ def h3_interval(
             [rng.permutation(SIMULATED_GROUPS)[:HALF_ENSEMBLE] for _ in range(resamples)]
         )
         for arm, simulations in arms.items():
-            if simulations[cell].shape != (SIMULATED_GROUPS, len(compare.SUMMARIES)):
-                raise ValueError("the registered ensemble size is required")
             matrices = distances(human_values, simulations[cell], cell)
             width = matrices.human.shape[-1]
             values[arm][:, :width] += weights[cell][:width] * matrices.draws(human, half)
@@ -321,6 +363,8 @@ def h3_interval(
 
 
 def difference(other: Interval, zoon: Interval) -> Interval:
+    if other.estimate.shape != zoon.estimate.shape or other.values.shape != zoon.values.shape:
+        raise ValueError("paired intervals need the same shapes and replicate counts")
     result = Interval(other.estimate - zoon.estimate, other.values - zoon.values)
     finite(result.estimate)
     finite(result.values)

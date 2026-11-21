@@ -10,7 +10,7 @@ import numpy as np
 import pytest
 
 from tests.test_interaction_score import ensembles, synthetic
-from zoon.interaction import data, kernel, measure, person, power, registered, score
+from zoon.interaction import compare, data, kernel, measure, person, power, registered, score
 from zoon.interaction.games import GAMES, ROUNDS, Game
 from zoon.interaction.measure import Floats
 
@@ -28,7 +28,9 @@ def test_power_table_is_the_paste_and_no_prose_digits() -> None:
     table = [line for line in prose.splitlines() if line.startswith("|")]
     expected = ["| Quantity | Result |", "|---|---|"]
     printed = dict(
-        line.split(" = ", 1) for line in paste.splitlines()[1:] if not line.startswith("[settings]")
+        line.split(" = ", 1)
+        for line in paste.splitlines()[1:]
+        if not line.startswith(("[settings]", "[fit]"))
     )
     expected += [f"| {label} | {value} |" for label, value in printed.items()]
     assert table == expected
@@ -38,7 +40,7 @@ def test_power_table_is_the_paste_and_no_prose_digits() -> None:
     assert paste.splitlines()[0] == power.TITLE
     assert [line.split(" = ", 1)[0] for line in paste.splitlines()] == power.labels()
     assert [
-        line for line in paste.splitlines() if line.startswith("[settings]")
+        line for line in paste.splitlines() if line.startswith(("[settings]", "[fit]"))
     ] == power.settings()
 
 
@@ -195,16 +197,24 @@ def test_main_prints_current_labels_without_long_calculation(
     def training(_groups: object) -> tuple[Floats, score.Interval, score.Interval]:
         return np.ones((len(groups), 1)), interval, interval
 
-    def checked(*_args: object) -> None:
-        pass
+    checked_calls: list[tuple[object, ...]] = []
 
-    def simulate(*_args: object, **_kwargs: object) -> score.Simulation:
-        return score.Simulation({}, source["zoon"])
+    def checked(*args: object) -> None:
+        checked_calls.append(args)
+
+    def simulate(
+        agent: kernel.Coded, table: kernel.Amounts, *, open_channel: bool
+    ) -> score.Simulation:
+        assert open_channel == (not agent.law.candidate.twin)
+        return score.Simulation({}, source["alone" if agent.law.candidate.twin else "zoon"])
 
     def pool(*_args: object) -> dict[str, dict[str, Floats]]:
         return source
 
-    def rates(*_args: object, **_kwargs: object) -> power.Rates:
+    def rates(*args: object, **kwargs: object) -> power.Rates:
+        assert args[2] == dict.fromkeys(GAMES, 3)
+        if kwargs:
+            assert kwargs == {"training_effect": 0.0124}
         return power.Rates(1, 0, 0, 0, 0.5, 1)
 
     monkeypatch.setattr(power, "h2_training", training)
@@ -215,13 +225,42 @@ def test_main_prints_current_labels_without_long_calculation(
     source = ensembles()
     monkeypatch.setattr(score, "simulate", simulate)
     monkeypatch.setattr(power, "pool", pool)
+
+    def effect(_: object) -> float:
+        return 0.0124
+
+    monkeypatch.setattr(power, "h3_out_of_fold", effect)
+
+    def truth(*args: object) -> float:
+        return 0.0131
+
+    monkeypatch.setattr(power, "pool_truth", truth)
+    expected_h3 = score.Interval(np.array([0.014, 0.03]), np.array([[0.009, 0.02], [0.019, 0.04]]))
+
+    def h3_interval(
+        groups: object, simulations: object, resamples: int = score.RESAMPLES
+    ) -> dict[str, score.Interval]:
+        assert resamples == score.RESAMPLES
+        return {"alone": expected_h3, "zoon": score.Interval(np.zeros(2), np.zeros((2, 2)))}
+
+    monkeypatch.setattr(score, "h3_interval", h3_interval)
+
+    def forbidden(*args: object) -> None:
+        pytest.fail("committed materials must be read")
+
+    monkeypatch.setattr(registered, "fit", forbidden)
+    monkeypatch.setattr(kernel.Amounts, "build", forbidden)
     monkeypatch.setattr(power, "h2_rates", rates)
     monkeypatch.setattr(power, "h3_rates", rates)
     power.main()
     output = capsys.readouterr().out.splitlines()
+    assert checked_calls == [(interval, interval)]
+    assert power.formatted(power.TRAINING_H3, expected_h3) in output
+    assert f"{power.OUT_OF_FOLD_H3} = 0.0124" in output
+    assert f"{power.POOL_H3} = 0.0131" in output
     assert [line.split(" = ", 1)[0] for line in output] == power.labels()
-    assert "[H2] pass at half effect = 0.500 (se 0.007)" in output
-    assert "[H3] pass at half effect = 0.500 (se 0.011)" in output
+    assert "[H2] pass at half the out-of-fold effect = 0.500 (se 0.002)" in output
+    assert "[H3] pass at half the out-of-fold effect = 0.500 (se 0.007)" in output
 
 
 def test_changed_required_training_h2_stops() -> None:
@@ -262,23 +301,6 @@ def test_committed_null_channel_controls() -> None:
                 for run in runs
             ]
             assert intents[0] == intents[1]
-        for seat in range(game.size):
-            before = np.empty(measure.BANDS)
-            for other in (0, 1):
-                row = tuple(
-                    e * other if s != seat else e // 2 for s, e in enumerate(game.endowments)
-                )
-                view = kernel.View(
-                    game,
-                    seat,
-                    (kernel.Observation(((seat, row[seat]),), None),) * 3,
-                    open_channel=False,
-                )
-                p = kernel.Coded(law)(view)
-                if other == 0:
-                    before = p
-                else:
-                    np.testing.assert_array_equal(before, p)
 
 
 def test_power_targets_the_printed_training_effect_rather_than_pool_truth() -> None:
@@ -336,11 +358,305 @@ def test_trial_generator_is_independent_of_registered_interval_generator(
 @pytest.mark.parametrize(
     ("value", "trials", "expected"),
     [
-        (0.032, power.H2_TRIALS, "0.032 (se 0.002)"),
-        (0.032, power.H3_TRIALS, "0.032 (se 0.004)"),
+        (0.032, power.H2_TRIALS, "0.032 (se 0.001)"),
+        (0.032, power.H3_TRIALS, "0.032 (se 0.002)"),
         (0.0, power.H2_TRIALS, "0.000 (se 0.000)"),
         (1.0, power.H3_TRIALS, "1.000 (se 0.000)"),
     ],
 )
 def test_formatted_rate_uses_its_trial_count(value: float, trials: int, expected: str) -> None:
     assert power.formatted_rate(value, trials) == expected
+
+
+@pytest.mark.parametrize("opened", [False, True])
+def test_replacing_other_seats_through_play_with_committed_law(opened: bool) -> None:
+    laws, amounts = registered.read_fitted(), registered.read_amounts()
+    for cell, game in GAMES.items():
+        for seat in range(game.size):
+            traces: list[list[Floats]] = []
+            for band in (0, 4):
+                focal = kernel.Coded(laws["zoon"])
+                probabilities: list[Floats] = []
+
+                def agent(
+                    view: kernel.View,
+                    focal: kernel.Coded = focal,
+                    probabilities: list[Floats] = probabilities,
+                ) -> Floats:
+                    p = focal(view)
+                    probabilities.append(p.copy())
+                    return p
+
+                def fixed(view: kernel.View, band: int = band) -> Floats:
+                    return np.eye(5)[band]
+
+                agents = [agent if s == seat else fixed for s in range(game.size)]
+                kernel.play(
+                    game, agents, amounts, score.SEED, f"control|{cell}|{seat}", open_channel=opened
+                )
+                traces.append(probabilities)
+            if opened:
+                assert not np.array_equal(traces[0], traces[1]), (cell, seat)
+            else:
+                np.testing.assert_array_equal(traces[0], traces[1])
+            assert len(traces[0]) == ROUNDS
+
+
+def test_trial_rates_threshold_decides_with_positive_lower_end() -> None:
+    threshold = score.H2_THRESHOLD
+    estimates = np.array([np.nextafter(threshold, -np.inf), threshold, threshold * 2])
+    result = power.trial_rates(estimates, np.full(3, 0.001), np.full(3, 0.1), 0.0, threshold)
+    assert result.full == pytest.approx(2 / 3)
+    for estimate in estimates:
+        assert bool(score.comparison_passes(np.array(estimate), np.array(0.001), threshold)) == (
+            score.comparison_verdict(float(estimate), 0.001, threshold) == "passed"
+        )
+
+
+def test_fast_h2_matches_fifty_registered_intervals() -> None:
+    groups = synthetic()
+    differences = np.random.default_rng(65).normal(size=(len(groups), 1))
+    counts = {cell: 2 + n for n, cell in enumerate(sorted(GAMES))}
+    estimates, lows, highs = power.h2_trial_intervals(groups, differences, counts, trials=50)
+    rng = np.random.default_rng(power.TRIAL_SEED)
+    for n in range(50):
+        trial, indices = power.sample_groups(groups, counts, rng)
+        interval = score.h2_interval(differences[indices], trial)
+        np.testing.assert_allclose(
+            [estimates[n], lows[n], highs[n]], interval.table()[0], atol=1e-12, rtol=0
+        )
+
+
+def test_h2_rates_use_held_out_truth_training_effect_and_h2_threshold(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    groups = synthetic()
+    differences = np.arange(len(groups), dtype=float)[:, None] ** 2
+    counts = {cell: 2 + n for n, cell in enumerate(sorted(GAMES))}
+    rng = np.random.default_rng(power.TRIAL_SEED)
+    expected: list[Floats] = []
+    for _ in range(4):
+        trial, indices = power.sample_groups(groups, counts, rng)
+        expected.append(score.h2_interval(differences[indices], trial, 13).table()[0])
+    weights = np.array([counts[c] * GAMES[c].size for c in sorted(GAMES)])
+    means = np.array([differences[m].mean() for m in score.by_game(groups).values()])
+    truth = float(np.average(means, weights=weights))
+    training = float(
+        sum(
+            score.h2_weights(groups)[c] * differences[m, 0].mean()
+            for c, m in score.by_game(groups).items()
+        )
+    )
+    table = np.array(expected)
+    captured: list[bool] = []
+
+    def rates(
+        estimates: Floats,
+        lows: Floats,
+        highs: Floats,
+        actual_truth: float,
+        threshold: float,
+        training_effect: float,
+    ) -> power.Rates:
+        captured.append(True)
+        np.testing.assert_allclose(
+            np.column_stack((estimates, lows, highs)), table, atol=1e-12, rtol=0
+        )
+        assert actual_truth == pytest.approx(truth, abs=1e-14)
+        assert training_effect == pytest.approx(training, abs=1e-14)
+        assert threshold == score.H2_THRESHOLD
+        return power.Rates(1, 0, 0, 0, 0, 1)
+
+    monkeypatch.setattr(power, "trial_rates", rates)
+    assert power.h2_rates(groups, differences, counts, trials=4, resamples=13).coverage == 1
+    assert captured == [True]
+
+
+def test_sample_groups_draws_with_replacement() -> None:
+    groups = synthetic()
+    counts = dict.fromkeys(GAMES, 20)
+    trial, indices = power.sample_groups(groups, counts, np.random.default_rng(9))
+    assert len(set(indices.tolist())) < len(indices) == len(trial)
+
+
+def test_expected_training_values_are_parsed_from_registration() -> None:
+    text = (data.REPO / "interaction" / "registration.md").read_text()
+    match = re.search(
+        r"under this scoring floor, ([\d.]+) with interval ([\d.]+) to ([\d.]+)", text
+    )
+    assert match and match.groups() == power.EXPECTED_H2
+    match = re.search(r"with `person.FLOOR` and gives ([\d.]+)\.", text)
+    assert match and match[1] == power.EXPECTED_RESCORE
+
+
+def test_regenerate_training_output() -> None:
+    from tests.test_interaction_training import require_training
+
+    require_training()
+    groups = data.load()
+    _, h2, rescore = power.h2_training(groups)
+    power.checked_training_h2(h2, rescore)
+    laws, amounts = registered.read_fitted(), registered.read_amounts()
+    simulations = {
+        arm: score.simulate(
+            kernel.Coded(law), amounts, open_channel=not law.candidate.twin
+        ).summaries
+        for arm, law in laws.items()
+    }
+    intervals = score.h3_interval(groups, simulations)
+    h3 = score.difference(intervals["alone"], intervals["zoon"])
+    paste = note()[1].splitlines()
+    for label, interval in (
+        (power.TRAINING_H2, h2),
+        (power.TRAINING_RESCORE, rescore),
+        (power.TRAINING_H3, h3),
+    ):
+        assert power.formatted(label, interval) in paste
+
+
+@pytest.mark.parametrize("which", ["common", "rescore"])
+def test_checked_training_h2_refuses_either_mismatch(which: str) -> None:
+    common = score.Interval(np.array([0.0209]), np.array([[0.0133], [0.0281]] * 100))
+    rescore = score.Interval(np.array([0.0253]), np.array([[0.0178], [0.0326]]))
+    wrong = score.Interval(np.array([0.1]), np.ones((3, 1)))
+    with pytest.raises(RuntimeError, match="training H2"):
+        power.checked_training_h2(
+            wrong if which == "common" else common, wrong if which == "rescore" else rescore
+        )
+
+
+def test_pool_truth_all_values_sign_and_held_out_summary_weights() -> None:
+    groups = synthetic()
+    arms = ensembles()
+    simulations = {
+        arm: {c: np.tile(v, (2, 1)) for c, v in arms[arm].items()} for arm in ("zoon", "alone")
+    }
+    for arm in simulations:
+        for cell in GAMES:
+            simulations[arm][cell][100:, :4] += 0.7 if arm == "alone" else 0.1
+    counts = {c: 2 + n for n, c in enumerate(sorted(GAMES))}
+    expected: list[float] = []
+    for s in range(5):
+        total, weight = 0.0, 0
+        for cell, mine in score.by_game(groups).items():
+            if s == 4 and cell in score.UNDEFINED_GAMES:
+                continue
+            human = [compare.summaries(groups[int(i)].rounds, GAMES[cell])[s] for i in mine]
+            delta = np.mean(
+                [
+                    compare.crps(simulations["alone"][cell][:, s], float(y))
+                    - compare.crps(simulations["zoon"][cell][:, s], float(y))
+                    for y in human
+                ]
+            )
+            total += counts[cell] * delta
+            weight += counts[cell]
+        expected.append(total / weight)
+    assert power.pool_truth(groups, simulations, counts) == pytest.approx(
+        np.mean(expected), abs=1e-14
+    )
+
+
+def test_h3_trials_inputs_composite_sign_threshold_and_independent_rng(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    groups, source = synthetic(), ensembles()
+    simulations = {arm: source[arm] for arm in ("zoon", "alone")}
+    counts = dict.fromkeys(GAMES, 3)
+    sampled: list[list[tuple[str, str, tuple[tuple[int, ...], ...]]]] = []
+
+    def interval(
+        trial: list[data.Group], arms: dict[str, dict[str, Floats]], resamples: int
+    ) -> dict[str, score.Interval]:
+        assert resamples == 11
+        assert {c: len(m) for c, m in score.by_game(trial).items()} == counts
+        sampled.append([(g.cell, g.index, g.rounds) for g in trial])
+        for cell in GAMES:
+            assert len(np.unique(arms["zoon"][cell][:, 0])) == 100
+        return {
+            "alone": score.Interval(np.array([0.004, 0.9]), np.tile([0.002, 0.8], (11, 1))),
+            "zoon": score.Interval(np.zeros(2), np.zeros((11, 2))),
+        }
+
+    monkeypatch.setattr(score, "h3_interval", interval)
+
+    def truth(*args: object) -> float:
+        return 0.01
+
+    monkeypatch.setattr(power, "pool_truth", truth)
+    monkeypatch.setattr(score, "H3_THRESHOLD", 0.0031)
+    result = power.h3_rates(
+        groups, simulations, counts, training_effect=0.01, trials=3, resamples=11
+    )
+    assert result == power.trial_rates(
+        np.full(3, 0.004), np.full(3, 0.002), np.full(3, 0.002), 0.01, 0.0031, training_effect=0.01
+    )
+    first = sampled.copy()
+    sampled.clear()
+    monkeypatch.setattr(score, "SEED", score.SEED + 1)
+    power.h3_rates(groups, simulations, counts, training_effect=0.01, trials=3, resamples=11)
+    assert first == sampled
+
+
+def test_formatted_interval_has_point_lower_upper() -> None:
+    assert (
+        power.formatted("example", score.Interval(np.array([3.0]), np.array([[1.0], [5.0]])))
+        == "example = 3.0000 [1.1000, 4.9000]"
+    )
+
+
+def test_h3_out_of_fold_reuses_comparison_and_checks_composite(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    groups = synthetic()
+    seen: list[person.Candidate] = []
+
+    def evaluate(g: object, form: person.Candidate) -> compare.Evaluation:
+        assert g is groups
+        seen.append(form)
+        # The composite differs from the level alone.
+        closed = (
+            np.tile([0.002, 0.02, 0.01, 0.02, 0.01], (len(groups), 1))
+            if form.twin
+            else np.zeros((len(groups), 5))
+        )
+        return compare.Evaluation(np.zeros(1), closed, closed, person.Person(form, form.start()))
+
+    monkeypatch.setattr(compare, "evaluate", evaluate)
+    assert power.h3_out_of_fold(groups) == pytest.approx(0.0124)
+    assert seen == [registered.FORMS["zoon"], registered.FORMS["alone"]]
+    monkeypatch.setattr(power, "EXPECTED_H3", ".9999")
+    with pytest.raises(RuntimeError, match="out-of-fold H3"):
+        power.h3_out_of_fold(groups)
+
+
+def test_training_h2_forms_floor_sign_and_registered_replicates(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    groups = synthetic()
+    identities = np.repeat(np.arange(len(groups)), [ROUNDS * GAMES[g.cell].size for g in groups])
+    chosen = np.zeros(len(identities), dtype=np.int64)
+    probabilities = [
+        np.tile(row, (len(identities), 1))
+        for row in ([0.001, 0.199, 0.2, 0.2, 0.4], [0.002, 0.198, 0.2, 0.2, 0.4])
+    ]
+    decisions = [score.Decisions(identities, chosen, p) for p in probabilities]
+
+    def out_of_fold(g: object, form: person.Candidate) -> score.Decisions:
+        assert g is groups
+        return decisions[1 if form.twin else 0]
+
+    monkeypatch.setattr(power, "out_of_fold", out_of_fold)
+    common, h2, rescore = power.h2_training(groups)
+    expected = score.group_means(
+        (decisions[0].logs() - decisions[1].logs())[:, None], identities, groups
+    )
+    original = score.group_means(
+        (decisions[0].logs(person.FLOOR) - decisions[1].logs(person.FLOOR))[:, None],
+        identities,
+        groups,
+    )
+    np.testing.assert_array_equal(common, expected)
+    np.testing.assert_array_equal(h2.table(), score.h2_interval(expected, groups).table())
+    np.testing.assert_array_equal(rescore.table(), score.h2_interval(original, groups).table())
+    assert len(h2.values) == score.RESAMPLES == len(rescore.values)

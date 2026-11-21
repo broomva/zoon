@@ -13,9 +13,10 @@ from zoon.interaction.data import Group
 from zoon.interaction.games import GAMES
 from zoon.interaction.measure import Floats
 
-H2_TRIALS = 5_000
-H3_TRIALS = 2_000
+H2_TRIALS = 100_000
+H3_TRIALS = 5_000
 TRIAL_RESAMPLES = 1_000
+H2_BATCH = 1_000
 POOL_GROUPS = 2000
 TRIAL_SEED = 20261121
 HALF_EFFECT = 0.5
@@ -29,13 +30,16 @@ TITLE = "zoon interaction: registered-rule power on training groups"
 TRAINING_H2 = "[training, H2, out of fold] zoon minus alone"
 TRAINING_RESCORE = "[training, H2, out of fold, person floor] zoon minus alone"
 TRAINING_H3 = "[training, H3, in-sample laws] alone minus zoon"
+OUT_OF_FOLD_H3 = "[training, H3, out of fold] alone minus zoon"
+POOL_H3 = "[H3] finite-pool trial expectation"
+EXPECTED_H3 = "0.0124"
 RATE_LABELS = (
-    "coverage at training effect",
+    "coverage of the trial expectation",
     "lower end above truth",
     "upper end below truth",
     "pass at zero",
-    "pass at half effect",
-    "pass at training effect",
+    "pass at half the out-of-fold effect",
+    "pass at the out-of-fold effect",
 )
 
 # Resolve attributes at rendering time, so no pasted setting can silently become stale.
@@ -43,9 +47,12 @@ SETTINGS: tuple[tuple[str, ModuleType, str], ...] = (
     ("registered interval seed", score, "SEED"),
     ("power trial seed", sys.modules[__name__], "TRIAL_SEED"),
     ("registered interval replicates", score, "RESAMPLES"),
+    ("H2 trial interval replicates", score, "RESAMPLES"),
+    ("H2 batch size", sys.modules[__name__], "H2_BATCH"),
+    ("fold and out-of-fold simulation seed", measure, "SEED"),
     ("H2 power trials", sys.modules[__name__], "H2_TRIALS"),
     ("H3 power trials", sys.modules[__name__], "H3_TRIALS"),
-    ("power interval replicates", sys.modules[__name__], "TRIAL_RESAMPLES"),
+    ("H3 trial interval replicates", sys.modules[__name__], "TRIAL_RESAMPLES"),
     ("pool groups per game and arm", sys.modules[__name__], "POOL_GROUPS"),
     ("pool prefix", sys.modules[__name__], "POOL_PREFIX"),
     ("pool draws with replacement", sys.modules[__name__], "POOL_REPLACEMENT"),
@@ -61,13 +68,15 @@ SETTINGS: tuple[tuple[str, ModuleType, str], ...] = (
     ("rounds", games, "ROUNDS"),
     ("null effect multiplier", sys.modules[__name__], "NULL_EFFECT"),
     ("half effect multiplier", sys.modules[__name__], "HALF_EFFECT"),
-    ("training effect multiplier", sys.modules[__name__], "TRAINING_EFFECT"),
+    ("out-of-fold effect multiplier", sys.modules[__name__], "TRAINING_EFFECT"),
     ("registered simulation prefix", score, "SIMULATION_PREFIX"),
 )
 
 
 def settings() -> list[str]:
-    return [f"[settings] {label} = {getattr(source, name)}" for label, source, name in SETTINGS]
+    return [f"[settings] {label} = {getattr(source, name)}" for label, source, name in SETTINGS] + [
+        entry.render() for entry in compare.settings() if entry.label.startswith("[fit]")
+    ]
 
 
 def out_of_fold(groups: Sequence[Group], candidate: person.Candidate) -> score.Decisions:
@@ -158,8 +167,50 @@ def trial_rates(
     passed: list[float] = []
     for multiplier in (NULL_EFFECT, HALF_EFFECT, TRAINING_EFFECT):
         shift = multiplier * target - truth
-        passed.append(float(np.mean((estimates + shift >= threshold) & (lows + shift > 0))))
+        passed.append(
+            float(np.mean(score.comparison_passes(estimates + shift, lows + shift, threshold)))
+        )
     return Rates(coverage, float(np.mean(lows > truth)), float(np.mean(highs < truth)), *passed)
+
+
+def h2_trial_intervals(
+    groups: Sequence[Group],
+    differences: Floats,
+    counts: Mapping[str, int],
+    *,
+    trials: int = H2_TRIALS,
+    resamples: int = score.RESAMPLES,
+) -> tuple[Floats, Floats, Floats]:
+    """Apply the registered draws to batches by their exact multiplicity matrices."""
+    if trials <= 0 or differences.shape != (len(groups), 1):
+        raise ValueError("positive trials and one difference per group are required")
+    score.finite(differences)
+    draws = score.h2_indices(counts, resamples)
+    total = sum(n * GAMES[c].size for c, n in counts.items())
+    weights = {c: n * GAMES[c].size / total for c, n in counts.items()}
+    matrices = {
+        c: np.column_stack([(idx == j).sum(axis=1) for j in range(counts[c])])
+        * (weights[c] / idx.shape[1])
+        for c, idx in draws.items()
+    }
+    rng = np.random.default_rng(TRIAL_SEED)
+    estimates, lows, highs = (np.empty(trials) for _ in range(3))
+    for start in range(0, trials, H2_BATCH):
+        stop = min(start + H2_BATCH, trials)
+        indices = np.array([sample_groups(groups, counts, rng)[1] for _ in range(stop - start)])
+        sampled = differences[indices, 0]
+        values = np.zeros((stop - start, resamples))
+        point = np.zeros(stop - start)
+        offset = 0
+        for cell in sorted(draws):
+            n = counts[cell]
+            cell_values = sampled[:, offset : offset + n]
+            values += cell_values @ matrices[cell].T
+            point += weights[cell] * cell_values.mean(axis=1)
+            offset += n
+        estimates[start:stop] = point
+        lows[start:stop], highs[start:stop] = np.percentile(values, score.PERCENTILES, axis=1)
+    return estimates, lows, highs
 
 
 def h2_rates(
@@ -168,41 +219,19 @@ def h2_rates(
     counts: Mapping[str, int],
     *,
     trials: int = H2_TRIALS,
-    resamples: int = TRIAL_RESAMPLES,
+    resamples: int = score.RESAMPLES,
 ) -> Rates:
-    rng = np.random.default_rng(TRIAL_SEED)
-    means = {cell: differences[mine].mean(axis=0) for cell, mine in score.by_game(groups).items()}
-    residual = differences.copy()
-    for cell, mine in score.by_game(groups).items():
-        residual[mine] -= means[cell]
-    estimates: list[float] = []
-    lows: list[float] = []
-    highs: list[float] = []
-    truth = None
-    for _ in range(trials):
-        trial, indices = sample_groups(groups, counts, rng)
-        weights = score.h2_weights(trial)
-        true = float(sum(weights[cell] * means[cell][0] for cell in weights))
-        truth = true
-        # Centre within game, then restore its own training mean. Other effect sizes
-        # centre those means within game, then shift to the printed training effect.
-        restored = residual[indices] + np.array([means[g.cell] for g in trial])
-        interval = score.h2_interval(restored, trial, resamples)
-        low, high = interval.bounds()[:, 0]
-        estimates.append(interval.estimate[0])
-        lows.append(low)
-        highs.append(high)
-    if truth is None:
-        raise ValueError("at least one power trial is required")
+    cells = score.interval_groups(groups)
+    means = {c: float(differences[mine, 0].mean()) for c, mine in cells.items()}
+    total = sum(n * GAMES[c].size for c, n in counts.items())
+    truth = sum(counts[c] * GAMES[c].size / total * means[c] for c in cells)
+    training_weights = score.h2_weights(groups)
+    training_effect = sum(training_weights[c] * means[c] for c in cells)
+    estimates, lows, highs = h2_trial_intervals(
+        groups, differences, counts, trials=trials, resamples=resamples
+    )
     return trial_rates(
-        np.array(estimates),
-        np.array(lows),
-        np.array(highs),
-        truth,
-        score.H2_THRESHOLD,
-        training_effect=float(
-            sum(score.h2_weights(groups)[cell] * mean[0] for cell, mean in means.items())
-        ),
+        estimates, lows, highs, truth, score.H2_THRESHOLD, training_effect=training_effect
     )
 
 
@@ -319,8 +348,19 @@ def labels() -> list[str]:
         TRAINING_H2,
         TRAINING_RESCORE,
         TRAINING_H3,
+        OUT_OF_FOLD_H3,
+        POOL_H3,
         *[f"[{hypothesis}] {label}" for hypothesis in ("H2", "H3") for label in RATE_LABELS],
     ]
+
+
+def h3_out_of_fold(groups: Sequence[Group]) -> float:
+    """The candidate note's folds, simulations and composite, without a second rule."""
+    values = {arm: compare.evaluate(groups, form).closed for arm, form in registered.FORMS.items()}
+    effect = float(compare.combine(values["alone"] - values["zoon"])[0])
+    if f"{effect:.4f}" != EXPECTED_H3:
+        raise RuntimeError(f"out-of-fold H3 check failed: {effect:.4f}")
+    return effect
 
 
 def main() -> None:
@@ -345,9 +385,12 @@ def main() -> None:
     h3 = score.difference(intervals["alone"], intervals["zoon"])
     # The printed row is composite only; each summary remains available to callers.
     print(formatted(TRAINING_H3, score.Interval(h3.estimate[:1], h3.values[:, :1])), flush=True)
+    effect = h3_out_of_fold(groups)
+    print(f"{OUT_OF_FOLD_H3} = {effect:.4f}", flush=True)
     h2_power = h2_rates(groups, differences, counts)
     simulations_pool = pool(laws, amounts)
-    h3_power = h3_rates(groups, simulations_pool, counts, training_effect=float(h3.estimate[0]))
+    print(f"{POOL_H3} = {pool_truth(groups, simulations_pool, counts):.4f}", flush=True)
+    h3_power = h3_rates(groups, simulations_pool, counts, training_effect=effect)
     for hypothesis, rates, trials in (("H2", h2_power, H2_TRIALS), ("H3", h3_power, H3_TRIALS)):
         for label, value in zip(RATE_LABELS, rates.values(), strict=True):
             print(f"[{hypothesis}] {label} = {formatted_rate(value, trials)}", flush=True)

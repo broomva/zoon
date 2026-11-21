@@ -137,6 +137,7 @@ def test_h3_every_replicate_and_summary_matches_literal_registration() -> None:
         )
     np.testing.assert_allclose(sum(score.h3_weights(groups).values()), np.ones(5), atol=1e-15)
     delta = score.difference(actual["alone"], actual["zoon"])
+    np.testing.assert_allclose(delta.estimate, actual["alone"].estimate - actual["zoon"].estimate)
     np.testing.assert_allclose(
         delta.values, expected["alone"] - expected["zoon"], atol=1e-12, rtol=0
     )
@@ -217,7 +218,15 @@ def test_coded_predictions_observe_only_real_earlier_rounds() -> None:
     )
     values = np.column_stack((scores.logs(), scores.logs() * 2))
     means = score.group_means(values, scores.group, groups)
-    assert means.shape == (len(groups), 2)
+    np.testing.assert_allclose(
+        means,
+        [
+            values[scores.group == i].sum(axis=0) / (ROUNDS * GAMES[g.cell].size)
+            for i, g in enumerate(groups)
+        ],
+        atol=1e-12,
+        rtol=0,
+    )
     with pytest.raises(ValueError, match="every decision"):
         score.group_means(values[:-1], scores.group[:-1], groups)
 
@@ -246,7 +255,8 @@ def test_registered_simulation_streams_logs_summaries_and_sizes(
         assert all(a is agent for a in agents)
         assert table is amounts
         seen.append((game.cell, group, seed))
-        return kernel.Run(((0,) * game.size,) * ROUNDS, (group,))
+        n = int(group.rsplit("|", 1)[1])
+        return kernel.Run(((n % 5,) * game.size,) * ROUNDS, (group,))
 
     monkeypatch.setattr(kernel, "play", play)
     result = score.simulate(agent, amounts, open_channel=opened)
@@ -257,8 +267,8 @@ def test_registered_simulation_streams_logs_summaries_and_sizes(
         assert len(result.logs[cell]) == 100
         assert result.summaries[cell].shape == (100, 5)
         np.testing.assert_allclose(
-            result.summaries[cell][0],
-            compare.summaries(result.logs[cell][0].rounds, GAMES[cell]),
+            result.summaries[cell],
+            [compare.summaries(run.rounds, GAMES[cell]) for run in result.logs[cell]],
             equal_nan=True,
         )
 
@@ -290,7 +300,185 @@ def test_fair_point_scores_allow_one_human_but_intervals_need_two() -> None:
     human = compare.summaries(groups[0].rounds, GAMES["2-AI"])
     expected = [compare.crps(simulations["2-AI"][:, s], float(y)) for s, y in enumerate(human)]
     np.testing.assert_allclose(actual[0], expected, atol=1e-12, rtol=0)
-    with pytest.raises(ValueError, match="at least two groups"):
+    with pytest.raises(ValueError, match=r"every game|at least two groups"):
         score.h3_interval(groups, {"zoon": simulations}, SMALL_R)
-    with pytest.raises(ValueError, match="at least two groups"):
+    with pytest.raises(ValueError, match=r"every game|at least two groups"):
         score.h2_interval(np.ones((1, 1)), groups, SMALL_R)
+
+
+def test_decisions_default_floor_and_table_column_order() -> None:
+    probabilities = np.array([[0, 0.001, 0.004, 0.005, 0.99]])
+    decisions = score.Decisions(np.array([0]), np.array([0]), probabilities)
+    np.testing.assert_array_equal(decisions.logs(), score.log_scores(probabilities, np.array([0])))
+    interval = score.Interval(np.array([3.0, 4.0]), np.array([[1.0, 2.0], [5.0, 8.0]]))
+    np.testing.assert_array_equal(interval.table(), [[3.0, 1.1, 4.9], [4.0, 2.15, 7.85]])
+
+
+@pytest.mark.parametrize("value", [np.nan, np.inf, -np.inf])
+def test_verdict_refuses_nonfinite_estimate(value: float) -> None:
+    with pytest.raises(ValueError, match="non-finite"):
+        score.comparison_verdict(value, 1.0, score.H2_THRESHOLD)
+
+
+def test_hypothesis_refuses_unknown_verdict() -> None:
+    from typing import cast
+
+    with pytest.raises(ValueError, match="verdict"):
+        score.hypothesis_verdict(cast(score.Verdict, "bogus"), None)
+
+
+def test_difference_refuses_unpaired_replicates() -> None:
+    with pytest.raises(ValueError, match="paired"):
+        score.difference(
+            score.Interval(np.ones(1), np.ones((1, 1))), score.Interval(np.ones(1), np.ones((5, 1)))
+        )
+
+
+@pytest.mark.parametrize("kind", ["missing", "repeated"])
+def test_intervals_require_every_game_and_unique_group_indices(kind: str) -> None:
+    groups = synthetic()
+    if kind == "missing":
+        groups = [g for g in groups if g.cell != "2-FE"]
+    else:
+        groups.append(groups[0])
+    with pytest.raises(ValueError, match=r"every game|repeated"):
+        score.h2_interval(np.ones((len(groups), 1)), groups, SMALL_R)
+    with pytest.raises(ValueError, match=r"every game|repeated"):
+        score.h3_interval(groups, ensembles(), SMALL_R)
+
+
+@pytest.mark.parametrize("kind", ["short", "unknown"])
+def test_fair_scores_require_registered_ensemble(kind: str) -> None:
+    simulations = ensembles()["zoon"]
+    if kind == "short":
+        simulations["2-AI"] = simulations["2-AI"][:99]
+    else:
+        simulations["unknown"] = simulations["2-AI"]
+    with pytest.raises(ValueError, match=r"ensemble|game"):
+        score.fair_scores(synthetic(), simulations)
+
+
+@pytest.mark.parametrize("row", [[0, 0, 0, 0, 100], [0, 0, 0, 0, 0], [-0.1, 0.3, 0.3, 0.3, 0.2]])
+def test_log_scores_refuse_invalid_probability_totals(row: list[float]) -> None:
+    with pytest.raises(ValueError, match="distribution"):
+        score.log_scores(np.array([row], dtype=float), np.array([0]))
+
+
+def test_log_scores_allow_decision_rounding_before_flooring() -> None:
+    row = np.array([[0, 0.001, 0.004, 0.005, 1.02]])
+    expected = np.maximum(row, score.SCORING_FLOOR)
+    np.testing.assert_array_equal(
+        score.log_scores(row, np.array([0])), np.log(expected[:, 0] / expected.sum(axis=1))
+    )
+
+
+@pytest.mark.parametrize("chosen", [-1, 5])
+def test_log_scores_refuse_unknown_band(chosen: int) -> None:
+    with pytest.raises(ValueError, match="distribution"):
+        score.log_scores(np.full((1, 5), 0.2), np.array([chosen]))
+
+
+@pytest.mark.parametrize("floor", [0.0, -1.0, np.nan, np.inf, 1e308])
+def test_log_scores_refuse_invalid_floor_or_overflow(floor: float) -> None:
+    with np.errstate(over="ignore"), pytest.raises(ValueError):
+        score.log_scores(np.full((1, 5), 0.2), np.array([0]), floor)
+
+
+def test_group_means_refuses_nonfinite_values() -> None:
+    groups = synthetic()
+    identities = np.repeat(np.arange(len(groups)), [ROUNDS * GAMES[g.cell].size for g in groups])
+    values = np.ones((len(identities), 1))
+    values[0] = np.nan
+    with pytest.raises(ValueError, match="non-finite"):
+        score.group_means(values, identities, groups)
+
+
+def test_bounds_refuse_nonfinite_point() -> None:
+    with pytest.raises(ValueError, match="non-finite"):
+        score.Interval(np.array([np.nan]), np.ones((2, 1))).bounds()
+
+
+def test_h2_requires_exact_row_count() -> None:
+    groups = synthetic()
+    with pytest.raises(ValueError, match="one row"):
+        score.h2_interval(np.ones((len(groups) + 1, 1)), groups, SMALL_R)
+
+
+def test_summary_width_and_distance_inputs_are_validated() -> None:
+    with pytest.raises(ValueError, match="five summaries"):
+        score.validate_summaries(np.ones((100, 4)), "2-AI")
+    good = np.ones((100, 5))
+    good[:, -1] = np.nan
+    wrong = good.copy()
+    wrong[:, -1] = 0
+    with pytest.raises(ValueError, match="undefined"):
+        score.distances(wrong, good, "2-FE")
+    with pytest.raises(ValueError, match="undefined"):
+        score.distances(good, wrong, "2-FE")
+
+
+def test_fair_scores_keep_each_humans_position() -> None:
+    groups, simulated = synthetic(), ensembles()["zoon"]
+    result = score.fair_scores(groups, simulated)
+    for i, group in enumerate(groups):
+        human = compare.summaries(group.rounds, GAMES[group.cell])
+        for s, value in enumerate(human):
+            if np.isfinite(value):
+                assert result[i, s] == pytest.approx(
+                    compare.crps(simulated[group.cell][:, s], float(value)), abs=1e-14
+                )
+            else:
+                assert np.isnan(result[i, s])
+
+
+def test_h3_refuses_empty_arms_and_wrong_ensemble_size() -> None:
+    with pytest.raises(ValueError, match="arms"):
+        score.h3_interval(synthetic(), {}, SMALL_R)
+    arms = ensembles()
+    arms["zoon"]["2-AI"] = arms["zoon"]["2-AI"][:99]
+    with pytest.raises(ValueError, match="ensemble"):
+        score.h3_interval(synthetic(), arms, SMALL_R)
+
+
+def test_difference_refuses_nonfinite_points() -> None:
+    with pytest.raises(ValueError, match="non-finite"):
+        score.difference(
+            score.Interval(np.array([np.nan]), np.ones((2, 1))),
+            score.Interval(np.ones(1), np.ones((2, 1))),
+        )
+
+
+def test_simulate_requires_explicit_channel() -> None:
+    import inspect
+
+    assert (
+        inspect.signature(score.simulate).parameters["open_channel"].default
+        is inspect.Parameter.empty
+    )
+
+
+def test_simulate_validates_each_summary(monkeypatch: pytest.MonkeyPatch) -> None:
+    from tests.test_interaction_person import law
+
+    def play(*args: object, **kwargs: object) -> kernel.Run:
+        return kernel.Run((), ())
+
+    monkeypatch.setattr(kernel, "play", play)
+
+    def summaries(*args: object) -> Floats:
+        return np.full(5, np.nan)
+
+    monkeypatch.setattr(compare, "summaries", summaries)
+    with pytest.raises(ValueError, match="non-finite"):
+        score.simulate(kernel.Coded(law("B")), kernel.Amounts({}), open_channel=True)
+
+
+def test_coded_validates_returned_probabilities(monkeypatch: pytest.MonkeyPatch) -> None:
+    from tests.test_interaction_person import law
+
+    def probabilities(*args: object) -> Floats:
+        return np.full(5, 0.8)
+
+    monkeypatch.setattr(person.Person, "probabilities", probabilities)
+    with pytest.raises(ValueError, match="distribution"):
+        score.coded(law("B"), synthetic())
