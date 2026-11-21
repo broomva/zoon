@@ -150,8 +150,8 @@ sum before recalibration, as the committed code does.
 This common floor is a rule of the H2 score only. In the closed loop the coded
 arms draw from their probabilities with `person.FLOOR = 1e-9`, and `prompted`
 from its recalibrated probabilities, as the committed kernel does. For each arm,
-report the number of held-out decisions in which this scoring floor raised the
-chosen band's probability. Beside the verdict and changing nothing, report the
+report the number of held-out decisions in which the chosen band's probability
+was below 0.005 before this scoring floor. Beside the verdict and changing nothing, report the
 two H2 differences, with their intervals, rescored with `person.FLOOR` in place of
 the scoring floor for the coded arms only; `prompted` is scored as above.
 
@@ -637,8 +637,9 @@ The report must contain:
 - For each of the four gating comparisons: estimate, both interval ends,
   threshold, whether each condition is met, and the verdict.
 - The recalibration's five numbers.
-- For each arm, the count of held-out decisions in which the H2 floor raised
-  the chosen band's probability, and the two H2 differences rescored with
+- For each arm, the count of held-out decisions in which the chosen band's
+  probability was below 0.005 before the H2 floor, and the two H2 differences
+  rescored with
   `person.FLOOR` for the coded arms; the rescoring changes no verdict.
 - Every transcript and log digest.
 - The statement that supervision of the arms is unequal.
