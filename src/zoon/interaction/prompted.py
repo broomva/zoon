@@ -198,6 +198,29 @@ class Recalibration:
         )
 
 
+def _polish(
+    objective: Callable[[Floats], tuple[float, Floats]],
+    hessian: Callable[[Floats], Floats],
+    numbers: Floats,
+    lower: float | None = None,
+) -> Floats:
+    """Newton steps to the gradient limit and, given `lower`, to a first number at least it."""
+    gradient = objective(numbers)[1]
+    steps = 0
+    while steps < POLISH_STEPS and not (
+        np.max(np.abs(gradient)) <= GRADIENT_LIMIT and (lower is None or numbers[0] >= lower)
+    ):
+        numbers = numbers - np.linalg.solve(hessian(numbers), gradient)
+        gradient = objective(numbers)[1]
+        steps += 1
+    remaining = float(np.max(np.abs(gradient)))
+    if not np.isfinite(remaining) or remaining > GRADIENT_LIMIT:
+        raise RuntimeError(f"recalibration remaining gradient {remaining} exceeds {GRADIENT_LIMIT}")
+    if lower is not None and numbers[0] < lower:
+        raise RuntimeError(f"recalibration settled at {numbers[0]}, outside its bound {lower}")
+    return numbers
+
+
 def _solve(
     objective: Callable[[Floats], tuple[float, Floats]],
     hessian: Callable[[Floats], Floats],
@@ -213,17 +236,7 @@ def _solve(
     )
     if not result.success:
         raise RuntimeError(f"recalibration did not converge: {result.message}")
-    numbers = np.asarray(result.x, dtype=float)
-    gradient = objective(numbers)[1]
-    steps = 0
-    while np.max(np.abs(gradient)) > GRADIENT_LIMIT and steps < POLISH_STEPS:
-        numbers = numbers - np.linalg.solve(hessian(numbers), gradient)
-        gradient = objective(numbers)[1]
-        steps += 1
-    remaining = float(np.max(np.abs(gradient)))
-    if not np.isfinite(remaining) or remaining > GRADIENT_LIMIT:
-        raise RuntimeError(f"recalibration remaining gradient {remaining} exceeds {GRADIENT_LIMIT}")
-    return numbers
+    return _polish(objective, hessian, np.asarray(result.x, dtype=float))
 
 
 def fit(
@@ -271,22 +284,26 @@ def fit(
         return (curvature - expected.T @ expected) / len(pairs) + penalty_hessian
 
     numbers = _solve(objective, hessian, start)
-    # With one bound and a convex objective, a negative unconstrained beta puts
-    # the constrained optimum on the boundary; only the shifts remain free.
     if numbers[0] < BETA_LOWER_BOUND:
 
+        def on_bound(free: Floats) -> Floats:
+            return np.r_[BETA_LOWER_BOUND, free]
+
         def boundary_objective(free: Floats) -> tuple[float, Floats]:
-            loss, gradient = objective(np.r_[BETA_LOWER_BOUND, free])
+            loss, gradient = objective(on_bound(free))
             return loss, gradient[1:]
 
         def boundary_hessian(free: Floats) -> Floats:
-            return hessian(np.r_[BETA_LOWER_BOUND, free])[1:, 1:]
+            return hessian(on_bound(free))[1:, 1:]
 
-        free = _solve(boundary_objective, boundary_hessian, numbers[1:])
-        numbers = np.r_[BETA_LOWER_BOUND, free]
-        beta_gradient = float(objective(numbers)[1][0])
-        if beta_gradient < -GRADIENT_LIMIT:
-            raise RuntimeError(f"recalibration boundary beta gradient {beta_gradient} is negative")
+        boundary = on_bound(_solve(boundary_objective, boundary_hessian, numbers[1:]))
+        if objective(boundary)[1][0] >= -GRADIENT_LIMIT:
+            # The objective does not fall inside the bound: the optimum is on it.
+            numbers = boundary
+        else:
+            # It does fall, so the optimum is inside and the first solve stopped a
+            # rounding error outside. Step on from there until it is inside.
+            numbers = _polish(objective, hessian, numbers, lower=BETA_LOWER_BOUND)
     values = [float(v) for v in numbers]
     return Recalibration(values[0], (values[1], values[2], values[3], values[4]))
 

@@ -11,6 +11,7 @@ from typing import Any
 
 import numpy as np
 import pytest
+import scipy.optimize
 from scipy.special import softmax
 
 from tests.test_interaction_kernel import training
@@ -827,11 +828,36 @@ def test_beta_lower_bound_is_shared(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(prompted, "BETA_LOWER_BOUND", 0.5)
     with pytest.raises(ValueError, match="inverse temperature"):
         prompted.Recalibration(0.4)
-    probabilities = np.full((50, 5), 0.24)
-    choices = np.arange(50) % 5
-    probabilities[np.arange(50), choices] = 0.04
-    result = prompted.fit(list(zip(probabilities, choices.tolist(), strict=True)))
+    rng = np.random.default_rng(5)
+    choices = rng.choice(5, size=80, p=[0.4, 0.1, 0.2, 0.1, 0.2])
+    probabilities = rng.dirichlet(np.ones(5), size=80)
+    probabilities[np.arange(80), choices] *= 0.05
+    probabilities /= probabilities.sum(axis=1, keepdims=True)
+    pairs = list(zip(probabilities, choices.tolist(), strict=True))
+    result = prompted.fit(pairs)
     assert result.beta == 0.5
+    # The shifts are the best ones at that bound, not the ones for a bound of zero.
+    logs = np.log(probabilities)
+
+    def loss(free: measure.Floats) -> float:
+        shifts: measure.Floats = np.r_[free, -free.sum()]
+        logits = 0.5 * logs + shifts
+        return float(
+            np.mean(np.log(np.exp(logits).sum(axis=1)) - logits[np.arange(80), choices])
+            + prompted.PENALTY * (0.25 + float(np.sum(shifts**2)))
+        )
+
+    best = scipy.optimize.minimize(loss, np.zeros(4), method="BFGS", options={"gtol": 1e-9})
+    assert np.max(np.abs(np.array(result.free_shifts) - best.x)) < 1e-5
+    monkeypatch.setattr(prompted, "BETA_LOWER_BOUND", 0.0)
+    assert np.max(np.abs(np.array(prompted.fit(pairs).free_shifts) - best.x)) > 1e-3
+    # A beta that is positive but under the bound is moved to the bound as well.
+    weak = rng.dirichlet(np.ones(5), size=2000)
+    drawn = [int(rng.choice(5, p=row)) for row in softmax(0.2 * np.log(weak), axis=1)]
+    weak_pairs = list(zip(weak, drawn, strict=True))
+    assert 0.05 < prompted.fit(weak_pairs).beta < 0.4
+    monkeypatch.setattr(prompted, "BETA_LOWER_BOUND", 0.5)
+    assert prompted.fit(weak_pairs).beta == 0.5
 
 
 @pytest.mark.parametrize("stage", [1, 2])
@@ -857,16 +883,126 @@ def test_solver_failure_in_either_stage_is_refused(
     assert calls == stage
 
 
-def test_negative_beta_derivative_at_bound_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
-    def wrong_solution(objective: Any, hessian: Any, start: measure.Floats) -> measure.Floats:
-        return np.array([-1.0, 0.0, 0.0, 0.0, 0.0]) if len(start) == 5 else np.zeros(4)
+def near_bound_pairs() -> tuple[list[tuple[measure.Floats, int]], prompted.Recalibration]:
+    """Decisions whose fitted beta is positive and close to its bound, with their fit."""
+    rng = np.random.default_rng(31)
+    count = 120
+    choices = rng.choice(5, size=count, p=[0.1, 0.3, 0.2, 0.1, 0.3])
+    wrong = rng.dirichlet(np.ones(5), size=count)
+    wrong[np.arange(count), choices] = 0.0
+    wrong /= wrong.sum(axis=1, keepdims=True)
+    right = wrong.copy()
+    right[np.arange(count), choices] += 1.0
+    right /= right.sum(axis=1, keepdims=True)
 
-    monkeypatch.setattr(prompted, "_solve", wrong_solution)
-    probabilities = np.full((50, 5), 0.04)
-    choices = np.arange(50) % 5
-    probabilities[np.arange(50), choices] = 0.84
-    with pytest.raises(RuntimeError, match=r"boundary beta gradient .* is negative"):
-        prompted.fit(list(zip(probabilities, choices.tolist(), strict=True)))
+    def pairs(weight: float) -> list[tuple[measure.Floats, int]]:
+        return list(zip((1 - weight) * wrong + weight * right, choices.tolist(), strict=True))
+
+    low, high = 0.0, 1.0
+    assert prompted.fit(pairs(low)).beta == 0.0 < prompted.fit(pairs(high)).beta
+    for _ in range(60):
+        middle = (low + high) / 2
+        if 1e-5 < (beta := prompted.fit(pairs(middle)).beta) < 1e-3:
+            return pairs(middle), prompted.fit(pairs(middle))
+        low, high = (middle, high) if beta <= 1e-5 else (low, middle)
+    raise AssertionError("no weight puts beta just inside its bound")
+
+
+def outside(reference: prompted.Recalibration) -> Any:
+    """A first solve that stops a rounding error outside the bound; later solves are real."""
+    solve: Any = prompted._solve  # pyright: ignore[reportPrivateUsage]
+
+    def stand_in(objective: Any, hessian: Any, start: measure.Floats) -> measure.Floats:
+        if len(start) == 5:
+            return np.r_[-1e-12, reference.free_shifts]
+        return solve(objective, hessian, start)
+
+    return stand_in
+
+
+def test_an_optimum_just_inside_the_bound_is_found_not_refused(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pairs, reference = near_bound_pairs()
+    monkeypatch.setattr(prompted, "_solve", outside(reference))
+    polish: Any = prompted._polish  # pyright: ignore[reportPrivateUsage]
+    bounds: list[float | None] = []
+
+    def recorded(objective: Any, hessian: Any, numbers: Any, lower: float | None = None) -> Any:
+        bounds.append(lower)
+        return polish(objective, hessian, numbers, lower)
+
+    monkeypatch.setattr(prompted, "_polish", recorded)
+    result = prompted.fit(pairs)
+    assert result.beta > 0
+    assert np.max(np.abs(result.numbers - reference.numbers)) < 1e-8
+    # The boundary solve polishes without a bound; the step back inside is held to it.
+    assert bounds == [None, prompted.BETA_LOWER_BOUND]
+
+
+def test_decisions_a_rounding_error_from_the_bound_are_fitted() -> None:
+    """Found in review: the first solve stops just outside the bound and the fit raised."""
+    rng = np.random.default_rng(2026)
+    choices: Any = np.zeros(0, dtype=int)
+    right: measure.Floats = np.zeros((0, 5))
+    wrong: measure.Floats = np.zeros((0, 5))
+    scale: measure.Floats = np.ones(5)
+    # The draws before the last are spent only to reach the stream position of the finding.
+    for _ in range(265):
+        count = int(rng.choice([5, 10, 20, 50, 512]))
+        choices = rng.integers(0, 5, size=count)
+        right = rng.dirichlet(rng.uniform(0.02, 1.5, size=5), size=count)
+        wrong = right.copy()
+        right[np.arange(count), choices] += rng.uniform(0.3, 3.0)
+        right /= right.sum(axis=1, keepdims=True)
+        wrong[np.arange(count), choices] = 0.0
+        wrong[wrong.sum(axis=1) == 0] = 0.2
+        wrong /= wrong.sum(axis=1, keepdims=True)
+    for _ in range(39):
+        scale = np.exp(rng.normal(0, 1.5, size=5)) ** 1.053
+    right, wrong = right * scale, wrong * scale
+    right /= right.sum(axis=1, keepdims=True)
+    wrong /= wrong.sum(axis=1, keepdims=True)
+    weight = 0.09322158215367386
+    pairs = list(zip((1 - weight) * wrong + weight * right, choices.tolist(), strict=True))
+    result = prompted.fit(pairs)
+    other = prompted.fit(pairs, start=np.array(prompted.FIT_START) + 0.1)
+    assert 0 <= result.beta < 1e-9
+    assert np.max(np.abs(result.numbers - other.numbers)) < 1e-8
+
+
+def test_the_bound_is_kept_within_the_gradient_limit(monkeypatch: pytest.MonkeyPatch) -> None:
+    pairs, reference = near_bound_pairs()
+    monkeypatch.setattr(prompted, "_solve", outside(reference))
+    monkeypatch.setattr(prompted, "GRADIENT_LIMIT", 1.0)
+    assert prompted.fit(pairs).beta == prompted.BETA_LOWER_BOUND
+
+
+def test_polish_refuses_a_point_that_stays_outside_and_a_gradient_that_is_not_a_number() -> None:
+    polish: Any = prompted._polish  # pyright: ignore[reportPrivateUsage]
+
+    def bowl(numbers: measure.Floats) -> tuple[float, measure.Floats]:
+        return float((numbers[0] + 1) ** 2), 2 * (numbers + 1)
+
+    def curvature(numbers: measure.Floats) -> measure.Floats:
+        return np.array([[2.0]])
+
+    assert polish(bowl, curvature, np.array([3.0]))[0] == pytest.approx(-1.0)
+    with pytest.raises(RuntimeError, match=r"outside its bound 0\.0"):
+        polish(bowl, curvature, np.array([3.0]), lower=0.0)
+
+    def shallow(numbers: measure.Floats) -> tuple[float, measure.Floats]:
+        return float((numbers[0] - 1e-12) ** 2), 2 * (numbers - 1e-12)
+
+    # Within the gradient limit already, but outside: the bound alone makes it step.
+    assert polish(shallow, curvature, np.array([-1e-12]))[0] == -1e-12
+    assert polish(shallow, curvature, np.array([-1e-12]), lower=0.0)[0] == pytest.approx(1e-12)
+
+    def broken(numbers: measure.Floats) -> tuple[float, measure.Floats]:
+        return 0.0, np.array([float("nan")])
+
+    with pytest.raises(RuntimeError, match="remaining gradient nan"):
+        polish(broken, curvature, np.array([3.0]))
 
 
 def test_fit_starts_at_the_committed_start_and_floors_at_the_shared_floor(

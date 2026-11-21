@@ -325,7 +325,15 @@ def test_prompted_table_and_quoted_figures_match_the_paste() -> None:
     assert len(rows) == 5
     assert quoted == rows
     # Attribution identifies the source and its licence; these are not measured figures.
-    prose = re.sub(r"The instructions are used under CC BY.*?\n\n", "", prose, flags=re.S)
+    # It is exempt from the digit rule, so it is pinned whole.
+    citation = (
+        "The instructions are used under CC BY 4.0: Wang, Hilbe and Zhang, *PNAS* 123(5),\n"
+        "e2525760123, [doi:10.1073/pnas.2525760123](https://doi.org/10.1073/pnas.2525760123),\n"
+        "supplementary appendix, sections 5B and 5D. The other games use substituted "
+        "parameters.\n\n"
+    )
+    assert prose.count(citation) == 1
+    prose = prose.replace(citation, "")
     table = {
         *quoted,
         "| Call | Calls | Input tokens at most | Output tokens at most | USD at most |",
