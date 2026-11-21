@@ -70,17 +70,32 @@ def test_a_note_that_cites_quotes_only_printed_figures(name: str) -> None:
 def test_interaction_registration_links_and_existing_paths() -> None:
     """Only the explicitly listed analysis additions may name paths not present today."""
     root = NOTES.parent.parent
-    document = root / "prereg" / "interaction.md"
+    document = root / "interaction" / "registration.md"
+    check_interaction_registration(root, document)
+
+
+def check_interaction_registration(root: Path, document: Path) -> None:
     text = document.read_text()
-    additions = text.split("### Paths to be added by the analysis code\n", 1)[1].split("\n## ", 1)[
-        0
-    ]
+    heading = "### Paths to be added by the analysis code\n"
+    assert text.count(heading) == 1, "analysis additions heading must occur once"
+    additions = text.partition(heading)[2].split("\n## ", 1)[0]
     exempt = set(re.findall(r"^- `([^`]+)`$", additions, flags=re.MULTILINE))
     assert exempt, "analysis additions must be an explicit path list"
     assert "do not exist today" in additions
     assert "exempt from the existing-path check" in additions
     for path in exempt:
         assert not Path(path).is_absolute() and ".." not in Path(path).parts
+        candidate = root / path
+        assert candidate.resolve().is_relative_to(root.resolve()), path
+        assert not candidate.exists(), f"exempt path exists: {path}"
+
+    existing = re.findall(r"^\| `([^`]+)` \| Existing today \|", text, flags=re.MULTILINE)
+    assert existing, "the file table must distinguish existing paths"
+    for path in existing:
+        assert path not in exempt, f"existing path is exempt: {path}"
+        candidate = root / path
+        assert candidate.resolve().is_relative_to(root.resolve()), path
+        assert candidate.exists(), f"existing path is missing: {path}"
 
     links = re.findall(r"!?\[[^\]]*\]\(([^)]+)\)", text)
     assert links, "the registration must link its sources"
@@ -88,14 +103,15 @@ def test_interaction_registration_links_and_existing_paths() -> None:
         if re.match(r"[a-zA-Z][a-zA-Z0-9+.-]*:", link):
             continue
         target, _, fragment = link.partition("#")
-        linked = document.parent / target
+        linked = (document.parent / target).resolve()
+        assert linked.is_relative_to(root.resolve()), f"link leaves repository: {link}"
         assert linked.exists(), link
         if fragment:
             headings = re.findall(r"^#+ (.+)$", linked.read_text(), flags=re.MULTILINE)
             anchors = {re.sub(r"[^\w -]", "", h.lower()).replace(" ", "-") for h in headings}
             assert fragment in anchors, link
 
-    # Links resolve from prereg/; all other named paths resolve from the root.
+    # Links resolve from interaction/; all other named paths resolve from the root.
     prose = re.sub(r"!?\[[^\]]*\]\([^)]+\)", "", text)
     paths = set(
         re.findall(
@@ -115,3 +131,47 @@ def test_interaction_registration_links_and_existing_paths() -> None:
                 if Path(link.split("#", 1)[0]).name == path
             )
         assert any(candidate.exists() for candidate in candidates), path
+
+
+@pytest.mark.parametrize(
+    "mutation", ["existing exemption", "exemption on disk", "missing existing", "escape", "heading"]
+)
+def test_registration_path_check_rejects_mutations(tmp_path: Path, mutation: str) -> None:
+    root = tmp_path / "repository"
+    folder = root / "interaction"
+    folder.mkdir(parents=True)
+    document = folder / "registration.md"
+    (root / "README.md").write_text("# Source\n")
+    text = """# Registration
+
+[Source](../README.md)
+
+| File | State | Holds |
+|---|---|---|
+| `interaction/registration.md` | Existing today | This file |
+
+### Paths to be added by the analysis code
+
+These paths do not exist today and are exempt from the existing-path check:
+
+- `interaction/fitted.json`
+"""
+    document.write_text(text)
+    check_interaction_registration(root, document)
+    if mutation == "existing exemption":
+        text += "- `README.md`\n"
+    elif mutation == "exemption on disk":
+        (folder / "fitted.json").write_text("{}\n")
+    elif mutation == "missing existing":
+        text = text.replace(
+            "| `interaction/registration.md` | Existing today | This file |",
+            "| `interaction/fitted.json` | Existing today | Missing |",
+        )
+    elif mutation == "escape":
+        (tmp_path / "outside.md").write_text("# Outside\n")
+        text = text.replace("../README.md", "../../outside.md")
+    else:
+        text = text.replace("### Paths to be added by the analysis code", "### Future paths")
+    document.write_text(text)
+    with pytest.raises(AssertionError):
+        check_interaction_registration(root, document)

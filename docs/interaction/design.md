@@ -1,13 +1,15 @@
 # The first interaction test: design
 
 **Status: draft for review.** Nothing here is registered. The draft
-[pre-registration](../../prereg/interaction.md) fixes the run rules and governs where it
-differs from this note. Its "Where this differs from the design note" section lists the changes.
+[pre-registration](../../interaction/registration.md) fixes the run rules and governs where it
+differs from this note. Its "Changes from the design note as it stood before this file"
+section lists the changes.
 
 The pilot tested one simulated person on a task where nobody interacts, and the verdict it
 registered was a pass. This note designs the next test: people who play together in a group.
 It says what is tested, against what, what a pass and a fail would mean, what the
-pre-registration still has to fix, and what changes in `docs/design.md`.
+draft registration fixes, what remains open before registration, and what changes in
+`docs/design.md`.
 
 ## What is tested
 
@@ -159,7 +161,8 @@ A minimal kernel, built for this test and no larger:
   in a pair the payoff reveals the other's contribution exactly.
 - **Sampling in code.** Draws use streams derived from the run's seed, the group, the round
   and the seat. Seats decide at the same time and do not see each other's draw. The same
-  kernel runs coded and prompted agents.
+  kernel runs the coded arms and the band-returning `prompted` arm; `chat` returns
+  points directly.
 
 ## The prompted arms
 
@@ -179,7 +182,9 @@ The pre-registration fixes these rules, with the files committed:
   drawn by a committed rule, with a small penalty toward no recalibration, so that the fit
   has one answer whatever the model returns. The temperature enters as an inverse
   temperature that cannot be negative. So the arm cannot lose only because its probabilities
-  are too extreme or lean toward a band.
+  are too extreme or lean toward a band. This depends on flooring its two-decimal
+  probabilities at `prompted.PROMPTED_FLOOR = 0.005`, half the reporting step,
+  and dividing by their sum before recalibration.
 - **The chat model** is run in the closed loop only. It is asked for a number of points and
   its answer is taken as it stands, with no recalibration and no band step, since that is
   how such agents are run. The registration fixes its model as `gemini-4-carbon`, its
@@ -200,8 +205,8 @@ The pre-registration fixes these rules, with the files committed:
 ## Measures
 
 - **H2.** The mean log-likelihood of each held-out person's band in each round. Every arm's
-  probabilities are clamped to one floor and divided by their sum. Differences are paired
-  by decision, averaged over decisions and resampled by group within each game. The
+  probabilities are floored and divided by their sum under the arm's registered rule.
+  Differences are paired by decision, averaged over decisions and resampled by group within each game. The
   registration fixes the floor before and after prompted recalibration.
 - **H3.** Each held-out human group is scored against the simulated groups of its game, one
   summary at a time, with the continuous ranked probability score in the form that does not
@@ -221,10 +226,11 @@ The pre-registration fixes these rules, with the files committed:
   mean of those differences. The measure is the mean of the five results. The type gap is
   defined in six games: every game but the two with equal seats. In one of the six the
   seats differ in productivity only. The interval resamples groups within each game, so
-  every resample has the same games. The registered interval also samples half of each
-  arm's simulated groups without replacement, independently per arm, to include simulation
-  error. Its point estimate uses the full ensemble. Equal weight for the five is a choice,
-  and the two signed summaries can range more widely than the other three. Each summary is also
+  every resample has the same games, drawing one fewer human group per game with fixed
+  weights from the full held-out counts. The registered interval also samples half of each
+  arm's simulated groups without replacement, using the same group numbers for every arm
+  in a game and replicate to preserve pairing and include simulation error. Its point
+  estimate uses the full ensemble. Equal weight for the five is a choice, and the two signed summaries can range more widely than the other three. Each summary is also
   reported alone.
 
   **Why this set, chosen now.** On training groups the gain from the others' history was
@@ -241,13 +247,12 @@ The pre-registration fixes these rules, with the files committed:
 
 ## Controls
 
-- **Null interaction.** Defined as the absence of information: with the channel closed,
-  nothing about another seat reaches a decision law. It does not mean that members of a
-  simulated group never coincide. Two tests: a coded person with zero weight on the others
-  plays exactly as the same person with the channel closed, under the same seed and the
-  same numbers, checked on the committed fits; and with the channel closed, changing what
-  the other seats do changes nothing about a seat's distribution. The `alone` arm is a different thing, a refitted
-  comparator, and is not expected to reproduce any other arm's play.
+- **Null interaction.** Two tests on the committed numbers must pass before registration
+  and are repeated with their result in the report. With the others' weight set to zero,
+  the sequence of bands and points of every seat and round of the 100 registered groups of
+  every game is equal under an open and a closed channel. With the channel closed,
+  replacing the other seats' play by any other play leaves each seat's five probabilities
+  exactly equal. `alone` is a separately fitted comparator, not this null test.
 - **Disguise.** Every amount of points is multiplied by ten and the exchange rate divided
   by ten. The coded laws see only shares of the endowment, so their output cannot change;
   a test asserts it. This is a property of
@@ -259,7 +264,9 @@ The pre-registration fixes these rules, with the files committed:
   and after, against the same people re-formed into groups at random, is reported for the
   held-out groups as it was for the training groups. It is a description and excludes
   nothing.
-- **Replay.** Every recorded closed-loop game replays to the same log, with digests.
+- **Replay.** Every recorded closed-loop game of `zoon`, `alone` and `prompted`
+  replays from its log to its recorded digest; failure gives H3 no verdict and leaves H2
+  unaffected. Chat games replay from the transcript; failure makes `chat` unusable.
   All simulation finishes and its digests are recorded before any held-out group is read.
 - **A game left out.** The coded arms are also fitted on the training groups of seven games
   and scored on held-out groups of the eighth, in rotation. Reported, not gating.
@@ -289,8 +296,12 @@ there is none. Whatever happens is published, as with the pilot.
 
 The draft pre-registration fixes the arms, fitting and committed numbers, band table,
 measures, thresholds, intervals, streams, prompted and chat rules, controls, stopping rules
-and order of work. Its "Open before registration" list is exhaustive: the chat bound and cap,
-the analysis code and its files, and statistical review of the H3 interval.
+and order of work. Its "Open before registration" list is exhaustive: the decision-model
+cap, chat bound and cap with dated prices; the analysis code and its files and required
+checks; statistical review of the H3 interval; a format check of the chat request with the
+committed renderer; replacement of the path test by tests binding every registered constant
+and number to the code; and power and coverage under the registered rules, computed on
+training groups by a committed script and quoted in the registration.
 
 ## What this changes in the main design
 

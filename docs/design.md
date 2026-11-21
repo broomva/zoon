@@ -13,7 +13,7 @@ through four passes of independent adversarial review by models from three vendo
 been reviewed by people outside the project. The pilot and the interaction kernel and
 training comparisons are built; the registered interaction run is not. The first interaction
 test starts on the pilot's registered verdict and uses no judge, so it does not depend on
-which reading of the pilot is taken. `prereg/interaction.md` fixes its draft protocol.
+which reading of the pilot is taken. `interaction/registration.md` fixes its draft protocol.
 Reversal cost: high for three decisions the pilot commits to, which are one-way doors: the
 language, the model boundary and the licence. Publishing becomes a one-way door at the first
 public commit. The general kernel and log schema remain provisional beyond the first
@@ -179,7 +179,8 @@ started only on the maintainer's explicit decision.
   and code decides what each action does.
 - **No general account of sociality in the first version.** There is no reasoning about what
   another believes or will accept, no punishment of norm violations and no forming or cutting
-  of ties. The first interaction test covers contributions to a repeated public good.
+  of ties. The first version can study the spread of information and learning in a repeated
+  two-party exchange. The first interaction test covers contributions to a repeated public good.
   One-shot bargaining and norms stay out.
 - **No tooling for optimising persuasion or targeting groups.**
 - **No new data collected from people, no hosted service, no visual viewer** in the first
@@ -339,7 +340,7 @@ whose zoon, step, role, ordinal or request hash differs from the entry at that p
 ### Kernel
 
 **First interaction kernel.** The pilot's registered verdict passed. The first interaction
-test uses rounds as batches and exact fractions of a point, as `prereg/interaction.md` states.
+test uses rounds as batches and exact fractions of a point, as `interaction/registration.md` states.
 Seats decide once per round, simultaneously, and see the outcome before the next round.
 It needs no decision lifecycle. The general event-driven design below remains provisional;
 its timing rules do not apply to this test.
@@ -450,11 +451,14 @@ A measure that declares no dependencies fails the test suite.
   This replaces a separate spread check for this test.
 - **Model swap and paraphrase.** In the first interaction test, model swap is the reported
   chat arm. Paraphrase is deferred.
-- **Null interaction.** In the first interaction test it means no information about another
-  seat reaches the law. Zero others' weight must reproduce closed-channel play under the
-  same draws; with the channel closed, changing others' play must not change a seat's
-  distribution. Independent persons' summaries need not be zero. Exact null social measures
-  remain a control for worlds, such as the threshold cascade, where null implies zero.
+- **Null interaction.** In the first interaction test, two tests on the committed numbers
+  must pass before registration; the report repeats them and prints the result. With the
+  others' weight set to zero, the sequence of bands and points of every seat and round of
+  the 100 registered groups of every game is equal under an open and a closed channel.
+  With the channel closed, replacing the other seats' play by any other play leaves each
+  seat's five probabilities exactly equal. Independent persons' summaries need not be zero.
+  Exact null social measures remain a control for worlds, such as the threshold cascade,
+  where null implies zero.
 
 ### Stack
 
@@ -602,7 +606,7 @@ Thresholds are choices made here, not findings. Command names are proposals.
 | # | Milestone | Fails unless |
 |---|---|---|
 | P0 | H1 pilot. One task, four arms, only the laws that task needs, no kernel | The prior work named in open question 10 is read. The pre-registration is committed before `unseal` is run on the held-out split. `uv run pytest` is green. `uv run python -m zoon.report h1 --check` exits 0 only if the `zoon` arm beats `prompted`, `laws-only` and `no-state` on the primary measure by at least the pre-registered difference, with a paired participant-level bootstrap 95% interval excluding zero. Amended 2026-11-15: the hypothesis that decides is H1-evaluative, for the deciding model family, exactly as `prereg/h1.md` states it |
-| I1 | First interaction test, H2 and H3 | `prereg/interaction.md` is registered before any held-out play is read. Each hypothesis is judged separately by its registered comparisons, thresholds and intervals. Replay and ledger checks pass; the result is published whatever the verdicts |
+| I1 | First interaction test, H2 and H3 | `interaction/registration.md` is registered before any held-out play is read. Each hypothesis is judged separately by its registered comparisons, thresholds and intervals. The two null-interaction tests on the committed numbers pass before registration and are repeated in the report. Every recorded closed-loop game of `zoon`, `alone` and `prompted` replays from its log to its recorded digest; failure gives H3 no verdict and leaves H2 unaffected. Chat games replay from the transcript; failure makes `chat` unusable. Ledger checks pass; the result is published whatever the verdicts |
 | M1 | General kernel beyond the round-based interaction kernel | `uv run pytest` green. Replaying a log reproduces it byte for byte for each of 8 seeds, a chosen count. Ledger totals are exactly unchanged over a run. Under a coded policy, Granovetter's case holds exactly: thresholds 0 to 99 give 100 acting, and removing threshold 1 gives 1. With the channel removed, the cascade size is exactly zero. `sim_audit.py --strict --run-mutations` exits 0 for kernel claims |
 | M2 | Laws for the first world, models stubbed | Each law reproduces its published equation within the tolerance written in its claim. Every checked claim has a mutation that turns its own test red |
 | M3 | Two zoons in a repeated exchange, two options per decision | `zoon.report m3 --check` exits 0 only if the measure, as a share of the payoff scale, stays within the pre-registered bound under the disguise control, and the recall control does not reproduce it within that bound. Framing sensitivity is reported |

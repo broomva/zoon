@@ -48,7 +48,7 @@ zoon interaction: prompted spending bound
 [settings] recalibration polish steps = 20
 [settings] recalibration beta lower bound = 0.0
 [settings] recalibration penalty = 0.0001
-[settings] probability floor before recalibration = 1e-09
+[settings] probability floor before recalibration = 0.005
 [settings] model = jev-1.14.0
 [settings] input USD per million = 0.042
 [settings] output USD per million = 0
