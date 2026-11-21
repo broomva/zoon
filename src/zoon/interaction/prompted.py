@@ -3,7 +3,7 @@
 import argparse
 import hashlib
 import json
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from fractions import Fraction
 from typing import Literal, TypedDict
@@ -24,18 +24,19 @@ SUBSAMPLE_SALT = "interaction-recalibration-1"
 FIXTURE_SEED = 711
 DISGUISE = 10
 SMOKE_GAMES = ("2-AI", "4-AI")
-FIT_METHOD: Literal["L-BFGS-B"] = "L-BFGS-B"
+FIT_METHOD: Literal["trust-exact"] = "trust-exact"
 
 
 class FitOptions(TypedDict):
-    ftol: float
     gtol: float
     maxiter: int
 
 
-FIT_OPTIONS: FitOptions = {"ftol": 1e-12, "gtol": 1e-8, "maxiter": 1000}
+FIT_OPTIONS: FitOptions = {"gtol": 1e-6, "maxiter": 1000}
 FIT_START = (1.0, 0.0, 0.0, 0.0, 0.0)
-FIT_BOUNDS = ((0.0, None),) + ((None, None),) * 4
+BETA_LOWER_BOUND = 0.0
+GRADIENT_LIMIT = 1e-10
+POLISH_STEPS = 20
 PENALTY = 1e-4
 FIXTURE_LABEL = "MADE-UP HISTORY: seeded; no participant record.\n\n"
 ANSWERS = (
@@ -177,7 +178,7 @@ class Recalibration:
     free_shifts: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
 
     def __post_init__(self) -> None:
-        if not np.isfinite(self.beta) or self.beta < 0:
+        if not np.isfinite(self.beta) or self.beta < BETA_LOWER_BOUND:
             raise ValueError("inverse temperature must be finite and non-negative")
         if len(self.free_shifts) != 4 or not np.isfinite(self.shifts).all():
             raise ValueError("four finite free shifts are required")
@@ -195,6 +196,34 @@ class Recalibration:
             softmax(self.beta * _probability_logs(probabilities) + self.shifts, axis=-1),
             dtype=float,
         )
+
+
+def _solve(
+    objective: Callable[[Floats], tuple[float, Floats]],
+    hessian: Callable[[Floats], Floats],
+    start: Sequence[float] | Floats,
+) -> Floats:
+    result = minimize(
+        objective,
+        np.asarray(start, dtype=float),
+        jac=True,
+        hess=hessian,
+        method=FIT_METHOD,
+        options={**FIT_OPTIONS},
+    )
+    if not result.success:
+        raise RuntimeError(f"recalibration did not converge: {result.message}")
+    numbers = np.asarray(result.x, dtype=float)
+    gradient = objective(numbers)[1]
+    steps = 0
+    while np.max(np.abs(gradient)) > GRADIENT_LIMIT and steps < POLISH_STEPS:
+        numbers = numbers - np.linalg.solve(hessian(numbers), gradient)
+        gradient = objective(numbers)[1]
+        steps += 1
+    remaining = float(np.max(np.abs(gradient)))
+    if not np.isfinite(remaining) or remaining > GRADIENT_LIMIT:
+        raise RuntimeError(f"recalibration remaining gradient {remaining} exceeds {GRADIENT_LIMIT}")
+    return numbers
 
 
 def fit(
@@ -221,17 +250,44 @@ def fit(
         gradient += PENALTY * np.r_[2 * (numbers[0] - 1), 2 * (shifts[:4] - shifts[4])]
         return loss, gradient
 
-    result = minimize(
-        objective,
-        np.asarray(start, dtype=float),
-        jac=True,
-        method=FIT_METHOD,
-        bounds=FIT_BOUNDS,
-        options={**FIT_OPTIONS},
+    # Each band has design row [log probability, four zero-sum shift coefficients].
+    mapping = np.vstack([np.eye(4), -np.ones(4)])
+    design = np.concatenate(
+        [logs[:, :, None], np.broadcast_to(mapping, (len(pairs), 5, 4))], axis=2
     )
-    if not result.success:
-        raise RuntimeError(f"recalibration did not converge: {result.message}")
-    values = [float(v) for v in result.x]
+    penalty_hessian = (
+        2
+        * PENALTY
+        * np.block(
+            [[np.ones((1, 1)), np.zeros((1, 4))], [np.zeros((4, 1)), np.eye(4) + np.ones((4, 4))]]
+        )
+    )
+
+    def hessian(numbers: Floats) -> Floats:
+        shifts = mapping @ numbers[1:]
+        probabilities = softmax(numbers[0] * logs + shifts, axis=1)
+        expected = np.einsum("nk,nkj->nj", probabilities, design)
+        curvature = np.einsum("nk,nki,nkj->ij", probabilities, design, design)
+        return (curvature - expected.T @ expected) / len(pairs) + penalty_hessian
+
+    numbers = _solve(objective, hessian, start)
+    # With one bound and a convex objective, a negative unconstrained beta puts
+    # the constrained optimum on the boundary; only the shifts remain free.
+    if numbers[0] < BETA_LOWER_BOUND:
+
+        def boundary_objective(free: Floats) -> tuple[float, Floats]:
+            loss, gradient = objective(np.r_[BETA_LOWER_BOUND, free])
+            return loss, gradient[1:]
+
+        def boundary_hessian(free: Floats) -> Floats:
+            return hessian(np.r_[BETA_LOWER_BOUND, free])[1:, 1:]
+
+        free = _solve(boundary_objective, boundary_hessian, numbers[1:])
+        numbers = np.r_[BETA_LOWER_BOUND, free]
+        beta_gradient = float(objective(numbers)[1][0])
+        if beta_gradient < -GRADIENT_LIMIT:
+            raise RuntimeError(f"recalibration boundary beta gradient {beta_gradient} is negative")
+    values = [float(v) for v in numbers]
     return Recalibration(values[0], (values[1], values[2], values[3], values[4]))
 
 

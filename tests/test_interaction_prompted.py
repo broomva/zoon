@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+from collections.abc import Callable
 from dataclasses import replace
 from fractions import Fraction
 from pathlib import Path
@@ -574,22 +575,23 @@ def test_fit_refuses_empty_input_and_outside_band() -> None:
             prompted.fit([(np.full(5, 0.2), band)])
 
 
-def test_fit_objective_gradient_start_bounds_and_options(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_fit_objective_gradient_hessian_start_and_options(monkeypatch: pytest.MonkeyPatch) -> None:
     probabilities = np.array([[0, 0.1, 0.2, 0.3, 0.4], [0.5, 0.1, 0.1, 0.1, 0.2], [0.2] * 5])
     choices = np.array([0, 3, 4])
     start = np.array([1.1, 0.1, 0.1, 0.1, 0.1])
     called = False
+    minimize: Any = prompted.minimize
 
     def inspect_objective(fun: Any, x0: measure.Floats, **kwargs: Any) -> Any:
         nonlocal called
         called = True
+        if len(x0) == 4:
+            return minimize(fun, x0, **kwargs)
         assert np.array_equal(x0, start)
-        assert kwargs == {
-            "jac": True,
-            "method": "L-BFGS-B",
-            "bounds": ((0, None),) + ((None, None),) * 4,
-            "options": {"ftol": 1e-12, "gtol": 1e-8, "maxiter": 1000},
-        }
+        assert set(kwargs) == {"jac", "hess", "method", "options"}
+        assert kwargs["jac"] is True
+        assert kwargs["method"] == "trust-exact"
+        assert kwargs["options"] == {"gtol": 1e-6, "maxiter": 1000}
         for numbers in (
             start,
             np.array([0.3, -0.8, 0.7, 0.2, -0.5]),
@@ -614,12 +616,20 @@ def test_fit_objective_gradient_start_bounds_and_options(monkeypatch: pytest.Mon
                 ]
             )
             assert gradient == pytest.approx(finite, abs=1e-8)
-        return SimpleNamespace(success=True, x=start)
+            finite_hessian = np.column_stack(
+                [
+                    (fun(numbers + step * axis)[1] - fun(numbers - step * axis)[1]) / (2 * step)
+                    for axis in np.eye(5)
+                ]
+            )
+            hessian = kwargs["hess"](numbers)
+            assert hessian == pytest.approx(finite_hessian, abs=1e-8)
+            assert np.linalg.eigvalsh(hessian).min() >= 2 * prompted.PENALTY - 1e-12
+        return minimize(fun, x0, **kwargs)
 
     monkeypatch.setattr(prompted, "minimize", inspect_objective)
-    assert prompted.fit(
-        list(zip(probabilities, choices.tolist(), strict=True)), start=start
-    ).numbers == pytest.approx(start)
+    result = prompted.fit(list(zip(probabilities, choices.tolist(), strict=True)), start=start)
+    assert_stationary(probabilities, choices, result)
     assert called
 
 
@@ -632,44 +642,228 @@ def test_fit_raises_unsuccessful_optimizer_message(monkeypatch: pytest.MonkeyPat
         prompted.fit([(np.full(5, 0.2), 0)])
 
 
-def test_fit_reproduces_across_many_well_specified_samples() -> None:
-    start_nudge, tolerance = 0.1, 1e-4
-    for seed in range(200):
-        rng = np.random.default_rng(seed)
-        probabilities = rng.dirichlet(np.ones(5) * rng.uniform(0.3, 3), size=512)
-        if seed % 10 == 0:
-            probabilities[rng.random(probabilities.shape) < 0.05] = 0
-            probabilities[probabilities.sum(axis=1) == 0] = 0.2
-            probabilities /= probabilities.sum(axis=1, keepdims=True)
+def assert_stationary(
+    probabilities: measure.Floats,
+    choices: np.ndarray[Any, np.dtype[np.int64]],
+    result: prompted.Recalibration,
+) -> None:
+    floored = np.maximum(probabilities, person.FLOOR)
+    logs = np.log(floored / floored.sum(axis=1, keepdims=True))
+    residual = softmax(result.beta * logs + result.shifts, axis=1)
+    residual[np.arange(len(choices)), choices] -= 1
+    gradient = np.r_[
+        np.mean(np.sum(residual * logs, axis=1)),
+        (residual[:, :4] - residual[:, 4:]).mean(axis=0),
+    ]
+    gradient += (
+        prompted.PENALTY * np.r_[2 * (result.beta - 1), 2 * (result.shifts[:4] - result.shifts[4])]
+    )
+    assert np.isfinite(result.numbers).all()
+    assert np.max(np.abs(gradient[1:])) <= prompted.GRADIENT_LIMIT
+    if result.beta == 0.0:
+        assert gradient[0] >= -prompted.GRADIENT_LIMIT
+    else:
+        assert abs(gradient[0]) <= prompted.GRADIENT_LIMIT
+
+
+def reproducibility_case(
+    regime: str, seed: int
+) -> tuple[measure.Floats, np.ndarray[Any, np.dtype[np.int64]], np.random.Generator]:
+    rng = np.random.default_rng([seed, 20261120])
+    n = (5, 20, 50, 512, 5000)[seed % 5]
+    probabilities = rng.dirichlet(np.ones(5) * rng.uniform(0.3, 3), size=n)
+    choices = rng.integers(0, 5, n)
+    if regime == "well specified":
         true = softmax(
-            rng.uniform(0.4, 2.5) * np.log(np.maximum(probabilities, 1e-9)) + rng.normal(0, 0.5, 5),
-            axis=1,
+            rng.uniform(0.4, 2.5) * np.log(probabilities) + rng.normal(0, 0.5, 5), axis=1
         )
-        bands = [int(rng.choice(5, p=row)) for row in true]
-        pairs = list(zip(probabilities, bands, strict=True))
-        first = prompted.fit(pairs)
-        second = prompted.fit(pairs, start=np.array(prompted.FIT_START) + start_nudge)
-        assert np.isfinite(first.numbers).all(), seed
-        assert np.max(np.abs(first.numbers - second.numbers)) < tolerance, seed
+        choices = np.array([rng.choice(5, p=row) for row in true])
+    elif regime == "exact zeros":
+        probabilities[rng.random(probabilities.shape) < 0.2] = 0
+        probabilities[probabilities.sum(axis=1) == 0] = 0.2
+    elif regime == "one-hot rows":
+        bands = rng.integers(0, 5, n) if seed % 2 else np.full(n, rng.integers(0, 5))
+        probabilities = np.eye(5)[bands]
+    elif regime == "identical non-uniform rows":
+        probabilities = np.tile(rng.dirichlet(np.ones(5) * rng.uniform(0.2, 2)), (n, 1))
+    elif regime == "unobserved bands":
+        # Cycle through one, two, three and four bands never observed.
+        choices = rng.choice(rng.choice(5, size=4 - seed % 4, replace=False), n)
+    elif regime == "anti-informative":
+        choices = np.argmin(probabilities, axis=1)
+    elif regime == "extremely sharp":
+        probabilities = softmax(rng.normal(0, 50, (n, 5)), axis=1)
+    elif regime == "perfectly predictive":
+        probabilities = softmax(rng.normal(0, 3, (n, 5)), axis=1)
+        choices = np.argmax(probabilities, axis=1)
+    else:
+        raise AssertionError(regime)
+    return probabilities, choices, rng
 
 
-def test_degenerate_fits_reproduce_and_anti_informative_bound() -> None:
-    rng = np.random.default_rng(1)
-    bands = rng.integers(0, 5, 512).tolist()
-    unrelated = rng.dirichlet(np.ones(5), size=512)
-    for probabilities, choices in (
-        (np.full((512, 5), 0.2), bands),
-        (np.tile([0.1, 0.2, 0.4, 0.2, 0.1], (512, 1)), bands),
-        (unrelated, bands),
-        (unrelated, [max(1, band) for band in bands]),
-    ):
-        pairs = list(zip(probabilities, choices, strict=True))
-        first = prompted.fit(pairs)
-        second = prompted.fit(pairs, start=np.array(prompted.FIT_START) + 0.1)
-        assert np.isfinite(first.numbers).all()
-        assert first.numbers == pytest.approx(second.numbers, abs=1e-4)
+@pytest.mark.parametrize(
+    "regime",
+    [
+        "well specified",
+        "exact zeros",
+        "one-hot rows",
+        "identical non-uniform rows",
+        "unobserved bands",
+        "anti-informative",
+        "extremely sharp",
+        "perfectly predictive",
+    ],
+)
+def test_fit_reproduces_across_regimes(
+    regime: str, record_property: Callable[[str, object], None]
+) -> None:
+    worst = 0.0
+    for seed in range(25):
+        probabilities, choices, rng = reproducibility_case(regime, seed)
+        pairs = list(zip(probabilities, choices.tolist(), strict=True))
+        starts = (
+            np.array(prompted.FIT_START),
+            np.array(prompted.FIT_START) + 0.1,
+            rng.normal(0, 5, 5),
+        )
+        results = [prompted.fit(pairs, start=start) for start in starts]
+        for result in results:
+            assert_stationary(probabilities, choices, result)
+        difference = float(np.max(np.ptp([result.numbers for result in results], axis=0)))
+        worst = max(worst, difference)
+        assert difference < 1e-5, (regime, seed, difference)
+    record_property("worst_coordinate_difference", worst)
+
+
+def test_identical_rows_reproduction(record_property: Callable[[str, object], None]) -> None:
+    rng = np.random.default_rng(20261120)
+    n = int(rng.choice([5, 20, 50, 512]))
+    single = rng.dirichlet(np.ones(5) * rng.uniform(0.2, 2.0))
+    probabilities = np.tile(single, (n, 1))
+    choices = rng.integers(0, 5, size=n)
+    pairs = list(zip(probabilities, choices.tolist(), strict=True))
+    first = prompted.fit(pairs)
+    second = prompted.fit(pairs, start=np.array(prompted.FIT_START) + 0.1)
+    difference = float(np.max(np.abs(first.numbers - second.numbers)))
+    assert difference < 1e-5
+    assert_stationary(probabilities, choices, first)
+    assert_stationary(probabilities, choices, second)
+    record_property("worst_coordinate_difference", difference)
+
+
+def test_anti_informative_fit_is_exactly_at_bound() -> None:
     probabilities = np.full((500, 5), 0.24)
     choices = np.arange(500) % 5
     probabilities[np.arange(500), choices] = 0.04
     result = prompted.fit(list(zip(probabilities, choices.tolist(), strict=True)))
-    assert result.beta == 0
+    assert result.beta == 0.0
+    assert result.free_shifts == pytest.approx(np.zeros(4), abs=1e-10)
+    assert_stationary(probabilities, choices, result)
+
+
+def test_fit_refuses_uncertified_gradient(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(prompted, "POLISH_STEPS", 0)
+    monkeypatch.setattr(prompted, "FIT_OPTIONS", {"gtol": 1.0, "maxiter": 1000})
+    with pytest.raises(RuntimeError, match=r"remaining gradient .* exceeds 1e-10"):
+        prompted.fit([(np.full(5, 0.2), 0)])
+
+
+def test_solver_uses_method_and_options_constants(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(prompted, "FIT_METHOD", "changed method")
+    monkeypatch.setattr(prompted, "FIT_OPTIONS", {"gtol": 0.5, "maxiter": 3})
+    called = False
+
+    def inspect_settings(fun: Any, x0: measure.Floats, **kwargs: Any) -> SimpleNamespace:
+        nonlocal called
+        called = True
+        assert kwargs["method"] == "changed method"
+        assert kwargs["options"] == {"gtol": 0.5, "maxiter": 3}
+        return SimpleNamespace(success=True, x=x0)
+
+    monkeypatch.setattr(prompted, "minimize", inspect_settings)
+    result = prompted.fit([(np.full(5, 0.2), band) for band in range(5)])
+    assert result.numbers == pytest.approx(prompted.FIT_START, abs=1e-12)
+    assert called
+
+
+def test_polish_uses_gradient_limit_and_step_constants(monkeypatch: pytest.MonkeyPatch) -> None:
+    assert prompted.GRADIENT_LIMIT == 1e-10
+    assert prompted.POLISH_STEPS == 20
+    calls = 0
+
+    def incomplete(*args: object, **kwargs: object) -> SimpleNamespace:
+        return SimpleNamespace(success=True, x=np.array([1e-6]))
+
+    def half_step(hessian: measure.Floats, gradient: measure.Floats) -> measure.Floats:
+        nonlocal calls
+        calls += 1
+        return gradient / 2
+
+    monkeypatch.setattr(prompted, "minimize", incomplete)
+    monkeypatch.setattr(np.linalg, "solve", half_step)
+
+    def objective(x: measure.Floats) -> tuple[float, measure.Floats]:
+        return float(x @ x / 2), x
+
+    def hessian(x: measure.Floats) -> measure.Floats:
+        return np.eye(len(x))
+
+    solve = prompted._solve  # pyright: ignore[reportPrivateUsage]
+    result = solve(objective, hessian, [0.0])
+    assert calls == 14
+    assert np.max(np.abs(result)) <= 1e-10
+    monkeypatch.setattr(prompted, "GRADIENT_LIMIT", 1e-5)
+    assert solve(objective, hessian, [0.0])[0] == 1e-6
+    assert calls == 14
+    monkeypatch.setattr(prompted, "GRADIENT_LIMIT", 1e-10)
+    monkeypatch.setattr(prompted, "POLISH_STEPS", 13)
+    with pytest.raises(RuntimeError, match="remaining gradient"):
+        solve(objective, hessian, [0.0])
+    assert calls == 27
+
+
+def test_beta_lower_bound_is_shared(monkeypatch: pytest.MonkeyPatch) -> None:
+    assert prompted.BETA_LOWER_BOUND == 0.0
+    monkeypatch.setattr(prompted, "BETA_LOWER_BOUND", 0.5)
+    with pytest.raises(ValueError, match="inverse temperature"):
+        prompted.Recalibration(0.4)
+    probabilities = np.full((50, 5), 0.24)
+    choices = np.arange(50) % 5
+    probabilities[np.arange(50), choices] = 0.04
+    result = prompted.fit(list(zip(probabilities, choices.tolist(), strict=True)))
+    assert result.beta == 0.5
+
+
+@pytest.mark.parametrize("stage", [1, 2])
+def test_solver_failure_in_either_stage_is_refused(
+    stage: int, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    minimize: Any = prompted.minimize
+    calls = 0
+
+    def fail_stage(fun: Any, x0: measure.Floats, **kwargs: Any) -> Any:
+        nonlocal calls
+        calls += 1
+        if calls == stage:
+            return SimpleNamespace(success=False, message="requested stage failed")
+        return minimize(fun, x0, **kwargs)
+
+    monkeypatch.setattr(prompted, "minimize", fail_stage)
+    probabilities = np.full((50, 5), 0.24)
+    choices = np.arange(50) % 5
+    probabilities[np.arange(50), choices] = 0.04
+    with pytest.raises(RuntimeError, match="requested stage failed"):
+        prompted.fit(list(zip(probabilities, choices.tolist(), strict=True)))
+    assert calls == stage
+
+
+def test_negative_beta_derivative_at_bound_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
+    def wrong_solution(objective: Any, hessian: Any, start: measure.Floats) -> measure.Floats:
+        return np.array([-1.0, 0.0, 0.0, 0.0, 0.0]) if len(start) == 5 else np.zeros(4)
+
+    monkeypatch.setattr(prompted, "_solve", wrong_solution)
+    probabilities = np.full((50, 5), 0.04)
+    choices = np.arange(50) % 5
+    probabilities[np.arange(50), choices] = 0.84
+    with pytest.raises(RuntimeError, match=r"boundary beta gradient .* is negative"):
+        prompted.fit(list(zip(probabilities, choices.tolist(), strict=True)))

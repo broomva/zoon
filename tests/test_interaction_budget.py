@@ -172,6 +172,16 @@ def test_held_counts_must_have_exactly_the_games(unknown: bool) -> None:
 
 
 def test_each_settings_line_reads_its_source(monkeypatch: pytest.MonkeyPatch) -> None:
+    sources = {(label, path) for label, source, path in budget.SETTINGS if source is prompted}
+    assert {
+        ("recalibration start coordinates", "FIT_START"),
+        ("recalibration optimiser", "FIT_METHOD"),
+        ("recalibration optimiser options", "FIT_OPTIONS"),
+        ("recalibration gradient limit", "GRADIENT_LIMIT"),
+        ("recalibration polish steps", "POLISH_STEPS"),
+        ("recalibration beta lower bound", "BETA_LOWER_BOUND"),
+        ("recalibration penalty", "PENALTY"),
+    } <= sources
     for label, source, path in budget.SETTINGS:
         with monkeypatch.context() as patch:
             sentinel = "changed source"

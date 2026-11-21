@@ -10,8 +10,8 @@ This step includes no general chat-model arm, live run, held-out history reader 
 for deciding recall. The recall wording is a renderer only. The spending cap remains
 the maintainer's decision.
 No model has been called. The format check is for the maintainer:
-`python -m zoon.interaction.prompted smoke`. It uses a stub by default; live calls require `--live`.
-The format check's four calls are outside the bound.
+`python -m zoon.interaction.prompted smoke --live`.
+The format check is outside the bound.
 
 The instructions are used under CC BY 4.0: Wang, Hilbe and Zhang, *PNAS* 123(5),
 e2525760123, [doi:10.1073/pnas.2525760123](https://doi.org/10.1073/pnas.2525760123),
@@ -42,9 +42,11 @@ zoon interaction: prompted spending bound
 [settings] fixture seed = 711
 [settings] smoke games = ('2-AI', '4-AI')
 [settings] recalibration start coordinates = (1.0, 0.0, 0.0, 0.0, 0.0)
-[settings] recalibration optimiser = L-BFGS-B
-[settings] recalibration optimiser options = {'ftol': 1e-12, 'gtol': 1e-08, 'maxiter': 1000}
-[settings] recalibration bounds = ((0.0, None), (None, None), (None, None), (None, None), (None, None))
+[settings] recalibration optimiser = trust-exact
+[settings] recalibration optimiser options = {'gtol': 1e-06, 'maxiter': 1000}
+[settings] recalibration gradient limit = 1e-10
+[settings] recalibration polish steps = 20
+[settings] recalibration beta lower bound = 0.0
 [settings] recalibration penalty = 0.0001
 [settings] probability floor before recalibration = 1e-09
 [settings] model = jev-1.14.0
