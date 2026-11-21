@@ -574,8 +574,8 @@ cost plus the estimate and reservations for calls in flight would exceed its cap
 For chat, use the largest estimate of any registered decision or recall request.
 A chat call that does not fit waits for calls in flight; it reaches the cap only
 when it still does not fit with none in flight, so reaching the chat cap depends
-on spending alone. Cumulative spending above the cap makes the arm unusable;
-equality is allowed.
+on spending alone. For either model, the cap is also reached when recorded
+spending is above it; equality is allowed.
 Reaching the decision-model cap gives no verdict for both
 hypotheses. Reaching the chat-model cap makes `chat` unusable and changes no
 verdict.

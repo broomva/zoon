@@ -737,7 +737,8 @@ def test_registration_chat_contract_has_only_the_registered_rules() -> None:
     )
     normal = " ".join(text.split())
     assert (
-        "Cumulative spending above the cap makes the arm unusable; equality is allowed."
+        "For either model, the cap is also reached when recorded spending is above it; "
+        "equality is allowed."
     ) in normal
     assert (
         "answered questions are kept and judged and the questions not yet "
