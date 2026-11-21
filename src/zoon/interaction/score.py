@@ -21,6 +21,7 @@ H2_THRESHOLD = 0.0052
 H3_THRESHOLD = 0.0031
 SCORING_FLOOR = prompted.PROMPTED_FLOOR
 RESCORING_FLOOR = person.FLOOR
+ROW_SUM_TOLERANCE = 1e-9
 SIMULATION_PREFIX = "registered"
 UNDEFINED_GAMES = frozenset(("2-FE", "4-FE"))
 Verdict = Literal["passed", "failed", "no verdict"]
@@ -32,12 +33,12 @@ def finite(values: Floats) -> None:
 
 
 def log_scores(probabilities: Floats, chosen: Ints, floor: float = SCORING_FLOOR) -> Floats:
-    """Floor then normalise; allow the decision answer rounding tolerance of 0.05."""
+    """Validate normalised probability rows, then floor every band and normalise."""
     finite(probabilities)
     if (
         probabilities.shape != (len(chosen), measure.BANDS)
         or (probabilities < 0).any()
-        or (np.abs(probabilities.sum(axis=1) - 1) > 0.05).any()
+        or (np.abs(probabilities.sum(axis=1) - 1) > ROW_SUM_TOLERANCE).any()
         or not np.isfinite(floor)
         or floor <= 0
         or ((chosen < 0) | (chosen >= measure.BANDS)).any()

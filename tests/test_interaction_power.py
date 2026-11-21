@@ -35,7 +35,21 @@ def test_power_table_is_the_paste_and_no_prose_digits() -> None:
     expected += [f"| {label} | {value} |" for label, value in printed.items()]
     assert table == expected
     prose_lines = [line for line in prose.splitlines() if line and not line.startswith("|")]
-    assert len(prose_lines) <= 12
+    assert "\n".join(prose_lines) == (
+        "# Power under the registered rules\n"
+        "The program reads training groups, held-out counts, and committed fits and amounts.\n"
+        "Training groups are resampled with replacement within each game at the held-out counts\n"
+        "and treated as independent. Open-loop scores use out-of-fold fits.\n"
+        "Closed-loop trial scores use laws and amounts fitted on those same training groups;\n"
+        "paired ensembles are drawn without replacement from a finite pool.\n"
+        "Coverage is of the trial expectation. Effects are shifts of location that keep\n"
+        "the full-effect variation; a real smaller effect would not keep that variation.\n"
+        "The effect rates are a guide, not the power of the registered test.\n"
+        "Each figure concerns one comparison with `alone`; nothing concerns the prompted arm.\n"
+        "The paste records one run. A test recomputes both open-loop training interval lines\n"
+        "and the in-sample closed-loop training interval line, and renders the title, settings\n"
+        "and fit lines from the code; it does not recompute the other lines."
+    )
     assert not re.search(r"\d", "\n".join(prose_lines))
     assert paste.splitlines()[0] == power.TITLE
     assert [line.split(" = ", 1)[0] for line in paste.splitlines()] == power.labels()
@@ -487,6 +501,9 @@ def test_expected_training_values_are_parsed_from_registration() -> None:
     assert match and match.groups() == power.EXPECTED_H2
     match = re.search(r"with `person.FLOOR` and gives ([\d.]+)\.", text)
     assert match and match[1] == power.EXPECTED_RESCORE
+    match = re.search(r"a quarter of the training estimate ([\d.]+) in\ncandidates.md", text)
+    assert match and match[1] == power.EXPECTED_H3
+    assert f"{power.OUT_OF_FOLD_H3} = {power.EXPECTED_H3}" in note()[1].splitlines()
 
 
 def test_regenerate_training_output() -> None:
@@ -620,7 +637,10 @@ def test_h3_out_of_fold_reuses_comparison_and_checks_composite(
             if form.twin
             else np.zeros((len(groups), 5))
         )
-        return compare.Evaluation(np.zeros(1), closed, closed, person.Person(form, form.start()))
+        closed[[g.cell in score.UNDEFINED_GAMES for g in groups], -1] = np.nan
+        covered = np.full_like(closed, 0.9 if form.twin else 0.1)
+        covered[np.isnan(closed)] = np.nan
+        return compare.Evaluation(np.zeros(1), closed, covered, person.Person(form, form.start()))
 
     monkeypatch.setattr(compare, "evaluate", evaluate)
     assert power.h3_out_of_fold(groups) == pytest.approx(0.0124)
@@ -660,3 +680,60 @@ def test_training_h2_forms_floor_sign_and_registered_replicates(
     np.testing.assert_array_equal(h2.table(), score.h2_interval(expected, groups).table())
     np.testing.assert_array_equal(rescore.table(), score.h2_interval(original, groups).table())
     assert len(h2.values) == score.RESAMPLES == len(rescore.values)
+
+
+def test_h2_batches_match_single_batch_and_literal_intervals(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    groups = synthetic()
+    differences = np.random.default_rng(65).normal(size=(len(groups), 1))
+    counts = {cell: 2 + n for n, cell in enumerate(sorted(GAMES))}
+    trials, resamples = 7, 13
+    monkeypatch.setattr(power, "H2_BATCH", trials)
+    single = power.h2_trial_intervals(
+        groups, differences, counts, trials=trials, resamples=resamples
+    )
+    monkeypatch.setattr(power, "H2_BATCH", 2)
+    batched = power.h2_trial_intervals(
+        groups, differences, counts, trials=trials, resamples=resamples
+    )
+    rng = np.random.default_rng(power.TRIAL_SEED)
+    expected: list[Floats] = []
+    for _ in range(trials):
+        trial, indices = power.sample_groups(groups, counts, rng)
+        expected.append(score.h2_interval(differences[indices], trial, resamples).table()[0])
+    for actual in (single, batched):
+        np.testing.assert_allclose(np.column_stack(actual), expected, atol=1e-12, rtol=0)
+
+
+@pytest.mark.parametrize(
+    ("estimates", "lower", "truth"),
+    [([0.006, 0.009], 0.0055, 0.004), ([0.002, 0.004], 0.001, 0.0)],
+)
+def test_trial_rates_shifts_estimates_across_threshold(
+    estimates: list[float], lower: float, truth: float
+) -> None:
+    result = power.trial_rates(
+        np.array(estimates),
+        np.full(2, lower),
+        np.full(2, 0.02),
+        truth=truth,
+        threshold=0.0052,
+        training_effect=0.008,
+    )
+    assert (result.null, result.half, result.full) == (0.0, 1.0, 1.0)
+
+
+@pytest.mark.parametrize("hypothesis", ["H2", "H3"])
+def test_rate_defaults_match_printed_replicate_settings(hypothesis: str) -> None:
+    rates = power.h2_rates if hypothesis == "H2" else power.h3_rates
+    defaults = inspect.signature(rates).parameters
+    printed = dict(line.split(" = ", 1) for line in power.settings())
+    assert defaults["trials"].default == int(printed[f"[settings] {hypothesis} power trials"])
+    assert defaults["resamples"].default == int(
+        printed[f"[settings] {hypothesis} trial interval replicates"]
+    )
+    if hypothesis == "H2":
+        interval_defaults = inspect.signature(power.h2_trial_intervals).parameters
+        for name in ("trials", "resamples"):
+            assert interval_defaults[name].default == defaults[name].default
