@@ -462,3 +462,35 @@ def test_amounts_build_rejects_bool_before_integer_conversion() -> None:
     group = Group("2-FE", "one", ((True, True),) * ROUNDS)
     with pytest.raises(ValueError, match=r"^amount is illegal or outside its band$"):
         kernel.Amounts.build([group])
+
+
+def test_play_keeps_each_seats_weights_when_an_agent_reuses_its_buffer() -> None:
+    game = GAMES["4-MI"]
+    buffer = np.empty(5, dtype=np.float64)
+    expected: list[Floats] = []
+
+    def shared(view: kernel.View) -> Floats:
+        buffer[:] = np.arange(1, 6) + len(expected)
+        buffer[:] /= buffer.sum()
+        expected.append(buffer.copy())
+        return buffer
+
+    run = kernel.play(game, [shared] * game.size, kernel.Amounts.build(training()), 1, "one")
+    intents = [json.loads(line) for line in run.log if '"kind":"intent"' in line]
+    assert len(intents) == len(expected) == ROUNDS * game.size
+    for entry, values in zip(intents, expected, strict=True):
+        assert entry["returned"] == values.tolist()
+        assert entry["probabilities"] == kernel.distribution(values).tolist()
+    assert kernel.replay(run.bytes).bytes == run.bytes
+
+
+def test_distribution_rejects_a_non_finite_sum_and_preserves_ordinary_weights() -> None:
+    with (
+        np.errstate(over="ignore"),
+        pytest.raises(
+            ValueError, match=r"^an agent must return five finite non-negative probabilities$"
+        ),
+    ):
+        kernel.distribution(np.full(5, 1e308))
+    values = np.array([1.0, 2.0, 4.0, 2.0, 1.0])
+    assert kernel.distribution(values) == pytest.approx(values / values.sum())

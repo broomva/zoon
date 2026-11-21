@@ -136,6 +136,7 @@ def distribution(values: Floats) -> Floats:
         or not np.isfinite(values).all()
         or (values < 0).any()
         or values.sum() <= 0
+        or not np.isfinite(values.sum())
     ):
         raise ValueError("an agent must return five finite non-negative probabilities")
     p = np.maximum(values, person.FLOOR)
@@ -198,7 +199,7 @@ def play(
     rounds: list[tuple[int, ...]] = []
     for r in range(ROUNDS):
         returned = [
-            np.asarray(agent(View(game, s, histories[s])), dtype=np.float64)
+            np.array(agent(View(game, s, histories[s])), dtype=np.float64, copy=True)
             for s, agent in enumerate(agents)
         ]
         laws = [distribution(p) for p in returned]
