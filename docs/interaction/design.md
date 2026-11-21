@@ -1,12 +1,15 @@
 # The first interaction test: design
 
-**Status: draft for review.** Nothing here is registered. The pre-registration will fix the
-details and will govern where it differs from this note.
+**Status: draft for review.** Nothing here is registered. The draft
+[pre-registration](../../interaction/registration.md) fixes the run rules and governs where it
+differs from this note. Its "Changes from the design note as it stood before this file"
+section lists the changes.
 
 The pilot tested one simulated person on a task where nobody interacts, and the verdict it
 registered was a pass. This note designs the next test: people who play together in a group.
 It says what is tested, against what, what a pass and a fail would mean, what the
-pre-registration still has to fix, and what changes in `docs/design.md`.
+draft registration fixes, what remains open before registration, and what changes in
+`docs/design.md`.
 
 ## What is tested
 
@@ -42,8 +45,8 @@ stronger opponent and the one that gates.
   these data cannot separate that from members who share a tendency.
 - **Better, not good.** Every comparison is relative. Beating two alternatives does not show
   that simulated groups are an adequate picture of human ones. How often the human value
-  falls inside the simulated range is reported for each summary, so that a reader can see
-  the absolute fit.
+  falls inside the central 90% of simulated values is reported for each summary, so that
+  a reader can see the absolute fit.
 - **These summaries, not behaviour as a whole.** H3 scores the summaries listed under
   "Measures", one at a time. It does not score how they vary together, or anything they
   leave out.
@@ -105,9 +108,14 @@ The form above is a family. The candidates are fixed here, before any of them is
 
 Each candidate has a twin without any trace of the others. The `zoon` arm is the best
 candidate and the `alone` arm is the best twin, each chosen by the same rule, so the
-ablation has had the same search. The two may have different letters. The winner's own
-twin is therefore also reported in both loops, as the comparison that changes one thing
-only; it does not gate.
+ablation has had the same search. The selection in `candidates.md` chose B and B twin.
+The winner's own twin is therefore `alone` here; its separately reported comparisons repeat the gating ones. The
+registered primary fits and amount table are committed before registration and are not
+refitted by the run. The refit test requires training probabilities to agree within
+`1e-3` in the locked environment of `uv.lock`; it is outside the run guard and its
+failure blocks registration, not a registered run. Reordering the groups moves a
+predicted probability by up to about 3e-4; `candidates.md` reports the corresponding
+movement in fitted numbers.
 
 The rule, in full, applied once to the candidates and once to the twins:
 
@@ -144,7 +152,8 @@ A minimal kernel, built for this test and no larger:
 - **From a band to points.** An agent returns a distribution over bands; the kernel draws a
   band and then an amount within it. Nothing and everything are exact. For the three bands
   between, the amount is drawn from the amounts that training participants with the same
-  endowment chose within that band, as a committed table. The same step serves every arm.
+  endowment chose within that band, as a committed table. The same step serves every
+  band-returning arm; chat supplies points directly.
   So training participants' amounts shape every simulated group, through this table and
   through the fitted numbers. What stays outside the loop is any recorded group's play:
   no simulated round is told what a human group did.
@@ -156,11 +165,12 @@ A minimal kernel, built for this test and no larger:
   in a pair the payoff reveals the other's contribution exactly.
 - **Sampling in code.** Draws use streams derived from the run's seed, the group, the round
   and the seat. Seats decide at the same time and do not see each other's draw. The same
-  kernel runs coded and prompted agents.
+  kernel runs the coded arms and the band-returning `prompted` arm; `chat` returns
+  points directly.
 
 ## The prompted arms
 
-What the pre-registration fixes, with the files committed:
+The pre-registration fixes these rules, with the files committed:
 
 - **What the model is given.** An English rendering of the participants' instructions with
   the game's numbers in place, the seat, and every earlier round as participants saw it:
@@ -176,28 +186,40 @@ What the pre-registration fixes, with the files committed:
   drawn by a committed rule, with a small penalty toward no recalibration, so that the fit
   has one answer whatever the model returns. The temperature enters as an inverse
   temperature that cannot be negative. So the arm cannot lose only because its probabilities
-  are too extreme or lean toward a band.
+  are too extreme or lean toward a band. This depends on flooring its two-decimal
+  probabilities at `prompted.PROMPTED_FLOOR = 0.005`, half the reporting step,
+  and dividing by their sum before recalibration.
 - **The chat model** is run in the closed loop only. It is asked for a number of points and
   its answer is taken as it stands, with no recalibration and no band step, since that is
-  how such agents are run. It is reported and decides nothing.
+  how such agents are run. The registration fixes its model as `gemini-4-carbon`, its
+  settings, reply rules and per-decision calls. It is reported and decides nothing.
 - **Unequal supervision, stated.** The coded arms fit every number on all training groups.
   The prompted arm is fitted only through its recalibration. That is the comparison being
   made, and the result says so, as the pilot's did.
 - **In the closed loop** the simulated group's own history is rendered the same way, in the
   points the kernel drew. The same recalibration is applied before a band is drawn. The
-  model has no memory of its own between rounds: what it knows of a seat is what the
+  transcript reuses the answer to each identical decision-model request, as in the pilot.
+  The model has no memory of its own between rounds: what it knows of a seat is what the
   rendered history shows.
-- **Recall.** The model is asked whether it recognises the experiment and what its average
-  contributions were. If it names the study or gives the published averages, the
-  comparisons with that arm are labelled "possibly recalled". The label changes no verdict.
-  Recall could help the prompted arm or hurt it, so the label is a caution to the reader
-  and not a correction.
+- **Recall.** The chat model is asked the committed recall wording for each game; the
+  decision model cannot write text. The registration fixes string keys that label chat
+  comparisons "possibly recalled" and change no verdict. The decision-model control is
+  disguise. Full replies are printed; a flag is not proof of recall.
 
 ## Measures
 
 - **H2.** The mean log-likelihood of each held-out person's band in each round. Every arm's
-  probabilities are clamped to one floor and divided by their sum. Differences are paired
-  by decision and resampled by group.
+  five probabilities are all floored at 0.005 and divided by their sum before the
+  logarithm. This is half the decision model's reporting step: a probability it
+  reports as 0.00 lies below 0.005. The floor is applied before the division, so a
+  scored probability can fall slightly below 0.005. The used decision-model probabilities are
+  also floored at 0.005 and divided by their sum before recalibration. This common
+  scoring floor applies only to H2; closed-loop draws keep `person.FLOOR` for coded
+  arms and the recalibrated probabilities for `prompted`, as the kernel does. The
+  report counts decisions whose chosen-band probability the floor raised for each
+  arm and gives the two differences rescored with `person.FLOOR` for the coded arms,
+  changing no verdict. Differences are paired by decision, averaged over decisions
+  and resampled by group within each game.
 - **H3.** Each held-out human group is scored against the simulated groups of its game, one
   summary at a time, with the continuous ranked probability score in the form that does not
   depend on how many groups were simulated. The measure is the mean over these summaries,
@@ -216,45 +238,53 @@ What the pre-registration fixes, with the files committed:
   mean of those differences. The measure is the mean of the five results. The type gap is
   defined in six games: every game but the two with equal seats. In one of the six the
   seats differ in productivity only. The interval resamples groups within each game, so
-  every resample has the same games. Equal weight for the five is a choice, and the two
-  signed summaries can range more widely than the other three. Each summary is also
+  every resample has the same games, drawing one fewer human group per game with fixed
+  weights from the full held-out counts. The registered interval also samples half of each
+  arm's simulated groups without replacement, using the same group numbers for every arm
+  in a game and replicate to preserve pairing and include simulation error. Its point
+  estimate uses the full ensemble. Equal weight for the five is a choice, and the two signed summaries can range more widely than the other three. Each summary is also
   reported alone.
 
   **Why this set, chosen now.** On training groups the gain from the others' history was
   mostly in how far apart members are, and the power for that summary alone was higher
   (`measure.md`). Gating on it alone would test one property and call it resemblance. The
-  mean of five is the broader claim. Whether it is easier or harder to pass is not known:
-  that depends on effects that have not been measured. Movement and the type gap
-  were added in review, because the first three cannot tell a group that settles from one
-  that jumps about, nor a group whose richer members give a smaller share from its reverse.
-  Neither has been computed on any data yet. The power of this measure is estimated on
-  training groups before registration and stated. The measure is not changed afterward,
-  whatever the estimate.
-- **Smallest differences that count.** A number for each hypothesis, fixed in the
-  pre-registration. A quarter of the effect found on training groups is proposed. It is a
-  threshold of convenience, not a claim about what size matters.
+  mean of five is the broader claim. Movement and the type gap were added in review,
+  because the first three cannot tell a group that settles from one that jumps about, nor
+  a group whose richer members give a smaller share from its reverse. `candidates.md` now
+  reports training effects and power for all five and their mean; the registration quotes
+  the chosen arms' power. The measure is not changed afterward, whatever the estimate.
+- **Smallest differences that count.** H2 requires 0.0052 nats per decision, a quarter
+  of the training estimate 0.0209 under the common scoring floor, with interval
+  0.0133 to 0.0281 under the registered interval rule on out-of-fold training scores.
+  This estimate is not printed in `candidates.md`, which uses `person.FLOOR` and
+  gives 0.0253. H3's threshold stays 0.0031. The registration fixes the endpoint
+  rules. These are thresholds of convenience, not claims about what size matters.
 
 ## Controls
 
-- **Null interaction.** Defined as the absence of information: with the channel closed,
-  nothing about another seat reaches a decision law. It does not mean that members of a
-  simulated group never coincide. Two tests: a coded person with zero weight on the others
-  plays exactly as the same person with the channel closed, under the same seed and the
-  same numbers; and with the channel closed, changing what the other seats do changes
-  nothing about a seat's distribution. The `alone` arm is a different thing, a refitted
-  comparator, and is not expected to reproduce any other arm's play.
-- **Disguise.** Every amount of points is multiplied by ten. The coded laws see only shares
-  of the endowment, so their output cannot change; a test asserts it. This is a property of
+- **Null interaction.** Two tests on the committed numbers must pass before registration
+  and are repeated with their result in the report. With the others' weight set to zero,
+  the sequence of bands and points of every seat and round of the 100 registered groups of
+  every game is equal under an open and a closed channel. With the channel closed,
+  replacing the other seats' play by any other play leaves each seat's five probabilities
+  exactly equal. `alone` is a separately fitted comparator, not this null test.
+- **Disguise.** Every amount of points is multiplied by ten and the exchange rate divided
+  by ten. The coded laws see only shares of the endowment, so their output cannot change;
+  a test asserts it. This is a property of
   the representation and not evidence about models. The prompted arm is run once on the
-  disguised rules, open loop, on training groups, and the change is reported. It is not run
-  in the closed loop, and no verdict depends on it.
+  disguised rules on the recalibration subsample, with the same fitted recalibration.
+  The mean change in observed-band log probability and mean total variation are reported.
+  It is not run in the closed loop, and no verdict depends on it.
 - **When closeness arises.** How far apart the members of a group are, in the first round
   and after, against the same people re-formed into groups at random, is reported for the
   held-out groups as it was for the training groups. It is a description and excludes
   nothing.
-- **Replay.** A recorded closed-loop run replays to the same log.
+- **Replay.** Every recorded closed-loop game of `zoon`, `alone` and `prompted`
+  replays from its log to its recorded digest; failure gives H3 no verdict and leaves H2
+  unaffected. Chat games replay from the transcript; failure makes `chat` unusable.
+  All simulation finishes and its digests are recorded before any held-out group is read.
 - **A game left out.** The coded arms are also fitted on the training groups of seven games
-  and scored on the eighth, in rotation. Reported, not gating.
+  and scored on held-out groups of the eighth, in rotation. Reported, not gating.
 
 ## What a pass and a fail would mean
 
@@ -277,25 +307,18 @@ What the pre-registration fixes, with the files committed:
 A comparison that does not pass is a failure to show a difference, not a demonstration that
 there is none. Whatever happens is published, as with the pilot.
 
-## What the pre-registration still has to fix
+## What remains before registration
 
-Listed so that none is decided after the held-out groups are read:
-
-- the winning candidate and its twin, with every candidate's result kept;
-- the fitting of the coded arms: the penalty, the optimiser and its convergence rule, how
-  traces start, the first-round rule, which numbers are shared across games and seats, and
-  the band limits;
-- the probability floor, and for H2 whether the mean is taken over decisions or over groups;
-- the two smallest differences that count;
-- the form of the ranked probability score, the number of simulated groups per game, the
-  seeds and how streams are derived, and how simulation error enters the interval;
-- the committed table that turns a band into points;
-- for the prompted arms: the rendered instructions and history, the question and its
-  declared answers, the recalibration's subsample and objective, the chat model and its
-  sampling settings, and the wording of the recall question and what counts as recall;
-- what ends the run and what only interrupts it, including a model that is withdrawn or
-  changes version, as the pilot's registration did;
-- the spending cap and a measured bound beneath it.
+The draft pre-registration fixes the arms, fitting and committed numbers, band table,
+measures, thresholds, intervals, streams, prompted and chat rules, controls, stopping rules
+and order of work. Its "Open before registration" list is exhaustive: the decision-model
+cap, chat bound and cap with dated prices; the analysis code and its files and required
+checks; a format check of the chat request with the
+committed renderer; replacement of the path test by tests binding every registered constant
+and number to the code; and power and coverage under the registered rules, computed on
+training groups by a committed script and quoted in the registration. That script must
+reproduce the H2 training estimate 0.0209 under the common scoring floor. The
+decision-model request format check is DONE; the registration's "Calls made before registration" records it, satisfying the order below.
 
 ## What this changes in the main design
 
@@ -309,7 +332,7 @@ Made in the same reviewed change as the pre-registration. Each line names the se
 | The zoon, one step | In this world the appraisal step is absent: no model is called by the person. The model boundary itself is unchanged |
 | The zoon, decision | The design reserved more than two options for a race of accumulators it had not anchored. This test uses an ordered response rule and makes no claim about timing |
 | Kernel | Rounds as batches, where the design has milliseconds. Exact fractions of a point, where the design has integers in a smallest unit, because a share of the pool is not a whole number of points. The decision lifecycle is not needed, since seats decide once per round |
-| Controls: recall | Kept, for the prompted arms. Its consequence here is a label, as stated above |
+| Controls: recall | Kept, for the chat arm; the decision model cannot write text. Its consequence here is a label, as stated above |
 | Controls: disguise | For the coded laws it holds by construction and is a unit test. For the prompted arm it is reported and does not gate. The open finding in the main design, about laws that mix payoffs with an appraisal, does not arise here and stays open |
 | Controls: framing sensitivity | Deferred. Not run in this test |
 | Controls: variation check | Replaced: the ranked probability score compares the spread of simulated groups with the spread of human groups, summary by summary, and coverage is reported |
@@ -333,7 +356,9 @@ Made in the same reviewed change as the pre-registration. Each line names the se
 1. This note, reviewed.
 2. The comparison of the candidates on training groups, and the power of the H3 measure.
 3. Rendered instructions, a format check of the prompted requests on made-up histories, the
-   table from bands to points, and the spending bound.
+   table from bands to points, and the spending bound. The decision-model format
+   check is DONE, as recorded in the registration's "Calls made before registration".
+   The chat request check with the committed renderer remains open.
 4. The pre-registration and the analysis code, reviewed, with the amendments to the main
    design.
 5. Registration by tag; then the run; then the result, whatever it is.

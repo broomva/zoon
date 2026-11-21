@@ -6,7 +6,7 @@ from decimal import ROUND_CEILING, Decimal
 from functools import cache
 from itertools import product
 
-from zoon.interaction import compare, data, kernel, person, prompted
+from zoon.interaction import compare, data, kernel, prompted
 from zoon.interaction.data import Group
 from zoon.interaction.games import GAMES, ROUNDS, Game
 from zoon.pilot import budget as pilot_budget
@@ -82,7 +82,7 @@ SETTINGS: tuple[tuple[str, object, str], ...] = (
     ("recalibration polish steps", prompted, "POLISH_STEPS"),
     ("recalibration beta lower bound", prompted, "BETA_LOWER_BOUND"),
     ("recalibration penalty", prompted, "PENALTY"),
-    ("probability floor before recalibration", person, "FLOOR"),
+    ("probability floor before recalibration", prompted, "PROMPTED_FLOOR"),
     ("model", prices, "DECISION.model"),
     ("input USD per million", prices, "DECISION.input_per_million"),
     ("output USD per million", prices, "DECISION.output_per_million"),

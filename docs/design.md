@@ -8,13 +8,24 @@ situation means. This document decides what zoon claims, how it would be built, 
 experiment has to succeed before most of it is built at all.
 
 Status: accepted by the maintainer on 2026-11-15 as the basis for the pilot. The pilot section
-is binding; the kernel section stays provisional until the pilot passes. The design went
+is binding. The registered H1-evaluative verdict was a pass; H1-strict failed. The design went
 through four passes of independent adversarial review by models from three vendors; it has not
-been reviewed by people outside the project. Only the pilot's analysis code is built.
+been reviewed by people outside the project. The pilot and the interaction kernel and
+training comparisons are built; the registered interaction run is not. The first interaction
+test starts on the pilot's registered verdict and uses no judge, so it does not depend on
+which reading of the pilot is taken. `interaction/registration.md` fixes its draft protocol.
+H2 scores all arms with the same 0.005 floor before the logarithm, followed by division
+by the sum, and requires 0.0052 nats per decision; H3's threshold stays 0.0031.
+The decision-model arm also uses the 0.005 floor before recalibration. Closed-loop
+draws keep the committed kernel's probability rules. The refit check uses a
+probability tolerance of `1e-3` in the locked environment of `uv.lock`; its failure
+blocks registration, not a registered run, and it is outside the run guard.
+Reordering the training groups moves a predicted probability by up to about 3e-4;
+`docs/interaction/candidates.md` reports the corresponding fitted-number movement.
 Reversal cost: high for three decisions the pilot commits to, which are one-way doors: the
 language, the model boundary and the licence. Publishing becomes a one-way door at the first
-public commit. The kernel and the log schema are provisional until the pilot passes. The rest
-are two-way doors at medium or low cost. Each is graded in "Decisions and what it costs to
+public commit. The general kernel and log schema remain provisional beyond the first
+interaction test's round-based kernel. The rest are two-way doors at medium or low cost. Each is graded in "Decisions and what it costs to
 reverse them".
 
 ## Objective
@@ -177,7 +188,8 @@ started only on the maintainer's explicit decision.
 - **No general account of sociality in the first version.** There is no reasoning about what
   another believes or will accept, no punishment of norm violations and no forming or cutting
   of ties. The first version can study the spread of information and learning in a repeated
-  two-party exchange. It says nothing about one-shot bargaining, cooperation or norms.
+  two-party exchange. The first interaction test covers contributions to a repeated public good.
+  One-shot bargaining and norms stay out.
 - **No tooling for optimising persuasion or targeting groups.**
 - **No new data collected from people, no hosted service, no visual viewer** in the first
   version.
@@ -222,7 +234,7 @@ State is typed and held outside any model.
 |---|---|---|---|
 | Memory | Activation `A = B + w·s`. `B = ln(Σ t^-d)` is ACT-R's base-level term with default `d = 0.5`. `s` is embedding similarity to the current situation | Reproduce the published equations; reproduce values from an existing ACT-R implementation | Open. `w` and the scaling of `s` are conventions |
 | Decision, two options | Drift-diffusion: evidence accumulates to a boundary and gives a choice and a latency. Drift is `k·(score₁ − score₂)` and noise is fixed at 1. Where latencies are available, `k` and the boundary are fitted to choices and latencies together. On a choice-only task they cannot be told apart and are fitted as one parameter | A lower boundary gives faster and less accurate choices; simulated latencies match the analytic distribution | Confidence Database (CC0); dataset to be chosen |
-| Decision, more than two options | A race of accumulators | None | None. A `convention`, not used before M3 at the earliest |
+| Decision, more than two options | An ordered response rule for the first interaction test; a race of accumulators remains deferred | The interaction rule is checked against its committed equation | Training public goods groups; no claim about timing |
 | Values | Error-correcting update of the learned worth of an action | Converges to the mean outcome | Open; set by the H1 task |
 | Beliefs | One confidence per fixed proposition, moved toward a source's report in proportion to trust | Under a coded policy, matches DeGroot consensus | None. A `convention` |
 | Body | Deferred until a world needs it | — | — |
@@ -263,6 +275,10 @@ One step:
 7. **Emit the intent.** Where the action carries content, such as a message, a generate model
    writes the content after the choice is made.
 8. **On the outcome**, update values, write a memory trace, update the body.
+
+In the first interaction world the appraisal step is absent: no model is called by the
+coded person. It updates contribution traces and samples an ordered response once per round,
+without an accumulator or latency. The model boundary below is unchanged.
 
 The model is never told any of these laws.
 
@@ -331,21 +347,26 @@ whose zoon, step, role, ordinal or request hash differs from the entry at that p
 
 ### Kernel
 
-**Provisional until the pilot passes.** This section shows that the design holds together. It
-is not a commitment, and it will be revised against what the pilot teaches.
+**First interaction kernel.** The pilot's registered verdict passed. The first interaction
+test uses rounds as batches and exact fractions of a point, as `interaction/registration.md` states.
+Seats decide once per round, simultaneously, and see the outcome before the next round.
+It needs no decision lifecycle. The general event-driven design below remains provisional;
+its timing rules do not apply to this test.
 
 The kernel owns the clock, the event queue, the log, the ledger and the channel.
 
-- **Clock.** Time is an integer count of milliseconds.
+- **Clock.** Time is an integer count of rounds in the first interaction test; milliseconds
+  in the general design below.
 - **Log.** Append-only. World state and each zoon's state are computed from it.
-- **Ledger.** World resources in integer units. Every transfer balances exactly, counting
-  sources, holdings and sinks.
+- **Ledger.** World resources in exact fractions of a point in the first interaction test,
+  since a pool share need not be a whole point; integer units in the general design. Every
+  transfer balances exactly, counting sources, holdings and sinks.
 - **Channel.** Decides which events each zoon can observe, and delivers messages.
 
 **Identity and order.** Every queued item gets an identifier when it is queued: its due time,
 the identifier of what queued it, and that source's own counter. The identifier never changes.
 
-**One millisecond is one batch**, handled in a fixed order:
+**General event-driven design: one millisecond is one batch**, handled in a fixed order:
 
 1. Collect every item due at this time.
 2. Apply external events in identifier order.
@@ -387,7 +408,8 @@ These rules are a `convention`.
 
 **Numbers.**
 
-- The ledger and every quantity written to the log are integers in a declared smallest unit.
+- The general ledger uses integers in a declared smallest unit. The first interaction test
+  logs ledger amounts as exact fractions of a point.
 - A zoon's internal quantities are floating point and are not logged. They are recomputed from
   the log by pure functions.
 - Replay is claimed to reproduce the log exactly under the same manifest. Equality across
@@ -417,17 +439,34 @@ A measure that declares no dependencies fails the test suite.
 
 ### Controls for models in the loop
 
-- **Recall control.** The model is asked for the outcome with no simulation. If it matches
-  the run within the pre-registered bound, the run is reported as recalled.
+- **Recall control.** For the first interaction test, the chat model is asked whether it
+  recognises the experiment. Registered string matches label its comparisons "possibly
+  recalled" and change no verdict. The decision model cannot write text; its control is
+  disguise. For later model-in-loop tests, ask for the outcome without simulation and report
+  recall under the pre-registered rule.
 - **Disguise control.** Payoffs are rescaled by a positive linear transformation, and the
   scores fed to the laws are normalised by the same scale. Nothing the laws see has changed,
-  so the measure, as a share of the payoff scale, must not move. This is a gate.
+  so the measure, as a share of the payoff scale, must not move. This is a gate for
+  model-in-loop tests. In the first interaction test it is a unit test for the coded laws;
+  the prompted arm's disguise result is reported and does not gate. The open finding about
+  mixed payoffs and appraisal stays open.
 - **Framing sensitivity.** The cover story is changed. This can properly change the
   appraisal, so its effect is reported and does not gate. A renaming alone is not a disguise,
-  because models recognise classic games by their structure.
-- **Variation check.** The spread across zoons is compared with the spread across people.
-- **Model swap and paraphrase.** A second model family, and varied question wording.
-- **Null interaction.** With the channel removed, social measures must be exactly null.
+  because models recognise classic games by their structure. Deferred in the first
+  interaction test.
+- **Variation check.** In the first interaction test, the fair ranked probability score
+  compares simulated and human groups summary by summary; central 90% coverage is reported.
+  This replaces a separate spread check for this test.
+- **Model swap and paraphrase.** In the first interaction test, model swap is the reported
+  chat arm. Paraphrase is deferred.
+- **Null interaction.** In the first interaction test, two tests on the committed numbers
+  must pass before registration; the report repeats them and prints the result. With the
+  others' weight set to zero, the sequence of bands and points of every seat and round of
+  the 100 registered groups of every game is equal under an open and a closed channel.
+  With the channel closed, replacing the other seats' play by any other play leaves each
+  seat's five probabilities exactly equal. Independent persons' summaries need not be zero.
+  Exact null social measures remain a control for worlds, such as the threshold cascade,
+  where null implies zero.
 
 ### Stack
 
@@ -575,13 +614,15 @@ Thresholds are choices made here, not findings. Command names are proposals.
 | # | Milestone | Fails unless |
 |---|---|---|
 | P0 | H1 pilot. One task, four arms, only the laws that task needs, no kernel | The prior work named in open question 10 is read. The pre-registration is committed before `unseal` is run on the held-out split. `uv run pytest` is green. `uv run python -m zoon.report h1 --check` exits 0 only if the `zoon` arm beats `prompted`, `laws-only` and `no-state` on the primary measure by at least the pre-registered difference, with a paired participant-level bootstrap 95% interval excluding zero. Amended 2026-11-15: the hypothesis that decides is H1-evaluative, for the deciding model family, exactly as `prereg/h1.md` states it |
-| M1 | Kernel | `uv run pytest` green. Replaying a log reproduces it byte for byte for each of 8 seeds, a chosen count. Ledger totals are exactly unchanged over a run. Under a coded policy, Granovetter's case holds exactly: thresholds 0 to 99 give 100 acting, and removing threshold 1 gives 1. With the channel removed, the cascade size is exactly zero. `sim_audit.py --strict --run-mutations` exits 0 for kernel claims |
+| I1 | First interaction test, H2 and H3 | `interaction/registration.md` is registered before any held-out play is read. Each hypothesis is judged separately by its registered comparisons, thresholds and intervals. The two null-interaction tests on the committed numbers pass before registration and are repeated in the report. Every recorded closed-loop game of `zoon`, `alone` and `prompted` replays from its log to its recorded digest; failure gives H3 no verdict and leaves H2 unaffected. Chat games replay from the transcript; failure makes `chat` unusable. Ledger checks pass; the result is published whatever the verdicts |
+| M1 | General kernel beyond the round-based interaction kernel | `uv run pytest` green. Replaying a log reproduces it byte for byte for each of 8 seeds, a chosen count. Ledger totals are exactly unchanged over a run. Under a coded policy, Granovetter's case holds exactly: thresholds 0 to 99 give 100 acting, and removing threshold 1 gives 1. With the channel removed, the cascade size is exactly zero. `sim_audit.py --strict --run-mutations` exits 0 for kernel claims |
 | M2 | Laws for the first world, models stubbed | Each law reproduces its published equation within the tolerance written in its claim. Every checked claim has a mutation that turns its own test red |
 | M3 | Two zoons in a repeated exchange, two options per decision | `zoon.report m3 --check` exits 0 only if the measure, as a share of the payoff scale, stays within the pre-registered bound under the disguise control, and the recall control does not reproduce it within that bound. Framing sensitivity is reported |
 | M4 | Threshold cascade in a population | `zoon.report m4 --check` exits 0 only if the coded-policy run matches the analytic result exactly, null interaction gives exactly zero, and the recall control does not reproduce the model-in-loop result. That result is reported as a `prediction` |
 
-M1 to M4 are not started if P0 fails. If H1 could not be tested and only H1′ was, they are
-started only on the maintainer's explicit decision.
+I1 starts on P0's registered H1-evaluative pass, with H1-strict's failure reported.
+M1 to M4 are not started if P0's registered verdict fails. If H1 could not be tested and only
+H1′ was, they are started only on the maintainer's explicit decision.
 
 ## Open questions
 

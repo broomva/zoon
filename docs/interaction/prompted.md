@@ -9,7 +9,10 @@ and the prediction asked for.
 This step includes no general chat-model arm, live run, held-out history reader or rule
 for deciding recall. The recall wording is a renderer only. The spending cap remains
 the maintainer's decision.
-No model has been called. The format check is for the maintainer:
+The decision model was sent format-check requests twice on made-up histories, four
+calls each time; the registration's section on calls made before registration
+records both. The replies were usable, and no other call has been made for this
+arm. The format check is for the maintainer:
 `python -m zoon.interaction.prompted smoke --live`.
 The format check is outside the bound.
 
@@ -48,7 +51,7 @@ zoon interaction: prompted spending bound
 [settings] recalibration polish steps = 20
 [settings] recalibration beta lower bound = 0.0
 [settings] recalibration penalty = 0.0001
-[settings] probability floor before recalibration = 1e-09
+[settings] probability floor before recalibration = 0.005
 [settings] model = jev-1.14.0
 [settings] input USD per million = 0.042
 [settings] output USD per million = 0

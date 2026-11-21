@@ -207,19 +207,15 @@ def test_kernel_stub_calls_each_seat_each_round_and_replays() -> None:
 
 def test_identity_and_zero_sum_shifts() -> None:
     p = np.array([[0, 0.1, 0.2, 0.3, 0.4], [0.2] * 5])
-    assert prompted.Recalibration().apply(p) == pytest.approx(
-        np.array([kernel.distribution(row) for row in p]), abs=1e-15
-    )
+    floored = np.maximum(p, prompted.PROMPTED_FLOOR)
+    expected = floored / floored.sum(axis=1, keepdims=True)
+    assert prompted.Recalibration().apply(p) == pytest.approx(expected, abs=1e-15)
     value = prompted.Recalibration(0.5, (0.2, -0.3, 0.4, -0.1))
     assert value.shifts.sum() == pytest.approx(0, abs=1e-15)
     assert value.beta == pytest.approx(0.5)
     assert value.numbers.shape == (5,)
     assert value.apply(p) == pytest.approx(
-        softmax(
-            np.log(np.array([kernel.distribution(row) for row in p])) / 2 + value.shifts,
-            axis=1,
-        ),
-        abs=1e-15,
+        softmax(np.log(expected) / 2 + value.shifts, axis=1), abs=1e-15
     )
 
 
@@ -365,7 +361,37 @@ def test_agent_floors_model_zeros_before_recalibration() -> None:
         dict(zip(prompted.ANSWERS, values, strict=True)), None, "", prices.DECISION.model, 5, 1
     )
     client = clients.StubClient("decision", {clients.key(decision): response})
-    assert prompted.Prompted(client)(view) == pytest.approx(kernel.distribution(values), abs=1e-15)
+    assert prompted.Prompted(client)(view) == pytest.approx(
+        np.maximum(values, prompted.PROMPTED_FLOOR) / (1 + prompted.PROMPTED_FLOOR), abs=1e-15
+    )
+
+
+def test_floor_uses_probabilities_after_dividing_the_returned_sum() -> None:
+    view = kernel.View(GAMES["2-FE"], 0, ())
+    decision = prompted.request(view)
+    returned = np.array([0.0, 0.12, 0.24, 0.24, 0.36])
+    assert returned.sum() == pytest.approx(0.96)
+    used = returned / returned.sum()
+    response = clients.Response(
+        dict(zip(prompted.ANSWERS, used, strict=True)),
+        float(returned.sum()),
+        "",
+        prices.DECISION.model,
+        5,
+        1,
+        dict(zip(prompted.ANSWERS, returned, strict=True)),
+    )
+    client = clients.StubClient("decision", {clients.key(decision): response})
+    floored_used = np.maximum(used, prompted.PROMPTED_FLOOR)
+    expected = floored_used / floored_used.sum()
+    floored_returned = np.maximum(returned, prompted.PROMPTED_FLOOR)
+    wrong = floored_returned / floored_returned.sum()
+    for calibration in (prompted.Recalibration(), prompted.Recalibration(0.7, (0.1, -0.2, 0.3, 0))):
+        actual = prompted.Prompted(client, calibration)(view)
+        correct = softmax(calibration.beta * np.log(expected) + calibration.shifts)
+        incorrect = softmax(calibration.beta * np.log(wrong) + calibration.shifts)
+        assert actual == pytest.approx(correct, abs=1e-15)
+        assert not np.allclose(actual, incorrect, atol=1e-8, rtol=0)
 
 
 def test_subsample_largest_remainder(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -567,7 +593,7 @@ def test_apply_refuses_invalid_probabilities(values: list[float]) -> None:
 
 def test_apply_accepts_integers_and_zero_beta() -> None:
     assert prompted.Recalibration().apply(np.array([0, 1, 2, 3, 4])) == pytest.approx(
-        np.maximum([0, 1, 2, 3, 4], person.FLOOR) / (10 + person.FLOOR)
+        np.maximum([0, 1, 2, 3, 4], prompted.PROMPTED_FLOOR) / (10 + prompted.PROMPTED_FLOOR)
     )
     assert prompted.Recalibration(0).apply(np.array([0, 1, 2, 3, 4])) == pytest.approx([0.2] * 5)
 
@@ -604,8 +630,8 @@ def test_fit_objective_gradient_hessian_start_and_options(monkeypatch: pytest.Mo
         ):
             shifts = np.r_[numbers[1:], -numbers[1:].sum()]
             logs = np.log(
-                np.maximum(probabilities, 1e-9)
-                / np.maximum(probabilities, 1e-9).sum(axis=1, keepdims=True)
+                np.maximum(probabilities, prompted.PROMPTED_FLOOR)
+                / np.maximum(probabilities, prompted.PROMPTED_FLOOR).sum(axis=1, keepdims=True)
             )
             expected = -np.log(
                 softmax(numbers[0] * logs + shifts, axis=1)[np.arange(3), choices]
@@ -652,7 +678,7 @@ def assert_stationary(
     choices: np.ndarray[Any, np.dtype[np.int64]],
     result: prompted.Recalibration,
 ) -> None:
-    floored = np.maximum(probabilities, person.FLOOR)
+    floored = np.maximum(probabilities, prompted.PROMPTED_FLOOR)
     logs = np.log(floored / floored.sum(axis=1, keepdims=True))
     residual = softmax(result.beta * logs + result.shifts, axis=1)
     residual[np.arange(len(choices)), choices] -= 1
@@ -841,7 +867,8 @@ def test_beta_lower_bound_is_shared(monkeypatch: pytest.MonkeyPatch) -> None:
     result = prompted.fit(pairs)
     assert result.beta == 0.5
     # The shifts are the best ones at that bound, not the ones for a bound of zero.
-    logs = np.log(probabilities)
+    floored = np.maximum(probabilities, prompted.PROMPTED_FLOOR)
+    logs = np.log(floored / floored.sum(axis=1, keepdims=True))
 
     def loss(free: measure.Floats) -> float:
         shifts: measure.Floats = np.r_[free, -free.sum()]
@@ -1011,7 +1038,7 @@ def test_polish_refuses_a_point_that_stays_outside_and_a_gradient_that_is_not_a_
         polish(broken, curvature, np.array([3.0]))
 
 
-def test_fit_starts_at_the_committed_start_and_floors_at_the_shared_floor(
+def test_fit_starts_at_the_committed_start_and_uses_the_prompted_floor(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import ast
@@ -1025,9 +1052,9 @@ def test_fit_starts_at_the_committed_start_and_floors_at_the_shared_floor(
     ]
     raw = np.array([0.0, 0.25, 0.25, 0.25, 0.25])
     before = prompted.Recalibration().apply(raw)
-    monkeypatch.setattr(person, "FLOOR", 0.25)
+    monkeypatch.setattr(prompted, "PROMPTED_FLOOR", 0.25)
     assert prompted.Recalibration().apply(raw) == pytest.approx([0.2] * 5)
-    assert before[0] < 1e-8
+    assert before[0] == pytest.approx(0.005 / 1.005)
 
 
 def test_recalibration_refuses_a_scalar_and_a_wrong_number_of_shifts() -> None:
@@ -1084,3 +1111,29 @@ def test_format_check_reads_its_requests_as_utf8(monkeypatch: pytest.MonkeyPatch
     monkeypatch.setattr(Path, "read_text", recorded)
     prompted.smoke(clients.StubClient("decision"))
     assert encodings == ["utf-8"] * (2 * len(prompted.SMOKE_GAMES))
+
+
+def test_two_decimal_probabilities_keep_the_exact_laws_log_score(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    rng = np.random.default_rng(20261120)
+    # Rare bands fall just below the half-step, but remain real possible choices.
+    exact = np.array([rng.permutation([0.004, 0.004, 0.004, 0.2, 0.788]) for _ in range(6000)])
+    choices = (rng.random(len(exact))[:, None] > exact.cumsum(axis=1)).sum(axis=1)
+    rounded = np.round(exact, 2)
+    rounded /= rounded.sum(axis=1, keepdims=True)
+    rows = np.arange(len(exact))
+    exact_score = float(np.log(exact[rows, choices]).mean())
+
+    def rounded_score() -> float:
+        fitted = prompted.fit(list(zip(rounded, map(int, choices), strict=True)))
+        used = fitted.apply(rounded)
+        used = np.maximum(used, person.FLOOR)
+        used /= used.sum(axis=1, keepdims=True)
+        return float(np.log(used[rows, choices]).mean())
+
+    assert prompted.PROMPTED_FLOOR == 0.005
+    assert (rounded[rows, choices] == 0).any()
+    assert abs(exact_score - rounded_score()) < 0.02
+    monkeypatch.setattr(prompted, "PROMPTED_FLOOR", person.FLOOR)
+    assert exact_score - rounded_score() > 0.05

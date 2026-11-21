@@ -12,13 +12,14 @@ import numpy as np
 from scipy.optimize import minimize
 from scipy.special import logsumexp, softmax
 
-from zoon.interaction import data, kernel, measure, person
+from zoon.interaction import data, kernel, measure
 from zoon.interaction.data import Group
 from zoon.interaction.games import GAMES, ROUNDS, Game
 from zoon.interaction.measure import Floats
 from zoon.pilot import clients, prompts
 
 DIRECTORY = data.REPO / "interaction"
+PROMPTED_FLOOR = 0.005
 SUBSAMPLE_COUNT = 512
 SUBSAMPLE_SALT = "interaction-recalibration-1"
 FIXTURE_SEED = 711
@@ -174,7 +175,7 @@ def _probability_logs(probabilities: Floats) -> Floats:
         valid = bool(np.isfinite(sums).all() and (sums > 0).all())
     if not valid:
         raise ValueError("five finite non-negative probabilities are required")
-    floored = np.maximum(probabilities, person.FLOOR)
+    floored = np.maximum(probabilities, PROMPTED_FLOOR)
     return np.log(floored / floored.sum(axis=-1, keepdims=True))
 
 
