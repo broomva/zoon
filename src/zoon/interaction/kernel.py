@@ -84,6 +84,7 @@ class View:
     game: Game
     seat: int
     history: tuple[Observation, ...]
+    open_channel: bool = True
 
 
 class Agent(Protocol):
@@ -198,7 +199,7 @@ def play(
     rounds: list[tuple[int, ...]] = []
     for r in range(ROUNDS):
         returned = [
-            np.array(agent(View(game, s, histories[s])), dtype=np.float64, copy=True)
+            np.array(agent(View(game, s, histories[s], open_channel)), dtype=np.float64, copy=True)
             for s, agent in enumerate(agents)
         ]
         laws = [distribution(p) for p in returned]

@@ -303,3 +303,48 @@ def test_candidate_pasted_amounts_match_the_training_file() -> None:
     amounts = [line for line in paste.splitlines() if line.startswith("[amounts,")]
     assert amounts == [entry.render() for entry in compare.amount_entries(data.load())]
 
+
+def prompted_note() -> tuple[str, str]:
+    text = (NOTE.parent / "prompted.md").read_text()
+    prefix, paste = text.rsplit("\n```\n", 2)[:2]
+    return prefix, paste.rstrip("`\n")
+
+
+def test_prompted_table_and_quoted_figures_match_the_paste() -> None:
+    prose, paste = prompted_note()
+    rows: list[str] = []
+    for line in paste.splitlines():
+        match = re.fullmatch(
+            r"\[(open loop|recalibration|disguise|closed loop|recall|total)\] calls = (\d+) "
+            r"\| input tokens <= (\d+) \| output tokens <= (\d+) \| USD <= (\S+)",
+            line,
+        )
+        if match:
+            rows.append("| " + " | ".join(match.groups()) + " |")
+    quoted = [line for line in prose.splitlines() if re.match(r"\| (?!Call|---)", line)]
+    assert len(rows) == 6
+    assert quoted == rows
+    # Attribution identifies the source and its licence; these are not measured figures.
+    prose = re.sub(r"The instructions are used under CC BY.*?\n\n", "", prose, flags=re.S)
+    pattern = re.compile(r"\d+(?:\.\d+)?")
+    assert set(pattern.findall(prose)) <= set(pattern.findall(paste))
+    assert paste.startswith("zoon interaction: prompted spending bound\n")
+    assert "[budget] total at most proposed ceiling = " in paste
+
+
+def test_prompted_pasted_settings_match_current_objects() -> None:
+    from zoon.interaction import budget
+
+    _, paste = prompted_note()
+    assert [
+        line for line in paste.splitlines() if line.startswith("[settings]")
+    ] == budget.settings()
+
+
+def test_prompted_full_paste_matches_training_only_bound() -> None:
+    from zoon.interaction import budget, data
+
+    if not data.TRAINING.is_file():
+        pytest.skip("training file is absent; the pasted bound needs training groups and counts")
+    _, paste = prompted_note()
+    assert paste == "\n".join(budget.report(data.load(), data.held_out_counts()))

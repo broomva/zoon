@@ -1,0 +1,26 @@
+{
+  "state": "MADE-UP HISTORY: seeded; no participant record.\n\nGeneral rules\nYou will play 2 sessions of decision-making games.\nIn each session, the system will randomly match another player for you.\nThere are two roles in the games. You and the co-player are randomly assigned the role of player 1 and player 2.\nNeither of you knows each other's true identities.\nYour bonus will be determined by the choices made by you and the co-player.\nYour total income = 20 Yuan (show-up fee) + 0.03 Yuan × (the cumulative points from two sessions + the survey points).\n\nIntroduction to Session 1\nIn the first round, you and a co-player are randomly assigned the role of player 1 and player 2.\nYou will repeat the game for at least 20 rounds. After the 20th round, there will be a 50% chance that the game will continue for another round. Neither of your roles will be changed during the game.\nIn each round, player 1 has an initial 36 points and player 2 has an initial 12 points. You each decide how many points you would like to contribute to the common pool and how many to keep for yourself.\nFor every point that player 1 contributes, the common pool will increase by 1.3 points. For every point that player 2 contributes, the common pool will increase by 1.9 points.\nIn each round, the points in the common pool will be split evenly between the two players. Your payoff per round is the sum of the points you keep for yourself in that round and the points you receive from the common pool.\nAt the end of each round, both of you can see the results about your contributions and payoffs in the round, the group total contribution and returns from the common pool.\n\nThe player you are asked about is Player 2.\nRound 1: there is no earlier history.",
+  "question": "What share of their initial points will Player 2 contribute to the common pool in round 1?",
+  "answers": [
+    {
+      "answer": "Nothing",
+      "description": "Nothing"
+    },
+    {
+      "answer": "Some, up to a third",
+      "description": "Some, up to a third"
+    },
+    {
+      "answer": "More than a third, up to two thirds",
+      "description": "More than a third, up to two thirds"
+    },
+    {
+      "answer": "More than two thirds but not all",
+      "description": "More than two thirds but not all"
+    },
+    {
+      "answer": "All",
+      "description": "All"
+    }
+  ]
+}

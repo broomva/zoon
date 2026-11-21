@@ -1,0 +1,26 @@
+{
+  "state": "MADE-UP HISTORY: seeded; no participant record.\n\nGeneral rules\nYou will play 2 sessions of decision-making games. In each session, the system will randomly match you with three other players and assign the roles of Player 1, Player 2, Player 3, and Player 4.\nNone of you will know each other's true identities.\nYour bonus will be determined by the choices made by you and the other three players.\nYour total income = 15 Yuan (show-up fee) + 0.015 Yuan × (the cumulative points from two sessions + the survey points).\n\nIntroduction to Session 1\nYou and the other three players will repeat the game for at least 20 rounds. After the 20th round, there will be a 50% chance that the game will continue for another round. Neither of your roles will be changed during the game.\nIn each round, Player 1 and Player 2 each have an initial 36 points, and Player 3 and Player 4 each have an initial 12 points.\nEach player decides how many points to contribute to the common pool and how many to keep for themselves.\nFor every point that Player 1 or Player 2 contributes, the common pool will increase by 3.8 points. For every point that Player 3 or Player 4 contributes, the common pool will increase by 2.6 points.\nIn each round, the points in the common pool will be split evenly among all four players. Your payoff per round is the sum of the points you keep for yourself in that round and the points you receive from the common pool.\nAt the end of each round, all four players can see each other's contributions to the common pool and the payoffs in that round.\n\nThe player you are asked about is Player 1.\nRound 1: there is no earlier history.",
+  "question": "What share of their initial points will Player 1 contribute to the common pool in round 1?",
+  "answers": [
+    {
+      "answer": "Nothing",
+      "description": "Nothing"
+    },
+    {
+      "answer": "Some, up to a third",
+      "description": "Some, up to a third"
+    },
+    {
+      "answer": "More than a third, up to two thirds",
+      "description": "More than a third, up to two thirds"
+    },
+    {
+      "answer": "More than two thirds but not all",
+      "description": "More than two thirds but not all"
+    },
+    {
+      "answer": "All",
+      "description": "All"
+    }
+  ]
+}
