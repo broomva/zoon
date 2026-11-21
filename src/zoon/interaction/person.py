@@ -2,6 +2,7 @@
 
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
+from typing import Literal, TypedDict
 
 import numpy as np
 from scipy.optimize import minimize
@@ -20,6 +21,8 @@ LOG_GAP_LIMIT = 8.0
 MAX_ITERATIONS = 2000
 TOLERANCE = 1e-7
 FUNCTION_TOLERANCE = 1e-10
+FIRST_CUT = 0.0
+B_MEAN_ENDOWMENT = 24
 
 
 @dataclass(frozen=True)
@@ -63,7 +66,7 @@ class Candidate:
 
     def base(self, game: Game, seat: int) -> Floats:
         if self.letter == "B":
-            unit = sum(game.endowments) / game.size / 24
+            unit = sum(game.endowments) / game.size / B_MEAN_ENDOWMENT
             canonical = replace(game, endowments=tuple(round(e / unit) for e in game.endowments))
             return np.array([1.0, *measure.traits(canonical, seat)])
         row = np.zeros(self.constants)
@@ -154,7 +157,7 @@ class Person:
             features = [*state.traces, *([state.anchor] if c.letter == "E" else [])]
             weights = self.numbers[2 * c.phase_size : 2 * c.phase_size + len(c.features)]
             score += float((np.array(features) - 0.5) @ weights)
-        cuts: Floats = np.asarray(np.r_[0.0, np.cumsum(np.exp(phase[-3:]))], dtype=float)
+        cuts: Floats = np.asarray(np.r_[FIRST_CUT, np.cumsum(np.exp(phase[-3:]))], dtype=float)
         below = expit(cuts - score)
         p = np.maximum(np.diff(np.r_[0.0, below, 1.0]), FLOOR)
         return p / p.sum()
@@ -163,7 +166,7 @@ class Person:
 def ordered(score: Floats, cuts: Floats) -> tuple[Floats, Floats, Floats]:
     """Probabilities and their derivatives by score and three log-gap parameters."""
     gaps = np.exp(cuts)
-    thresholds: Floats = np.asarray(np.r_[0.0, np.cumsum(gaps)], dtype=float)
+    thresholds: Floats = np.asarray(np.r_[FIRST_CUT, np.cumsum(gaps)], dtype=float)
     below = expit(thresholds[None, :] - score[:, None])
     density = below * (1 - below)
     p = np.diff(np.c_[np.zeros(len(score)), below, np.ones(len(score))], axis=1)
@@ -279,14 +282,46 @@ def likelihood(numbers: Floats, record: Records, c: Candidate) -> tuple[float, F
     return loss, gradient + 2 * RIDGE * numbers, logs
 
 
-def fit(groups: Sequence[Group], candidate: Candidate, *, start_nudge: float = 0.0) -> Person:
-    record = records(groups, candidate)
+class FitOptions(TypedDict):
+    maxiter: int
+    ftol: float
+    gtol: float
+    maxls: int
+
+
+@dataclass(frozen=True)
+class FitSetup:
+    starts: tuple[Floats, ...]
+    bounds: list[tuple[float | None, float | None]]
+    options: FitOptions
+    method: Literal["L-BFGS-B"] = "L-BFGS-B"
+    jac: Literal[True] = True
+    require_success: bool = True
+
+
+def fit_setup(candidate: Candidate, start_nudge: float = 0.0) -> FitSetup:
     bounds: list[tuple[float | None, float | None]] = [(None, None)] * candidate.count
     for offset in (0, candidate.phase_size):
         for j in range(offset + candidate.constants, offset + candidate.phase_size):
             bounds[j] = (-LOG_GAP_LIMIT, LOG_GAP_LIMIT)
     for j in range(candidate.count - len(candidate.traces), candidate.count):
         bounds[j] = (0.0, 1.0)
+    return FitSetup(
+        (candidate.start() + start_nudge,),
+        bounds,
+        {
+            "maxiter": MAX_ITERATIONS,
+            "ftol": FUNCTION_TOLERANCE,
+            "gtol": TOLERANCE,
+            "maxls": 50,
+        },
+    )
+
+
+def fit(groups: Sequence[Group], candidate: Candidate, *, start_nudge: float = 0.0) -> Person:
+    record = records(groups, candidate)
+    setup = fit_setup(candidate, start_nudge)
+    (start,) = setup.starts
 
     def objective(numbers: Floats) -> tuple[float, Floats]:
         loss, gradient, _ = likelihood(numbers, record, candidate)
@@ -294,18 +329,13 @@ def fit(groups: Sequence[Group], candidate: Candidate, *, start_nudge: float = 0
 
     result = minimize(
         objective,
-        candidate.start() + start_nudge,
-        jac=True,
-        method="L-BFGS-B",
-        bounds=bounds,
-        options={
-            "maxiter": MAX_ITERATIONS,
-            "ftol": FUNCTION_TOLERANCE,
-            "gtol": TOLERANCE,
-            "maxls": 50,
-        },
+        start,
+        jac=setup.jac,
+        method=setup.method,
+        bounds=setup.bounds,
+        options={**setup.options},
     )
-    if not result.success:
+    if setup.require_success and not result.success:
         raise RuntimeError(f"a person did not converge: {result.message}")
     return Person(
         candidate, np.asarray(result.x, dtype=np.float64), frozenset(g.cell for g in groups)

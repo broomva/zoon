@@ -251,7 +251,7 @@ def test_live_report_labels_and_power_use_defined_training_and_sealed_counts(
         return real_power(found, training, sealed)
 
     monkeypatch.setattr(measure, "power", checked_power)
-    compare.main(simulations=2, resamples=20)
+    compare.main(simulations=2)
     assert counts == ([(16, 24)] * 6 + [(12, 18)]) * 2
     printed = capsys.readouterr().out
     _, paste = split_note()
@@ -512,6 +512,7 @@ def test_report_entries_selection_refits_and_main_rendering(
 
     monkeypatch.setattr(measure, "power", checked_power)
 
+    monkeypatch.setattr(measure, "RESAMPLES", 100)
     report = compare.report(groups, {cell: 3 for cell in GAMES}, simulations=2, resamples=100)
     assert "C twin" not in calls and "D twin" not in calls
     expected: list[tuple[str, int | float | str | tuple[float, ...], str]] = []
@@ -538,15 +539,15 @@ def test_report_entries_selection_refits_and_main_rendering(
         ("gradient", "analytic"),
         ("B mean endowment", 24),
         ("line-search limit", 50),
-        ("first cut", 0),
-        ("constant, weight and log-gap start", 0),
-        ("trace fraction start", 0.5),
+        ("first cut", 0.0),
+        ("constant, weight and log-gap start", "0"),
+        ("trace fraction start", "0.5"),
         ("trace fraction bounds", "0, 1"),
         ("other bounds", "none"),
         ("starts per fit", 1),
         ("stopping", "either successful condition; failure raises"),
     ):
-        add(f"[fit] {label}", value)
+        add(f"[fit] {label}", value, "g" if label == "first cut" else "")
     add("[simulation] seed", measure.SEED)
     add("[interval] resamples", 100)
     from collections import Counter
@@ -709,9 +710,76 @@ def test_main_explains_undefined_power_for_zero_width_intervals(
 
     monkeypatch.setattr(person, "out_of_sample", scored)
     monkeypatch.setattr(compare, "evaluate", evaluated)
-    compare.main(simulations=2, resamples=10)
+    compare.main(simulations=2)
     printed = capsys.readouterr().out
     assert "nan" not in printed.lower()
     power = [line for line in printed.splitlines() if line.startswith("[power,")]
     assert len(power) == 28
     assert all(line.endswith("undefined (zero-width interval)") for line in power)
+
+
+def test_registered_simulation_and_interval_values_and_defaults() -> None:
+    from inspect import signature
+
+    assert compare.SIMULATED_GROUPS == 100, "registered simulated groups"
+    assert measure.SEED == 20261120, "registered seed"
+    assert measure.RESAMPLES == 2000, "registered resamples"
+    for function in (compare.evaluate, compare.report, compare.main, compare.settings):
+        assert signature(function).parameters["simulations"].default == compare.SIMULATED_GROUPS
+    for function in (compare.interval, compare.report, compare.main, compare.settings):
+        assert signature(function).parameters["resamples"].default == measure.RESAMPLES
+    entries = {entry.label: entry.value for entry in compare.settings()}
+    assert entries["[simulation] groups per game and fold"] == compare.SIMULATED_GROUPS
+    assert entries["[simulation] seed"] == measure.SEED
+    assert entries["[interval] resamples"] == measure.RESAMPLES
+    assert entries["[fit] probability floor"] == person.FLOOR
+
+
+def test_report_refuses_resamples_that_differ_from_paired_intervals() -> None:
+    for resamples in (measure.RESAMPLES - 1, measure.RESAMPLES + 1):
+        with pytest.raises(ValueError, match=r"report intervals require measure\.RESAMPLES"):
+            compare.report([], {}, resamples=resamples)
+
+
+def test_settings_read_the_fit_inputs(monkeypatch: pytest.MonkeyPatch) -> None:
+    original = person.fit_setup
+
+    def changed(c: person.Candidate, start_nudge: float = 0.0) -> person.FitSetup:
+        setup = original(c, start_nudge)
+        start = setup.starts[0].copy()
+        start[: c.count - len(c.traces)] = 0.2
+        start[c.count - len(c.traces) :] = 0.4
+        bounds: list[tuple[float | None, float | None]] = [(None, None)] * c.count
+        for offset in (0, c.phase_size):
+            bounds[offset + c.constants : offset + c.phase_size] = [(-8.0, 8.0)] * 3
+        bounds[c.count - len(c.traces) :] = [(0.1, 0.9)] * len(c.traces)
+        bounds[0] = (-2.0, 2.0)
+        return replace(
+            setup,
+            starts=(start,),
+            bounds=bounds,
+            method="TNC",
+            jac=False,
+            require_success=False,
+            options={"maxiter": 12, "ftol": 0.01, "gtol": 0.02, "maxls": 7},
+        )
+
+    monkeypatch.setattr(person, "fit_setup", changed)
+    monkeypatch.setattr(person, "FIRST_CUT", -0.1)
+    monkeypatch.setattr(person, "B_MEAN_ENDOWMENT", 12)
+    monkeypatch.setattr(person, "FLOOR", 1e-8)
+    entries = {entry.label: entry.value for entry in compare.settings()}
+    assert entries["[fit] constant, weight and log-gap start"] == "0.2"
+    assert entries["[fit] trace fraction start"] == "0.4"
+    assert entries["[fit] trace fraction bounds"] == "0.1, 0.9"
+    assert entries["[fit] other bounds"] == "-2.0, 2.0; none"
+    assert entries["[fit] optimiser"] == "TNC"
+    assert entries["[fit] gradient"] == "numerical"
+    assert entries["[fit] stopping"] == "failure accepted"
+    assert entries["[fit] iteration limit"] == 12
+    assert entries["[fit] gradient tolerance"] == 0.02
+    assert entries["[fit] function tolerance"] == 0.01
+    assert entries["[fit] line-search limit"] == 7
+    assert entries["[fit] first cut"] == -0.1
+    assert entries["[fit] B mean endowment"] == 12
+    assert entries["[fit] probability floor"] == 1e-8

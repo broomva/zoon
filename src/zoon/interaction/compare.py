@@ -13,6 +13,7 @@ from zoon.interaction.measure import Floats, Ints
 
 # Proposed registered number of simulated groups per game and fold.
 SIMULATED_GROUPS = 100
+START_NUDGE = 1e-6
 SUMMARIES = ("level", "members apart", "trend", "movement", "type gap")
 METRICS = ("composite", *SUMMARIES)
 
@@ -189,6 +190,71 @@ def fitted_entries(law: person.Person) -> list[Entry]:
     ]
 
 
+def settings(
+    *, simulations: int = SIMULATED_GROUPS, resamples: int = measure.RESAMPLES
+) -> list[Entry]:
+    """Registered choices, read from the same inputs as the fit and comparison."""
+    setups = [(c, person.fit_setup(c)) for c in person.CANDIDATES]
+    setup = setups[0][1]
+    initial = ", ".join(
+        sorted({f"{v:g}" for c, fit in setups for v in fit.starts[0][: c.count - len(c.traces)]})
+    )
+    fractions = ", ".join(
+        sorted({f"{v:g}" for c, fit in setups for v in fit.starts[0][c.count - len(c.traces) :]})
+    )
+    fraction_bounds = "; ".join(
+        sorted(
+            {
+                ", ".join(f"{v:g}" for v in bound)
+                for c, fit in setups
+                for bound in fit.bounds[c.count - len(c.traces) :]
+            }
+        )
+    )
+    other_bounds = "; ".join(
+        sorted(
+            {
+                "none" if bound == (None, None) else ", ".join(str(v) for v in bound)
+                for c, fit in setups
+                for j, bound in enumerate(fit.bounds)
+                if j < c.count - len(c.traces)
+                and not any(
+                    offset + c.constants <= j < offset + c.phase_size
+                    for offset in (0, c.phase_size)
+                )
+            }
+        )
+    )
+    return [
+        Entry("[simulation] groups per game and fold", simulations),
+        Entry("[fit] ridge", person.RIDGE),
+        Entry("[fit] probability floor", person.FLOOR, ".10f"),
+        Entry("[fit] log gap limit", person.LOG_GAP_LIMIT),
+        Entry("[fit] iteration limit", setup.options["maxiter"]),
+        Entry("[fit] gradient tolerance", setup.options["gtol"], ".8f"),
+        Entry("[fit] function tolerance", setup.options["ftol"], ".10f"),
+        Entry("[fit] reproducibility start nudge", START_NUDGE, ".6f"),
+        Entry("[fit] optimiser", setup.method),
+        Entry("[fit] gradient", "analytic" if setup.jac else "numerical"),
+        Entry("[fit] B mean endowment", person.B_MEAN_ENDOWMENT),
+        Entry("[fit] line-search limit", setup.options["maxls"]),
+        Entry("[fit] first cut", person.FIRST_CUT, "g"),
+        Entry("[fit] constant, weight and log-gap start", initial),
+        Entry("[fit] trace fraction start", fractions),
+        Entry("[fit] trace fraction bounds", fraction_bounds),
+        Entry("[fit] other bounds", other_bounds),
+        Entry("[fit] starts per fit", len(setup.starts)),
+        Entry(
+            "[fit] stopping",
+            "either successful condition; failure raises"
+            if setup.require_success
+            else "failure accepted",
+        ),
+        Entry("[simulation] seed", measure.SEED),
+        Entry("[interval] resamples", resamples),
+    ]
+
+
 def report(
     groups: Sequence[Group],
     held: Mapping[str, int],
@@ -196,33 +262,14 @@ def report(
     simulations: int = SIMULATED_GROUPS,
     resamples: int = measure.RESAMPLES,
 ) -> list[Entry]:
+    if resamples != measure.RESAMPLES:
+        raise ValueError("report intervals require measure.RESAMPLES")
     decisions = measure.decisions(groups)
-    start_nudge = 1e-6
     entries = [
         Entry("[data] training groups", len(groups)),
         Entry("[data] decisions", len(decisions.choice)),
         Entry("[data] held-out groups", sum(held.values())),
-        Entry("[simulation] groups per game and fold", simulations),
-        Entry("[fit] ridge", person.RIDGE),
-        Entry("[fit] probability floor", person.FLOOR, ".10f"),
-        Entry("[fit] log gap limit", person.LOG_GAP_LIMIT),
-        Entry("[fit] iteration limit", person.MAX_ITERATIONS),
-        Entry("[fit] gradient tolerance", person.TOLERANCE, ".8f"),
-        Entry("[fit] function tolerance", person.FUNCTION_TOLERANCE, ".10f"),
-        Entry("[fit] reproducibility start nudge", start_nudge, ".6f"),
-        Entry("[fit] optimiser", "L-BFGS-B"),
-        Entry("[fit] gradient", "analytic"),
-        Entry("[fit] B mean endowment", 24),
-        Entry("[fit] line-search limit", 50),
-        Entry("[fit] first cut", 0),
-        Entry("[fit] constant, weight and log-gap start", 0),
-        Entry("[fit] trace fraction start", 0.5),
-        Entry("[fit] trace fraction bounds", "0, 1"),
-        Entry("[fit] other bounds", "none"),
-        Entry("[fit] starts per fit", 1),
-        Entry("[fit] stopping", "either successful condition; failure raises"),
-        Entry("[simulation] seed", measure.SEED),
-        Entry("[interval] resamples", resamples),
+        *settings(simulations=simulations, resamples=resamples),
     ]
 
     def found(label: str, result: Sequence[float]) -> None:
@@ -309,7 +356,7 @@ def report(
         c = next(c for c in person.CANDIDATES if c.name == name)
         reference = results[name].fitted.numbers
         reversed_fit = person.fit(list(reversed(groups)), c)
-        nudged_fit = person.fit(groups, c, start_nudge=start_nudge)
+        nudged_fit = person.fit(groups, c, start_nudge=START_NUDGE)
         change = max(
             float(np.max(np.abs(refit.numbers - reference))) for refit in (reversed_fit, nudged_fit)
         )

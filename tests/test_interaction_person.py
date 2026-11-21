@@ -161,14 +161,18 @@ def test_absent_game_predictions_need_an_intercept(c: person.Candidate) -> None:
     p = person.fit(groups, c)
     assert p.games == frozenset(GAMES) - {"2-MI"}
     unseen = [g for g in tiny() if g.cell == "2-MI"]
+    mixed = [groups[0], unseen[0]]
     if c.letter == "B":
         assert np.isfinite(p.probabilities(GAMES["2-MI"], 0)).all()
         assert np.isfinite(person.log_likelihoods(p, unseen)).all()
+        assert np.isfinite(person.log_likelihoods(p, mixed)).all()
     else:
         with pytest.raises(ValueError, match="no fitted constant"):
             p.probabilities(GAMES["2-MI"], 0)
         with pytest.raises(ValueError, match="no fitted constant"):
             person.log_likelihoods(p, unseen)
+        with pytest.raises(ValueError, match="no fitted constant"):
+            person.log_likelihoods(p, mixed)
         with pytest.raises(ValueError, match="intercept"):
             person.out_of_sample(tiny(), c, leave_out_game=True)
     assert np.isfinite(p.probabilities(GAMES["2-FE"], 0)).all()
@@ -199,32 +203,36 @@ def test_counts_starts_and_ridge_cover_every_declared_parameter() -> None:
         assert loss + logs.sum() == pytest.approx(0.01 * float((numbers**2).sum()))
 
 
+@pytest.mark.parametrize("c", person.CANDIDATES, ids=lambda c: c.name)
 def test_fit_uses_one_start_and_the_declared_bounds_and_stopping_rules(
     monkeypatch: pytest.MonkeyPatch,
+    c: person.Candidate,
 ) -> None:
     from types import SimpleNamespace
 
     assert person.FUNCTION_TOLERANCE == 1e-10
+    assert person.FLOOR == 1e-9, "registered probability floor"
     calls = 0
 
     def inspected(fun: Any, start: person.Floats, **kwargs: Any) -> Any:
         nonlocal calls
         calls += 1
-        c = person.Candidate("C")
         assert np.array_equal(start, c.start() + nudge)
         assert kwargs["method"] == "L-BFGS-B" and kwargs["jac"] is True
         assert kwargs["options"] == {"maxiter": 2000, "ftol": 2e-10, "gtol": 1e-7, "maxls": 50}
         bounds = kwargs["bounds"]
-        assert bounds[-3:] == [(0.0, 1.0)] * 3
+        expected_bounds: list[tuple[float | None, float | None]] = [(None, None)] * c.count
         for offset in (0, c.phase_size):
-            assert bounds[offset + c.constants : offset + c.phase_size] == [(-8.0, 8.0)] * 3
+            expected_bounds[offset + c.constants : offset + c.phase_size] = [(-8.0, 8.0)] * 3
+        expected_bounds[c.count - len(c.traces) :] = [(0.0, 1.0)] * len(c.traces)
+        assert bounds == expected_bounds, "every optimiser bound, including constants and weights"
         assert np.isfinite(fun(start)[0])
         return SimpleNamespace(success=True, x=start)
 
     monkeypatch.setattr(person, "FUNCTION_TOLERANCE", 2e-10)
     monkeypatch.setattr(person, "minimize", inspected)
     for nudge in (0.0, 1e-6):
-        person.fit(tiny(), person.Candidate("C"), start_nudge=nudge)
+        person.fit(tiny(), c, start_nudge=nudge)
     assert calls == 2
 
 

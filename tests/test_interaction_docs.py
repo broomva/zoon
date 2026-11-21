@@ -280,3 +280,31 @@ def test_candidate_outcomes_and_tables_match_the_paste() -> None:
         lines[f"[reproducibility, {twin}] largest absolute change"],
         twin,
     )
+
+
+def test_candidate_pasted_settings_match_the_current_code() -> None:
+    from zoon.interaction import compare
+
+    _, paste = candidate_note()
+    settings = [
+        line
+        for line in paste.splitlines()
+        if line.startswith(("[fit]", "[simulation]", "[interval]"))
+    ]
+    assert settings == [entry.render() for entry in compare.settings()]
+
+
+def test_candidate_pasted_amounts_match_the_training_file() -> None:
+    from collections import Counter
+
+    from zoon.interaction import data, kernel
+
+    if not data.TRAINING.is_file():
+        pytest.skip("training file is absent; the pasted amount table needs training groups")
+    _, paste = candidate_note()
+    amounts = [line for line in paste.splitlines() if line.startswith("[amounts,")]
+    expected: list[str] = []
+    for (endowment, band), values in kernel.Amounts.build(data.load()).rows.items():
+        counts = ", ".join(f"{point}:{count}" for point, count in sorted(Counter(values).items()))
+        expected.append(f"[amounts, endowment {endowment}, band {band}] points:count = {counts}")
+    assert amounts == expected
