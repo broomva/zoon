@@ -3,6 +3,8 @@
 import ast
 import builtins
 import inspect
+import io
+import os
 from collections.abc import Iterator
 from dataclasses import replace
 from decimal import Decimal
@@ -14,7 +16,7 @@ from typing import Any
 
 import pytest
 
-from zoon.interaction import budget, kernel, prompted
+from zoon.interaction import budget, compare, games, kernel, prompted
 from zoon.interaction.data import Group
 from zoon.interaction.games import Game
 from zoon.pilot import budget as pilot_budget
@@ -120,6 +122,8 @@ def test_ceiling_comparison_and_main_reads_only_training_and_counts(
         raise AssertionError("unexpected file read")
 
     monkeypatch.setattr(builtins, "open", refuse_read)
+    monkeypatch.setattr(io, "open", refuse_read)
+    monkeypatch.setattr(os, "open", refuse_read)
     monkeypatch.setattr(Path, "open", refuse_read)
     total = sum((r.dollars for r in budget.estimate(small, {"2-FE": 2})), Decimal())
     for ceiling, within in ((Decimal("120"), True), (Decimal("0.00000001"), False), (total, True)):
@@ -203,6 +207,13 @@ def test_settings_table_resolves_named_attributes_outside_the_table() -> None:
             assert attribute.isidentifier()
             value = getattr(value, attribute)
         assert value is not source
+    # A value held by this module is an alias of another module's constant, never typed here.
+    own = {path: getattr(budget, path) for _, source, path in budget.SETTINGS if source is budget}
+    assert own == {
+        "ROUNDS": games.ROUNDS,
+        "SIMULATED_GROUPS": compare.SIMULATED_GROUPS,
+        "CEILING": pilot_budget.CEILING,
+    }
     tree = ast.parse(inspect.getsource(budget))
     ceiling = next(
         node

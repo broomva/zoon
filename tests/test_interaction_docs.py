@@ -326,7 +326,12 @@ def test_prompted_table_and_quoted_figures_match_the_paste() -> None:
     assert quoted == rows
     # Attribution identifies the source and its licence; these are not measured figures.
     prose = re.sub(r"The instructions are used under CC BY.*?\n\n", "", prose, flags=re.S)
-    prose = "\n".join(line for line in prose.splitlines() if not line.startswith("|"))
+    table = {
+        *quoted,
+        "| Call | Calls | Input tokens at most | Output tokens at most | USD at most |",
+        "|---|---:|---:|---:|---:|",
+    }
+    prose = "\n".join(line for line in prose.splitlines() if line not in table)
     assert not re.search(r"\d", prose)
     assert paste.startswith("zoon interaction: prompted spending bound\n")
     assert "[budget] total at most proposed ceiling = " in paste

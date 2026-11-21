@@ -59,6 +59,7 @@ RECORD = "https://zenodo.org/records/16918146"
 PAIRS_FILE = "LinearPGG_ExperimentalData.xlsx"
 FOURS_FILE = "LinearPGG_4P_ExperimentalData.mat"
 FILES: tuple[str, ...] = (PAIRS_FILE, FOURS_FILE)
+DOWNLOAD_TIMEOUT = 60
 
 # One sheet per treatment holds every first-session pair once: the sheet whose focal
 # participant sat in the first seat. The spellings are the file's own.
@@ -122,7 +123,7 @@ def fetch(raw_dir: Path = RAW_DIR) -> None:
     for filename in FILES:
         path = raw_dir / filename
         if not path.exists():
-            with urllib.request.urlopen(_url(filename)) as response:
+            with urllib.request.urlopen(_url(filename), timeout=DOWNLOAD_TIMEOUT) as response:
                 path.write_bytes(response.read())
         found = {"url": _url(filename), "size": path.stat().st_size, "sha256": _sha256(path)}
         if document["files"].setdefault(filename, found) != found:

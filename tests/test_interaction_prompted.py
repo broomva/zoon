@@ -867,3 +867,43 @@ def test_negative_beta_derivative_at_bound_is_refused(monkeypatch: pytest.Monkey
     probabilities[np.arange(50), choices] = 0.84
     with pytest.raises(RuntimeError, match=r"boundary beta gradient .* is negative"):
         prompted.fit(list(zip(probabilities, choices.tolist(), strict=True)))
+
+
+def test_fit_starts_at_the_committed_start_and_floors_at_the_shared_floor(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import ast
+    import inspect
+
+    # An equal literal is the same object once compiled, so the source is what is checked.
+    definition = ast.parse(inspect.getsource(prompted.fit)).body[0]
+    assert isinstance(definition, ast.FunctionDef)
+    assert [ast.unparse(default) for default in definition.args.kw_defaults if default] == [
+        "FIT_START"
+    ]
+    raw = np.array([0.0, 0.25, 0.25, 0.25, 0.25])
+    before = prompted.Recalibration().apply(raw)
+    monkeypatch.setattr(person, "FLOOR", 0.25)
+    assert prompted.Recalibration().apply(raw) == pytest.approx([0.2] * 5)
+    assert before[0] < 1e-8
+
+
+def test_recalibration_refuses_a_scalar_and_a_wrong_number_of_shifts() -> None:
+    with pytest.raises(ValueError, match="five finite non-negative"):
+        prompted.Recalibration().apply(np.array(0.2))
+    wrong: Any = (0.0, 0.0, 0.0)
+    with pytest.raises(ValueError, match="four finite free shifts"):
+        prompted.Recalibration(1.0, wrong)
+    longer: Any = (0.0, 0.0, 0.0, 0.0, 0.0)
+    with pytest.raises(ValueError, match="four finite free shifts"):
+        prompted.Recalibration(1.0, longer)
+
+
+def test_format_check_refuses_stub_and_live_together(monkeypatch: pytest.MonkeyPatch) -> None:
+    def refuse(*arguments: object) -> clients.StubClient:
+        raise AssertionError("no client may be built")
+
+    monkeypatch.setattr(clients, "DecisionClient", refuse)
+    monkeypatch.setattr(clients, "StubClient", refuse)
+    with pytest.raises(SystemExit):
+        prompted.main(["smoke", "--stub", "--live"])
