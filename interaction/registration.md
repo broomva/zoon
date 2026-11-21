@@ -615,10 +615,11 @@ files differing from the tag, and the registration and step commits.
 
 **Replay and null checks.** Replay is checked by `report`. Replay is
 `kernel.replay` on the log's bytes. Every recorded closed-loop game of `zoon`,
-`alone` and `prompted` must replay from its log to its recorded digest, and for
-`prompted` every probability vector in the log must also equal the recalibrated
-answer recorded in the transcript for that request; if either check fails,
-H3 receives no verdict and H2 is unaffected. The chat arm's games replay from
+`alone` and `prompted` must replay from its log to its recorded digest. For
+`prompted`, the `returned` vector of every intent record must also equal, within
+`1e-12` in every component, `Recalibration.apply` of the used probabilities
+recorded in the transcript for that request. If either check fails, H3 receives
+no verdict and H2 is unaffected. The chat arm's games replay from
 the transcript and a failure makes the chat arm unusable.
 
 The two null-interaction checks on the committed numbers are tests that must

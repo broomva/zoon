@@ -312,7 +312,7 @@ The draft pre-registration fixes the arms, fitting and committed numbers, band t
 measures, thresholds, intervals, streams, prompted and chat rules, controls, stopping rules
 and order of work. Its "Open before registration" list is exhaustive: the decision-model
 cap, chat bound and cap with dated prices; the analysis code and its files and required
-checks; statistical review of the H3 interval; a format check of the chat request with the
+checks; a format check of the chat request with the
 committed renderer; replacement of the path test by tests binding every registered constant
 and number to the code; and power and coverage under the registered rules, computed on
 training groups by a committed script and quoted in the registration. That script must
