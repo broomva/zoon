@@ -116,7 +116,8 @@ held-out group has been read.
 Recall questions are sent unless the model is withdrawn, its version has changed,
 or the chat cap is reached. An arm made unusable by the three-reply rule, or ended
 by the operator during `closed-loop`, is still asked. If the operator ends the arm
-during `recall`, the questions not yet answered are recorded "not asked". `closed-loop` and `recall` complete with the
+during `recall`, answered questions are kept and judged and the questions not yet
+answered are recorded "not asked". `closed-loop` and `recall` complete with the
 chat status recorded and "not asked" for each recall question not sent, and later
 steps proceed. This changes no hypothesis verdict. The chat reply rule is under
 The chat arm.
@@ -444,9 +445,8 @@ These paths do not exist today and are exempt from the existing-path check:
 - `docs/interaction/result.md`
 
 The new run module supplies the steps below. The existing spending script
-`src/zoon/interaction/budget.py` produces both bounds. Chat requests, replay and
-transcripts are implemented and tested. The second sealing step, scoring and
-intervals, run guards, step state and report remain open work. A material-regeneration test must compare registered instructions,
+`src/zoon/interaction/budget.py` produces both bounds. The second sealing step,
+scoring and intervals, run guards, step state and report remain open work. A material-regeneration test must compare registered instructions,
 fixtures and the amount table with their committed bytes; the fit test uses the
 probability tolerance above.
 
@@ -461,13 +461,13 @@ Record the version each response reports. The decision model must report exactly
 its name above. For chat, fix the version to the first response's reported version,
 which must begin with its model name, as in the pilot. Withdrawal means the
 service says the model does not exist on every bounded attempt at a request.
-A step calls the chat client's non-generating model-metadata preflight before
-its first request; a missing model there is a configuration fault, not withdrawal.
+Before generating, check model metadata without generating text; missing metadata
+does not establish withdrawal.
 A success without a non-empty string modelVersion or integer promptTokenCount is
 a transient transport fault and is retried within the bounded attempts, with no
-transcript record. Missing candidatesTokenCount or thoughtsTokenCount means zero
-only when there is no candidate text. Transport, configuration and internal
-consistency interruptions have distinct types.
+transcript record. Missing candidatesTokenCount or thoughtsTokenCount means zero,
+with or without candidate text; a present non-integer count, including a boolean,
+is the same transient fault.
 The outcomes for withdrawal and version change are under Data.
 
 ### Calls made before registration
@@ -487,8 +487,7 @@ four answered the first round with the whole endowment every time, and their
 twentieth-round answers varied between repeats.
 
 `gemini-4-carbon` was chosen as the provider's most capable model among the two
-that reported no thinking tokens in those probes. At the registered settings,
-it later reported some thinking tokens, as recorded below. Its replies to the made-up
+that reported no thinking tokens in those probes. Its replies to the made-up
 histories were seen before it was chosen, and the chat arm's settings and reply
 rule in this file were written after them: the temperature, because the answers
 varied even at temperature 0, and the thinking level, because the service refuses
@@ -499,9 +498,13 @@ Later on 2026-11-21, after the chat renderer was committed, the chat format chec
 was run once at the settings fixed here: 12 calls, the first and twentieth rounds
 of two games' committed made-up requests, three times each. All 12 replies were
 usable whole numbers. Three reported thinking tokens, from 45 to 111, and the
-others none; the output limit of 256 tokens was chosen before this check and was
+others were printed as zero; the output limit of 256 tokens was chosen before
+this check and was
 not changed after it. The exact output is committed in
 [`docs/interaction/format-check-chat.txt`](../docs/interaction/format-check-chat.txt).
+On 2026-11-21 two further calls at the registered settings were made to record
+which usage fields a reply carries; the record is
+[`docs/interaction/reply-shape.txt`](../docs/interaction/reply-shape.txt).
 
 ### The chat arm
 
@@ -510,13 +513,11 @@ line "You are Player n.", the history as rendered for `prompted`, and then:
 
 > How many of your E points do you contribute to the common pool in round r? Answer with one whole number of points and nothing else.
 
-Substitute that seat's endowment for E, seat for n and round for r. The committed
-renderer in `src/zoon/interaction/chat.py` and committed request fixtures in
-`interaction/chat-requests/` fix the request to the
-byte; this text describes them. The instructions already end in `\n`: append
+Substitute that seat's endowment for E, seat for n and round for r.
+The instructions already end in `\n`: append
 one `\n`, then `You are Player n.`, then `\n\n`, then the history, then `\n\n`,
 then the question, with no final newline and no system instruction. The history
-joins rounds with `\n\n` and uses `prompted.round_text` after each `Round r\n`.
+joins rounds with `\n\n`; each round starts with `Round r\n`.
 Use the same empty-history line as `prompted` when there is no earlier round.
 Safety settings are the pilot's second-family client's: `HARM_CATEGORY_HARASSMENT`,
 `HARM_CATEGORY_HATE_SPEECH`, `HARM_CATEGORY_SEXUALLY_EXPLICIT` and
@@ -533,23 +534,24 @@ that section.
 Every seat of every round of every simulated group is its own call. Identical
 requests are NOT reused across decisions. The transcript identifies the game,
 group, round, seat and attempt, and a resumed decision uses its recorded replies.
-Each transcript line also carries the registered commit and mode; the header
-and every entry must be canonical. A line from a different run is refused.
 An incomplete final line, left by a write the system cut short, is not a record;
-it is removed when the transcript is next opened and the decision is asked again.
-The number of removals is reported. Other damage is refused without repair.
-The answers are not deterministic; replay uses the transcript, not fresh calls.
-Game logs bind every decision attempt's digest, including retained unusable replies.
-Whole-transcript replay covers every decision attempt and recall question exactly
-once. The run machinery records `Transcript.digest()`: SHA-256 of all bytes of
-`chat.jsonl`, including the canonical header and final newlines; `replay_transcript`
-checks that digest and every request. Changing text or token counts on any line
-fails replay.
-Every Unusable cause is latched by the session and persisted by the run machinery
-for later steps. Recall is still asked after the three-reply rule, but not after
-withdrawal, a version change or the cap. Recall returns the terminal cause with
-its replies, labels unsent questions "not asked", and retains a version-invalid
-paid reply as "not judged: version", without judging or flagging it.
+it is removed on the next writable opening and the decision is asked again.
+Each removal is recorded with its byte offset, length and SHA-256 digest before
+the line is removed, and the report lists them.
+Read-only opening, including replay and digest computation, refuses an incomplete
+final line and changes no bytes. Other damage is refused without repair.
+Replay requires the recorded whole-transcript SHA-256, the exact line count and
+on-disk entries, rendered decision and recall requests, rounds in order and no
+attempt after an accepted reply; it uses every retained attempt without fresh calls.
+Changing text or token counts on any line fails replay.
+The first cause that makes the arm unusable stands and is never overwritten.
+The run machinery stores the cause member's name.
+Recall is still asked after the three-reply rule, failed replay or an operator stop
+during closed-loop, but not after withdrawal, a version change, the cap or an
+operator stop during recall; answered recall questions are kept and judged.
+Recall reports separately what stopped recall, labels unsent questions "not asked",
+and retains a version-invalid paid reply as "not judged: version", without judging
+or flagging it.
 The accepted points bypass recalibration and the band-to-points step.
 Run closed loop only, with the H3 simulation count. Score against `zoon` by the
 same H3 composite, difference and interval. It changes no verdict.
@@ -563,7 +565,7 @@ responses at the fixed prices. Retain and count unusable chat replies before
 retrying them. As in the pilot, do not send a call if that model's spent tokens'
 cost plus the call's estimate and reservations for calls in flight would exceed
 that model's cap. Spending is above the cap when it is reached; equality is
-allowed. A recorded answer is returned before any cap check.
+allowed.
 Reaching the decision-model cap gives no verdict for both
 hypotheses. Reaching the chat-model cap makes `chat` unusable and changes no
 verdict.

@@ -6,10 +6,8 @@ Its question and declared answers, with an empty history and a made-up later his
 are in [the request files](../../interaction/requests/). These are the materials given
 and the prediction asked for.
 
-The chat arm has [its own request fixtures](../../interaction/chat-requests/).
-The registration records the format checks made on made-up histories and fixes
-separate spending caps. The chat check's output is kept in
-[the format-check record](format-check-chat.txt).
+The chat arm's rules are in [the registration](../../interaction/registration.md),
+and its format check is in [the record](format-check-chat.txt).
 
 The instructions are used under CC BY 4.0: Wang, Hilbe and Zhang, *PNAS* 123(5),
 e2525760123, [doi:10.1073/pnas.2525760123](https://doi.org/10.1073/pnas.2525760123),

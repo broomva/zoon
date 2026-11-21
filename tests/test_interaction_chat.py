@@ -4,8 +4,9 @@ import hashlib
 import json
 import os
 import socket
+import sys
 import traceback
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import asdict, replace
 from decimal import Decimal
 from pathlib import Path
@@ -21,7 +22,7 @@ GROUP = "registered|2-AI|0"
 
 
 @pytest.fixture(autouse=True)
-def offline(monkeypatch: pytest.MonkeyPatch) -> None:
+def offline(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     def forbidden(*args: Any, **kwargs: Any) -> Any:
         raise AssertionError("external access is forbidden")
 
@@ -29,6 +30,24 @@ def offline(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(chat.urllib.request, "urlopen", forbidden)
     monkeypatch.setattr(chat.subprocess, "run", forbidden)
     monkeypatch.setenv("ZOON_VERTEX_PROJECT", "connection-location-sentinel")
+    raised: set[type[chat.Interruption]] = set()
+    previous_trace = sys.gettrace()
+
+    def trace(frame: Any, event: str, arg: Any) -> Any:
+        if frame.f_globals.get("__name__") != chat.__name__:
+            return None
+        if event == "exception":
+            error = cast(BaseException, arg[1])
+            if isinstance(error, chat.Interruption):
+                raised.add(type(error))
+        return trace
+
+    sys.settrace(trace)
+    try:
+        yield
+    finally:
+        sys.settrace(previous_trace)
+    assert chat.Interruption not in raised
 
 
 def response(text: str = "12", **kwargs: Any) -> chat.Response:
@@ -49,7 +68,7 @@ class Replies:
 
 
 def session(tmp_path: Path, client: chat.Client, cap: Decimal = Decimal("1000")) -> chat.Session:
-    return chat.Session(chat.Transcript(tmp_path, BINDING), client, cap)
+    return chat.Session(chat.Transcript(tmp_path, BINDING, read_only=False), client, cap)
 
 
 def view(seat: int = 0) -> kernel.View:
@@ -148,6 +167,10 @@ def payload(**updates: Any) -> dict[str, Any]:
     }
 
 
+def preflight_ok(*args: Any) -> tuple[int, dict[str, Any]]:
+    return 200, {}
+
+
 def fake_client(
     replies: Sequence[tuple[int, dict[str, Any]] | Exception],
 ) -> tuple[chat.VertexClient, list[Any], list[float]]:
@@ -162,11 +185,14 @@ def fake_client(
             raise result
         return result
 
-    return (
-        chat.VertexClient(transport, token=lambda: "fake-bearer", pause=pauses.append),
-        calls,
-        pauses,
+    client = chat.VertexClient(
+        transport,
+        token=lambda: "fake-bearer",
+        pause=pauses.append,
+        preflight_transport=preflight_ok,
     )
+    client.preflight()
+    return client, calls, pauses
 
 
 def test_generate_content_wire_settings_and_thinking_billed_as_output() -> None:
@@ -300,9 +326,9 @@ def test_bad_credentials_and_malformed_response_are_sanitised() -> None:
     def transport(url: str, headers: dict[str, str], body: bytes) -> tuple[int, dict[str, Any]]:
         return 200, payload()
 
-    client = chat.VertexClient(transport, token=fail)
-    with pytest.raises(chat.Interruption, match="credentials unavailable"):
-        client.ask("question")
+    client = chat.VertexClient(transport, token=fail, preflight_transport=preflight_ok)
+    with pytest.raises(chat.ConfigurationInterruption, match="credentials unavailable"):
+        client.preflight()
     for change in (
         {"usageMetadata": {"promptTokenCount": -1}},
         {"usageMetadata": {"thoughtsTokenCount": 1.5}},
@@ -330,7 +356,7 @@ def test_every_seat_round_group_is_a_new_call_even_for_identical_requests(tmp_pa
 
 
 def test_resume_only_requests_missing_decisions(tmp_path: Path) -> None:
-    first = Replies([response("0")] * 5 + [chat.Interruption("transport failure")])
+    first = Replies([response("0")] * 5 + [chat.TransportInterruption("transport failure")])
     run = session(tmp_path, first)
     with pytest.raises(chat.Interruption):
         chat.play(GAMES["2-AI"], run, GROUP)
@@ -437,7 +463,7 @@ def test_transcript_corruption_or_wrong_run_is_refused(tmp_path: Path, mutation:
         lines[-1] = b"not json\n"
     run.transcript.path.write_bytes(b"".join(lines))
     with pytest.raises((chat.GuardRefusal, chat.Interruption)):
-        chat.Transcript(tmp_path, identity)
+        chat.Transcript(tmp_path, identity, read_only=False)
 
 
 @pytest.mark.parametrize(
@@ -470,14 +496,14 @@ def test_invalid_run_identity_is_refused(changes: dict[str, Any]) -> None:
 
 
 def test_nonconsecutive_attempt_or_attempt_after_success_is_refused(tmp_path: Path) -> None:
-    transcript = chat.Transcript(tmp_path, BINDING)
+    transcript = chat.Transcript(tmp_path, BINDING, read_only=False)
     text = chat.request(view())
     with pytest.raises(chat.GuardRefusal, match="consecutive"):
         transcript.append(key(attempt=2), text, response())
     transcript.append(key(), text, response())
     with pytest.raises(chat.GuardRefusal, match="consecutive"):
         transcript.append(key(attempt=2), text, response())
-    other = chat.Transcript(tmp_path / "other", BINDING)
+    other = chat.Transcript(tmp_path / "other", BINDING, read_only=False)
     other.append(key(), text, response("no"))
     with pytest.raises(chat.GuardRefusal, match="consecutive"):
         other.append(key(attempt=2), text + "changed", response())
@@ -542,7 +568,7 @@ def test_real_inflight_reservation_and_duplicate_dispatch_are_refused(tmp_path: 
 
     class Nested:
         def ask(self, text: str) -> chat.Response:
-            with pytest.raises(chat.Interruption, match="already in flight"):
+            with pytest.raises(chat.ConsistencyInterruption, match="already in flight"):
                 run.ask(key(), text)
             with pytest.raises(chat.Unusable) as caught:
                 run.ask(key(1), chat.request(view(1)))
@@ -580,7 +606,9 @@ def test_project_name_cannot_enter_any_written_artifact_or_exception(tmp_path: P
         lambda: clean.transcript.append(key(), secret, response()),
         lambda: clean.transcript.append(key(), "request", response(secret)),
         lambda: clean.transcript.append(key(), "request", response(version=secret)),
-        lambda: chat.Transcript(tmp_path / "identity", chat.RunIdentity(secret, "stub")),
+        lambda: chat.Transcript(
+            tmp_path / "identity", chat.RunIdentity(secret, "stub"), read_only=False
+        ),
     ]
     for field in ("modelVersion", "unused"):
         client, _, _ = fake_client([(200, payload(**{field: secret}))])
@@ -635,13 +663,15 @@ def test_recall_uses_same_client_and_keeps_full_replies_after_unusable_decision(
 @pytest.mark.parametrize("cause", [chat.Cause.WITHDRAWN, chat.Cause.VERSION, chat.Cause.CAP])
 def test_terminal_reasons_skip_recall(tmp_path: Path, cause: chat.Cause) -> None:
     client = Replies([])
-    run = chat.Session(chat.Transcript(tmp_path, BINDING), client, terminal=cause)
+    run = chat.Session(chat.Transcript(tmp_path, BINDING, read_only=False), client, terminal=cause)
     assert all(reply.response is None for reply in chat.recall(run))
     assert not client.requests
 
 
 def test_recall_interruption_resumes_only_missing_questions(tmp_path: Path) -> None:
-    run = session(tmp_path, Replies([response("unknown"), chat.Interruption("transport failure")]))
+    run = session(
+        tmp_path, Replies([response("unknown"), chat.TransportInterruption("transport failure")])
+    )
     with pytest.raises(chat.Interruption):
         chat.recall(run)
     client = Replies([response("unknown")] * 7)
@@ -668,7 +698,12 @@ def test_smoke_defaults_to_stub_and_live_selects_injected_class_without_construc
     chat.main(["smoke"])
     assert capsys.readouterr().out.count("[smoke ") == 12
     selected: list[object] = []
-    stand_in = object()
+
+    class StandIn:
+        def preflight(self) -> None:
+            selected.append("preflight")
+
+    stand_in = StandIn()
 
     def constructor(transport: chat.HTTP) -> object:
         assert transport is chat.post
@@ -676,13 +711,14 @@ def test_smoke_defaults_to_stub_and_live_selects_injected_class_without_construc
         return stand_in
 
     def smoke(client: object) -> list[str]:
+        assert selected == ["live", "preflight"]
         assert client is stand_in
         return ["selected"]
 
     monkeypatch.setattr(chat, "VertexClient", constructor)
     monkeypatch.setattr(chat, "smoke", smoke)
     chat.main(["smoke", "--live"])
-    assert selected == ["live"] and capsys.readouterr().out == "selected\n"
+    assert selected == ["live", "preflight"] and capsys.readouterr().out == "selected\n"
     with pytest.raises(SystemExit):
         chat.main(["smoke", "--live", "--stub"])
 
@@ -716,7 +752,7 @@ def test_invalid_transport_attempt_count_is_refused(monkeypatch: pytest.MonkeyPa
 
 def test_unexpected_client_failure_is_sanitised_and_resumable(tmp_path: Path) -> None:
     run = session(tmp_path, Replies([RuntimeError(os.environ["ZOON_VERTEX_PROJECT"])]))
-    with pytest.raises(chat.Interruption, match="client failed"):
+    with pytest.raises(chat.ConsistencyInterruption, match="client failed"):
         run.decision(view(), GROUP)
     assert not run.transcript.entries and not run.pending and run.reserved == 0
 
@@ -726,7 +762,7 @@ def test_every_game_replays_with_exact_transfers(tmp_path: Path, cell: str) -> N
     game = GAMES[cell]
     run = session(tmp_path, chat.StubClient())
     result = chat.play(game, run, f"registered|{cell}|0")
-    restored = chat.Transcript(tmp_path, BINDING)
+    restored = chat.Transcript(tmp_path, BINDING, read_only=False)
     assert chat.replay(result.bytes, restored).bytes == result.bytes
     records = [json.loads(line) for line in result.bytes.splitlines()]
     transfers = [record for record in records if record["kind"] == "transfer"]
@@ -767,7 +803,7 @@ def test_default_cap_is_computed_by_the_budget_program(
     from zoon.interaction import budget
 
     monkeypatch.setattr(budget, "chat_cap", lambda: Decimal("9"))
-    run = chat.Session(chat.Transcript(tmp_path, BINDING), chat.StubClient())
+    run = chat.Session(chat.Transcript(tmp_path, BINDING, read_only=False), chat.StubClient())
     assert run.cap == 9
 
 

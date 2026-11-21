@@ -20,7 +20,7 @@ design's first hypothesis: its notes, its pre-registration, its analysis code an
 | First interaction test | Data chosen and the held-out groups sealed: repeated public goods games in pairs and groups of four, in [docs/interaction/task-selection.md](docs/interaction/task-selection.md). A measurement on training groups, in [docs/interaction/measure.md](docs/interaction/measure.md), finds that what the others in a group did predicts a person's next move well enough to test. The design of the test is in [docs/interaction/design.md](docs/interaction/design.md). Nothing is registered yet |
 | Candidate persons | Compared on training groups, with the selected coded arms, closed-loop scores and power in [docs/interaction/candidates.md](docs/interaction/candidates.md) |
 | Prompted requests | Instructions, made-up requests and the proposed spending bound in [docs/interaction/prompted.md](docs/interaction/prompted.md) |
-| Interaction pre-registration | DRAFT rules for H2 and H3 in [interaction/registration.md](interaction/registration.md); chat requests, transcripts and replay are implemented and tested; run machinery and power and coverage under the registered rules remain open |
+| Interaction pre-registration | DRAFT rules for H2 and H3 in [interaction/registration.md](interaction/registration.md); chat requests, transcripts and replay are implemented and tested; the second seal, scoring and intervals, fitted files, run guards and step state, report, and power and coverage under the registered rules remain open |
 | Kernel and social simulation | Not started |
 | Licence | [Apache-2.0](LICENSE) |
 

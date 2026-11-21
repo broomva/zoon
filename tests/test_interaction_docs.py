@@ -43,7 +43,7 @@ def test_measure_paste_has_heading_and_power_label() -> None:
 
 
 def test_every_quoted_number_is_in_the_pasted_output() -> None:
-    """A figure with three or more decimals in the prose must have been printed by the run."""
+    "A figure with three or more decimals in the prose must have been printed by the run."
     prose, paste = _split()
     printed = {number.lstrip("+-") for number in NUMBER.findall(paste)}
     quoted = {number.lstrip("+-") for number in NUMBER.findall(prose)}
@@ -332,7 +332,8 @@ def test_prompted_table_and_quoted_figures_match_the_paste() -> None:
     # It is exempt from the digit rule, so it is pinned whole.
     citation = (
         "The instructions are used under CC BY 4.0: Wang, Hilbe and Zhang, *PNAS* 123(5),\n"
-        "e2525760123, [doi:10.1073/pnas.2525760123](https://doi.org/10.1073/pnas.2525760123),\n"
+        "e2525760123, [doi:10.1073/pnas.2525760123](https://doi.org/10.107"
+        "3/pnas.2525760123),\n"
         "supplementary appendix, sections 5B and 5D. The other games use substituted "
         "parameters.\n\n"
     )
@@ -522,6 +523,23 @@ def test_registered_format_check_counts_equal_committed_record() -> None:
     assert paragraph[3] == {3: "Three"}[len(nonzero)]
     assert (int(paragraph[4]), int(paragraph[5])) == (min(nonzero), max(nonzero))
     assert len(lines) == len(chat.smoke(chat.StubClient()))
+    shape_raw = (NOTE.parent / "reply-shape.txt").read_bytes()
+    assert (
+        hashlib.sha256(shape_raw).hexdigest()
+        == "b1d5ea178b6bbc7de8cdfcb824eda64562542c74ade7390c225641ea11bbeca3"
+    )
+    shape_count = len(re.findall(r"^reply (?:with|without) thinking:$", shape_raw.decode(), re.M))
+    sentence = re.search(
+        "On (\\d{4}-\\d{2}-\\d{2}) (\\w+) further calls at the registered sett"
+        "ings were made to record "
+        r"which usage fields a reply carries; the record is "
+        r"\[`docs/interaction/reply-shape.txt`\]\(../docs/interaction/reply-shape.txt\)\.",
+        normal,
+    )
+    assert sentence and sentence[1] == "2026-11-21"
+    assert sentence[2] == {2: "two"}[shape_count]
+    assert "others were printed as zero" in normal
+
     assert (
         "[`docs/interaction/format-check-chat.txt`](../docs/interaction/format-check-chat.txt)"
         in normal
@@ -529,20 +547,33 @@ def test_registered_format_check_counts_equal_committed_record() -> None:
 
 
 def test_prompted_prose_is_scope_and_record_only() -> None:
-    prose, _ = prompted_note()
-    # Pin the scope paragraphs so settings cannot silently migrate back to prose,
-    # including number words that the generic digit check cannot catch.
-    start = prose.index("The spending program reads")
-    end = prose.index("| Call |", start)
-    # Nothing may be inserted between the attribution and the scope paragraph.
-    assert prose[:start].endswith(
-        "supplementary appendix, sections 5B and 5D. "
-        "The other games use substituted parameters.\n\n"
-    )
-    assert prose[start:end] == (
+    text = (NOTE.parent / "prompted.md").read_text()
+    assert len(re.findall(r"\n```\n.*?\n```", text, re.S)) == 1
+    prose = re.sub(r"\n```\n.*?\n```", "", text, flags=re.S)
+    prose = "\n".join(line for line in prose.splitlines() if not line.startswith("|"))
+    assert prose == (
+        "# The prompted arm: requests and spending bound\n"
+        "\n"
+        "This is preparation for the prompted prediction arm of the draft interaction design.\n"
+        "The model's instructions are in [the instruction "
+        "files](../../interaction/instructions/).\n"
+        "Its question and declared answers, with an empty history and a made-up later history,\n"
+        "are in [the request files](../../interaction/requests/). These are the materials given\n"
+        "and the prediction asked for.\n"
+        "\n"
+        "The chat arm's rules are in [the registration](../../interaction/registration.md),\n"
+        "and its format check is in [the record](format-check-chat.txt).\n"
+        "\n"
+        "The instructions are used under CC BY 4.0: Wang, Hilbe and Zhang, *PNAS* 123(5),\n"
+        "e2525760123, [doi:10.1073/pnas.2525760123](https://doi.org/10.1073/pnas.2525760123),\n"
+        "supplementary appendix, sections 5B and 5D. The other games use substituted parameters.\n"
+        "\n"
         "The spending program reads training groups and held-out counts only. Its settings,\n"
         "assumptions and output are recorded below. Vertex price confirmation remains due\n"
-        "on registration day. The format checks are outside the bound.\n\n"
+        "on registration day. The format checks are outside the bound.\n"
+        "\n"
+        "\n"
+        "Output of `python -m zoon.interaction.budget`:\n"
     )
 
 
@@ -551,7 +582,8 @@ def test_draft_status_does_not_reopen_completed_chat_work() -> None:
     readme = (root / "README.md").read_text()
     assert (
         "chat requests, transcripts and replay are implemented and tested; "
-        "run machinery and power and coverage under the registered rules remain open" in readme
+        "the second seal, scoring and intervals, fitted files, run guards and step state, "
+        "report, and power and coverage under the registered rules remain open" in readme
     )
     design = " ".join((NOTE.parent / "design.md").read_text().split())
     assert (
@@ -559,3 +591,102 @@ def test_draft_status_does_not_reopen_completed_chat_work() -> None:
         in design
     )
     assert "The chat request check with the committed renderer is DONE;" in design
+    assert (
+        "The registration fixes separate decision and chat caps from that script's output."
+        in design
+    )
+
+
+def test_registration_chat_contract_has_only_the_registered_rules() -> None:
+    from zoon.interaction import chat
+
+    text = (NOTE.parents[2] / "interaction" / "registration.md").read_text()
+    section = text.split("### The chat arm\n\n", 1)[1].split("\n## Spending", 1)[0]
+    assert section == (
+        "It plays one seat at a time. Its request is the participant instructions, the\n"
+        'line "You are Player n.", the history as rendered for `prompted`, and then:\n'
+        "\n"
+        "> How many of your E points do you contribute to the common pool in round "
+        "r? Answer with one whole number of points and nothing else.\n"
+        "\n"
+        "Substitute that seat's endowment for E, seat for n and round for r.\n"
+        "The instructions already end in `\\n`: append\n"
+        "one `\\n`, then `You are Player n.`, then `\\n\\n`, then the history, then `\\n\\n`,\n"
+        "then the question, with no final newline and no system instruction. The history\n"
+        "joins rounds with `\\n\\n`; each round starts with `Round r\\n`.\n"
+        "Use the same empty-history line as `prompted` when there is no earlier round.\n"
+        "Safety settings are the pilot's second-family client's: `HARM_CATEGORY_HARASSMENT`,\n"
+        "`HARM_CATEGORY_HATE_SPEECH`, `HARM_CATEGORY_SEXUALLY_EXPLICIT` and\n"
+        "`HARM_CATEGORY_DANGEROUS_CONTENT` each have threshold `OFF`. The reply is the\n"
+        "concatenated text parts of the first candidate, in their returned order.\n"
+        "A candidate with text and no finish reason is read as its text.\n"
+        "\n"
+        "After trimming white space (space, tab, line feed and carriage return "
+        "only), the reply must be a whole number from zero to E.\n"
+        "Fixed here: accept only a non-empty run of ASCII digits, with no sign, decimal\n"
+        "point or other text; leading zeroes are allowed. Retry unusable replies under\n"
+        "the three-reply rule in Data; transport failures and arm-only outcomes follow\n"
+        "that section.\n"
+        "\n"
+        "Every seat of every round of every simulated group is its own call. Identical\n"
+        "requests are NOT reused across decisions. The transcript identifies the game,\n"
+        "group, round, seat and attempt, and a resumed decision uses its recorded replies.\n"
+        "An incomplete final line, left by a write the system cut short, is not a record;\n"
+        "it is removed on the next writable opening and the decision is asked again.\n"
+        "Each removal is recorded with its byte offset, length and SHA-256 digest before\n"
+        "the line is removed, and the report lists them.\n"
+        "Read-only opening, including replay and digest computation, refuses an incomplete\n"
+        "final line and changes no bytes. Other damage is refused without repair.\n"
+        "Replay requires the recorded whole-transcript SHA-256, the exact line count and\n"
+        "on-disk entries, rendered decision and recall requests, rounds in order and no\n"
+        "attempt after an accepted reply; it uses every retained attempt without fresh calls.\n"
+        "Changing text or token counts on any line fails replay.\n"
+        "The first cause that makes the arm unusable stands and is never overwritten.\n"
+        "The run machinery stores the cause member's name.\n"
+        "Recall is still asked after the three-reply rule, failed replay or an operator stop\n"
+        "during closed-loop, but not after withdrawal, a version change, the cap or an\n"
+        "operator stop during recall; answered recall questions are kept and judged.\n"
+        'Recall reports separately what stopped recall, labels unsent questions "not asked",\n'
+        'and retains a version-invalid paid reply as "not judged: version", without judging\n'
+        "or flagging it.\n"
+        "The accepted points bypass recalibration and the band-to-points step.\n"
+        "Run closed loop only, with the H3 simulation count. Score against `zoon` by the\n"
+        "same H3 composite, difference and interval. It changes no verdict.\n"
+    )
+    reply_rules = (
+        "Before generating," + text.split("Before generating,", 1)[1].split("\nThe outcomes", 1)[0]
+    )
+    assert reply_rules == (
+        "Before generating, check model metadata without generating text; missing metadata\n"
+        "does not establish withdrawal.\n"
+        "A success without a non-empty string modelVersion or integer promptTokenCount is\n"
+        "a transient transport fault and is retried within the bounded attempts, with no\n"
+        "transcript record. Missing candidatesTokenCount or thoughtsTokenCount means zero,\n"
+        "with or without candidate text; a present non-integer count, including a boolean,\n"
+        "is the same transient fault."
+    )
+    normal = " ".join(text.split())
+    assert "Spending is above the cap when it is reached; equality is allowed." in normal
+    assert (
+        "answered questions are kept and judged and the questions not yet "
+        'answered are recorded "not asked".'
+    ) in normal
+    assert {c.name for c in chat.Cause} == {
+        "REPLIES",
+        "WITHDRAWN",
+        "VERSION",
+        "CAP",
+        "REPLAY",
+        "OPERATOR_CLOSED_LOOP",
+        "OPERATOR_RECALL",
+    }
+    assert "run machinery stores the member's name" in (chat.Session.__doc__ or "")
+    assert chat.points(" \t\n\r00036\r", 36) == 36
+    assert all(chat.points(t, 36) is None for t in ("+1", "1.", "37", "\x0c1", "1\xa0"))
+    assert chat.request(kernel_view_for_docs()).count("How many of your") == 1
+
+
+def test_chat_probe_history_is_not_a_claim_about_registered_thinking() -> None:
+    text = " ".join((NOTE.parents[2] / "interaction" / "registration.md").read_text().split())
+    assert "that reported no thinking tokens in those probes." in text
+    assert "no thinking tokens at any setting" not in text
