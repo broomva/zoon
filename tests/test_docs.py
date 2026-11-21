@@ -96,6 +96,8 @@ def check_interaction_registration(root: Path, document: Path) -> None:
 
     existing = re.findall(r"^\| `([^`]+)` \| Existing today \|", text, flags=re.MULTILINE)
     assert existing, "the file table must distinguish existing paths"
+    if document.name == "registration.md" and root == NOTES.parent.parent:
+        assert {"interaction/fitted.json", "interaction/amounts.json"} <= set(existing)
     for path in existing:
         assert path not in exempt, f"existing path is exempt: {path}"
         candidate = root / path

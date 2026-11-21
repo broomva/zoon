@@ -427,8 +427,12 @@ lists the report's output path outside the registered inputs.
 | `interaction/instructions/` | Existing today | Eight rendered instructions |
 | `interaction/instructions/sha256.json` | Existing today | Instruction digests |
 | `interaction/requests/` | Existing today | Rendered request fixtures |
-| `interaction/fitted.json` | Added by the analysis code | B and twin numbers, from the committed fitting procedure |
-| `interaction/amounts.json` | Added by the analysis code | The training band-to-points table |
+| `interaction/fitted.json` | Existing today | B and twin numbers, from the committed fitting procedure |
+| `interaction/amounts.json` | Existing today | The training band-to-points table |
+| `src/zoon/interaction/score.py` | Existing today | Registered scores, intervals and verdicts |
+| `src/zoon/interaction/registered.py` | Existing today | Committed material readers and regeneration |
+| `src/zoon/interaction/power.py` | Existing today | Training power and coverage calculation |
+| `docs/interaction/power.md` | Existing today | Power assumptions and one recorded run |
 | `src/zoon/interaction/run.py` | Added by the analysis code | The run steps |
 | `src/zoon/interaction/chat.py` | Added by the analysis code | The chat request renderer |
 | `docs/interaction/result.md` | Added by the analysis code | The report, outside the registered directory |
@@ -438,8 +442,6 @@ lists the report's output path outside the registered inputs.
 
 These paths do not exist today and are exempt from the existing-path check:
 
-- `interaction/fitted.json`
-- `interaction/amounts.json`
 - `src/zoon/interaction/run.py`
 - `src/zoon/interaction/chat.py`
 - `interaction/chat-requests/`
