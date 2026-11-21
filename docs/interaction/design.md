@@ -111,7 +111,11 @@ candidate and the `alone` arm is the best twin, each chosen by the same rule, so
 ablation has had the same search. The selection in `candidates.md` chose B and B twin.
 The winner's own twin is therefore `alone` here; its separately reported comparisons repeat the gating ones. The
 registered primary fits and amount table are committed before registration and are not
-refitted by the run; the registration specifies the refit test.
+refitted by the run. The refit test requires training probabilities to agree within
+`1e-3` in the locked environment of `uv.lock`; it is outside the run guard and its
+failure blocks registration, not a registered run. Reordering the groups moves a
+predicted probability by up to about 3e-4; `candidates.md` reports the corresponding
+movement in fitted numbers.
 
 The rule, in full, applied once to the candidates and once to the twins:
 
@@ -205,9 +209,16 @@ The pre-registration fixes these rules, with the files committed:
 ## Measures
 
 - **H2.** The mean log-likelihood of each held-out person's band in each round. Every arm's
-  probabilities are floored and divided by their sum under the arm's registered rule.
-  Differences are paired by decision, averaged over decisions and resampled by group within each game. The
-  registration fixes the floor before and after prompted recalibration.
+  five probabilities are all floored at 0.005 and divided by their sum before the
+  logarithm. This is half the decision model's reporting step: no arm is scored more
+  finely than the coarsest arm reports. The used decision-model probabilities are
+  also floored at 0.005 and divided by their sum before recalibration. This common
+  scoring floor applies only to H2; closed-loop draws keep `person.FLOOR` for coded
+  arms and the recalibrated probabilities for `prompted`, as the kernel does. The
+  report counts decisions whose chosen-band probability the floor raised for each
+  arm and gives the two differences rescored with `person.FLOOR` for the coded arms,
+  changing no verdict. Differences are paired by decision, averaged over decisions
+  and resampled by group within each game.
 - **H3.** Each held-out human group is scored against the simulated groups of its game, one
   summary at a time, with the continuous ranked probability score in the form that does not
   depend on how many groups were simulated. The measure is the mean over these summaries,
@@ -241,9 +252,12 @@ The pre-registration fixes these rules, with the files committed:
   a group whose richer members give a smaller share from its reverse. `candidates.md` now
   reports training effects and power for all five and their mean; the registration quotes
   the chosen arms' power. The measure is not changed afterward, whatever the estimate.
-- **Smallest differences that count.** The registration fixes the thresholds and endpoint
-  rules for both hypotheses. They are thresholds of convenience, not claims about what size
-  matters.
+- **Smallest differences that count.** H2 requires 0.0052 nats per decision, a quarter
+  of the training estimate 0.0209 under the common scoring floor, with interval
+  0.0133 to 0.0281 under the registered interval rule on out-of-fold training scores.
+  This estimate is not printed in `candidates.md`, which uses `person.FLOOR` and
+  gives 0.0253. H3's threshold stays 0.0031. The registration fixes the endpoint
+  rules. These are thresholds of convenience, not claims about what size matters.
 
 ## Controls
 
@@ -301,7 +315,10 @@ cap, chat bound and cap with dated prices; the analysis code and its files and r
 checks; statistical review of the H3 interval; a format check of the chat request with the
 committed renderer; replacement of the path test by tests binding every registered constant
 and number to the code; and power and coverage under the registered rules, computed on
-training groups by a committed script and quoted in the registration.
+training groups by a committed script and quoted in the registration. That script must
+reproduce the H2 training estimate 0.0209 under the common scoring floor. The
+decision-model request format check is DONE; the registration's "Calls made before
+this file" records it, satisfying the order below.
 
 ## What this changes in the main design
 
@@ -339,7 +356,9 @@ Made in the same reviewed change as the pre-registration. Each line names the se
 1. This note, reviewed.
 2. The comparison of the candidates on training groups, and the power of the H3 measure.
 3. Rendered instructions, a format check of the prompted requests on made-up histories, the
-   table from bands to points, and the spending bound.
+   table from bands to points, and the spending bound. The decision-model format
+   check is DONE, as recorded in the registration's "Calls made before this file".
+   The chat request check with the committed renderer remains open.
 4. The pre-registration and the analysis code, reviewed, with the amendments to the main
    design.
 5. Registration by tag; then the run; then the result, whatever it is.

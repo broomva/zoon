@@ -89,6 +89,11 @@ def check_interaction_registration(root: Path, document: Path) -> None:
         assert candidate.resolve().is_relative_to(root.resolve()), path
         assert not candidate.exists(), f"exempt path exists: {path}"
 
+    added = set(
+        re.findall(r"^\| `([^`]+)` \| Added by the analysis code \|", text, flags=re.MULTILINE)
+    )
+    assert exempt == added, "every exempt path must have an added-file row, and conversely"
+
     existing = re.findall(r"^\| `([^`]+)` \| Existing today \|", text, flags=re.MULTILINE)
     assert existing, "the file table must distinguish existing paths"
     for path in existing:
@@ -134,7 +139,15 @@ def check_interaction_registration(root: Path, document: Path) -> None:
 
 
 @pytest.mark.parametrize(
-    "mutation", ["existing exemption", "exemption on disk", "missing existing", "escape", "heading"]
+    "mutation",
+    [
+        "existing exemption",
+        "exemption on disk",
+        "missing existing",
+        "escape",
+        "heading",
+        "exemption without row",
+    ],
 )
 def test_registration_path_check_rejects_mutations(tmp_path: Path, mutation: str) -> None:
     root = tmp_path / "repository"
@@ -149,6 +162,7 @@ def test_registration_path_check_rejects_mutations(tmp_path: Path, mutation: str
 | File | State | Holds |
 |---|---|---|
 | `interaction/registration.md` | Existing today | This file |
+| `interaction/fitted.json` | Added by the analysis code | Fitted numbers |
 
 ### Paths to be added by the analysis code
 
@@ -160,6 +174,8 @@ These paths do not exist today and are exempt from the existing-path check:
     check_interaction_registration(root, document)
     if mutation == "existing exemption":
         text += "- `README.md`\n"
+    elif mutation == "exemption without row":
+        text += "- `interaction/unlisted.json`\n"
     elif mutation == "exemption on disk":
         (folder / "fitted.json").write_text("{}\n")
     elif mutation == "missing existing":

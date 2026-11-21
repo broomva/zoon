@@ -1,5 +1,7 @@
 """The interaction notes quote only numbers that their pasted output contains."""
 
+import ast
+import inspect
 import re
 from pathlib import Path
 
@@ -364,3 +366,52 @@ def test_prompted_full_paste_matches_training_only_bound() -> None:
     require_training()
     _, paste = prompted_note()
     assert paste == "\n".join(budget.report(data.load(), data.held_out_counts()))
+
+
+def test_registration_constants_match_current_code() -> None:
+    from zoon.interaction import person, prompted, split
+    from zoon.pilot import clients
+
+    text = (NOTE.parents[2] / "interaction" / "registration.md").read_text()
+    constants = {
+        "prompted.PROMPTED_FLOOR": prompted.PROMPTED_FLOOR,
+        "SUBSAMPLE_COUNT": prompted.SUBSAMPLE_COUNT,
+        "SUBSAMPLE_SALT": prompted.SUBSAMPLE_SALT,
+        "PENALTY": prompted.PENALTY,
+        "GRADIENT_LIMIT": prompted.GRADIENT_LIMIT,
+        "POLISH_STEPS": prompted.POLISH_STEPS,
+        "person.FLOOR": person.FLOOR,
+        "person.RIDGE": person.RIDGE,
+        "split.SALT": split.SALT,
+    }
+    for name, expected in constants.items():
+        quoted = re.findall(rf"`{re.escape(name)} = ([^`]+)`", text)
+        assert quoted, name
+        assert all(ast.literal_eval(value) == expected for value in quoted), name
+
+    seeds = re.findall(r"default_rng\((\d+)\)|Fixed here: seed (\d+);", text)
+    assert len(seeds) == 3
+    assert all(int(first or second) == measure.SEED for first, second in seeds)
+
+    normal = " ".join(text.split())
+    retry = re.search(
+        r"For both models, a request has at most (\d+) attempts, "
+        r"with pauses of ([\d, ]+) and (\d+) seconds between failed attempts",
+        normal,
+    )
+    assert retry
+    attempts = int(retry[1])
+    pauses = [int(value.strip()) for value in retry[2].split(",")] + [int(retry[3])]
+    assert attempts == inspect.signature(clients.retry).parameters["attempts"].default
+    observed: list[float] = []
+    calls = 0
+
+    def fail() -> clients.Response:
+        nonlocal calls
+        calls += 1
+        raise clients.TransientError
+
+    with pytest.raises(clients.StepFailure):
+        clients.retry(fail, pause=observed.append)
+    assert calls == attempts
+    assert observed == pauses

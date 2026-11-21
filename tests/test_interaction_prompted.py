@@ -366,6 +366,34 @@ def test_agent_floors_model_zeros_before_recalibration() -> None:
     )
 
 
+def test_floor_uses_probabilities_after_dividing_the_returned_sum() -> None:
+    view = kernel.View(GAMES["2-FE"], 0, ())
+    decision = prompted.request(view)
+    returned = np.array([0.0, 0.12, 0.24, 0.24, 0.36])
+    assert returned.sum() == pytest.approx(0.96)
+    used = returned / returned.sum()
+    response = clients.Response(
+        dict(zip(prompted.ANSWERS, used, strict=True)),
+        float(returned.sum()),
+        "",
+        prices.DECISION.model,
+        5,
+        1,
+        dict(zip(prompted.ANSWERS, returned, strict=True)),
+    )
+    client = clients.StubClient("decision", {clients.key(decision): response})
+    floored_used = np.maximum(used, prompted.PROMPTED_FLOOR)
+    expected = floored_used / floored_used.sum()
+    floored_returned = np.maximum(returned, prompted.PROMPTED_FLOOR)
+    wrong = floored_returned / floored_returned.sum()
+    for calibration in (prompted.Recalibration(), prompted.Recalibration(0.7, (0.1, -0.2, 0.3, 0))):
+        actual = prompted.Prompted(client, calibration)(view)
+        correct = softmax(calibration.beta * np.log(expected) + calibration.shifts)
+        incorrect = softmax(calibration.beta * np.log(wrong) + calibration.shifts)
+        assert actual == pytest.approx(correct, abs=1e-15)
+        assert not np.allclose(actual, incorrect, atol=1e-8, rtol=0)
+
+
 def test_subsample_largest_remainder(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(prompted, "SUBSAMPLE_COUNT", 511)
     groups = [

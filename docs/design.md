@@ -14,6 +14,14 @@ been reviewed by people outside the project. The pilot and the interaction kerne
 training comparisons are built; the registered interaction run is not. The first interaction
 test starts on the pilot's registered verdict and uses no judge, so it does not depend on
 which reading of the pilot is taken. `interaction/registration.md` fixes its draft protocol.
+H2 scores all arms with the same 0.005 floor before the logarithm, followed by division
+by the sum, and requires 0.0052 nats per decision; H3's threshold stays 0.0031.
+The decision-model arm also uses the 0.005 floor before recalibration. Closed-loop
+draws keep the committed kernel's probability rules. The refit check uses a
+probability tolerance of `1e-3` in the locked environment of `uv.lock`; its failure
+blocks registration, not a registered run, and it is outside the run guard.
+Reordering the training groups moves a predicted probability by up to about 3e-4;
+`docs/interaction/candidates.md` reports the corresponding fitted-number movement.
 Reversal cost: high for three decisions the pilot commits to, which are one-way doors: the
 language, the model boundary and the licence. Publishing becomes a one-way door at the first
 public commit. The general kernel and log schema remain provisional beyond the first

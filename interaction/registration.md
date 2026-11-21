@@ -3,7 +3,8 @@
 **Status: DRAFT.** It becomes registered when the maintainer creates the tag
 `registered-interaction` on the merged commit holding this file, the analysis code and
 all registered files below. The pilot's tag `registered` does not move.
-No model has been called for this test. No held-out group's play has been analysed.
+Format and model-selection calls have been made, as recorded under Models.
+No participant record has been sent to a model and no held-out group has been read.
 
 This file fixes what [the design note](../docs/interaction/design.md) left open.
 Where the two differ, this file governs. Rules for analysis code not yet present are
@@ -19,9 +20,9 @@ requirements for registration, not descriptions of an implemented run.
 
 **H2 and H3 are judged separately.** Each has one verdict: "passed", "failed" or
 "no verdict". For each hypothesis, both comparisons must pass its rule below.
-A comparison that was computed and does not meet the rule fails the hypothesis;
-a comparison that could not be computed gives no verdict. The completion and
-run-ending rules under Data govern whether a hypothesis can be judged.
+If both comparisons were computed and either does not meet the rule, the hypothesis
+is failed; if a comparison could not be computed, there is no verdict. The
+completion and run-ending rules under Data govern whether a hypothesis can be judged.
 The `chat` arm decides nothing.
 
 **What a pass means.** H2 shows better next-move prediction by this law using the
@@ -57,9 +58,9 @@ The first session, first 20 rounds, of the eight linear public goods games in
 Hilbe and Zhang, under CC BY 4.0, pinned in `interaction/data-manifest.json`.
 Second sessions, the threshold game and questionnaire answers are not read.
 
-**Split.** `src/zoon/interaction/split.py` fixes salt
-`zoon-interaction-split-v1`. Within each game it ranks whole groups by the salted
-hash of their raw identifier and holds out the first two fifths, rounded up.
+**Split.** `src/zoon/interaction/split.py` fixes
+`split.SALT = "zoon-interaction-split-v1"`. Within each game it ranks whole groups
+by the salted hash of their raw identifier and holds out the first two fifths, rounded up.
 Groups are never divided. The split table in task-selection.md gives 210 training
 groups and 143 held-out groups. The latter comprise 111 pairs and 32 groups of
 four, hence 7,000 decisions, as counted in the design note's Cost section.
@@ -72,7 +73,9 @@ counts are through `zoon.interaction.data.held_out_counts()`.
 
 **When a comparison can be judged.** A hypothesis is judged only when both of its
 comparisons have been computed on all 143 held-out groups with every registered
-decision-model request answered. If `prompted.fit` raises on the 512 recorded
+decision-model request answered. If both comparisons were computed and either does
+not meet the rule, the hypothesis is failed; if a comparison could not be computed,
+there is no verdict. If `prompted.fit` raises on the 512 recorded
 answers, or a step cannot be completed without a change that is not a permitted
 repair, both hypotheses receive no verdict and the report says why.
 
@@ -85,14 +88,30 @@ condition for which the sealing code in `src/zoon/interaction/data.py` raises
 not a finite whole number from zero to the seat's endowment, a seat does not have
 20 rounds, or a four-player group does not have exactly four seats by 20 rounds.
 
+For both models, a request has at most 4 attempts, with pauses of 1, 2 and 4
+seconds between failed attempts, as in `src/zoon/pilot/clients.py`, function `retry`.
+The analysis code must use the same counts and pauses.
+
 A chat request that fails in transport after the bounded tries interrupts the
 step and is resumed; it does not count toward the three attempts. An unusable
 reply is a recorded response whose text fails the reply rule, or is empty or
 blocked. Three unusable replies for one decision, the model's withdrawal, a
-version change, or reaching the chat cap make `chat` unusable, with no scores.
-`closed-loop` and `recall` then complete, recording that status and "not asked"
-for each recall question not sent, and later steps proceed. This changes no
-hypothesis verdict. The chat reply rule is under The chat arm.
+version change, reaching the chat cap, a failed replay of a chat game, or a first
+reported version that does not begin with the model name make `chat` unusable,
+with no scores.
+
+If chat requests alone keep `closed-loop` or `recall` from completing, the operator
+may end the chat arm with a recorded reason before `held-out` begins. `chat` is
+then unusable, the step completes, the report prints the reason, and no verdict
+changes. This is the only operator decision the run allows, and it cannot be
+taken once `held-out` has started.
+
+Recall questions are sent unless the model is withdrawn, its version has changed,
+or the chat cap is reached. An arm made unusable by the three-reply rule or the
+operator's decision is still asked. `closed-loop` and `recall` complete with the
+chat status recorded and "not asked" for each recall question not sent, and later
+steps proceed. This changes no hypothesis verdict. The chat reply rule is under
+The chat arm.
 
 A non-finite probability, score or summary where one is defined is a fault that
 interrupts the step; it is never skipped or averaged around. The only undefined
@@ -113,17 +132,23 @@ decisions count, including the first round. The difference is the mean over
 decisions of `zoon` minus the other arm. A group of four carries twice as many
 decisions as a pair.
 
-**Probabilities.** For `prompted`, the used probabilities are floored at
-`prompted.PROMPTED_FLOOR = 0.005`, half the service's reporting step, and divided
-by their sum before recalibration; after recalibration they are floored at
-`person.FLOOR = 1e-9` and divided by their sum before the logarithm. The coded
-arms use `person.FLOOR` and divide by their sum before the logarithm. Report the
-number of held-out decisions whose chosen band the model returned as 0.00.
+**Probabilities.** Before the logarithm, every arm's five probabilities are
+floored at `prompted.PROMPTED_FLOOR = 0.005` and divided by their sum. This is half
+the decision model's reporting step; no arm is scored more finely than the
+coarsest arm reports. In addition, `prompted`'s used probabilities, after dividing
+the returned probabilities by their sum, are floored at 0.005 and divided by their
+sum before recalibration, as the committed code does.
+
+This common floor is a rule of the H2 score only. In the closed loop the coded
+arms draw from their probabilities with `person.FLOOR = 1e-9`, and `prompted`
+from its recalibrated probabilities, as the committed kernel does. For each arm,
+report the number of held-out decisions in which the floor raised the chosen
+band's probability. Beside the verdict and changing nothing, report the two H2
+differences rescored with `person.FLOOR` for the coded arms.
 
 **Interval.** Games are in `sorted(GAMES)` order; within a game, held-out groups
 are in order of their group index. Let `n_g` be the number of held-out groups in
-game g and `R = 10_000`. Labels are names only: a fresh generator is made for
-each of H2 and H3 as shown, without using the labels to seed it.
+game g and `R = 10_000`. A fresh generator is made for each of H2 and H3 as shown.
 
 ```python
 rng = numpy.random.default_rng(20261120)
@@ -144,12 +169,15 @@ game's mean unbiased; drawing `n_g` understates it by the factor
 `(n_g - 1) / n_g`, which matters in the games with ten or eleven groups.
 
 **Pass rule.** Against `alone` and against `prompted` separately, the mean difference
-must be at least 0.0063 nats per decision and the lower interval end must be above
-zero. Exactly 0.0063 passes the first condition; exactly zero fails the second.
-The threshold is fixed here: a quarter of the training estimate 0.0253 in
-[candidates.md](../docs/interaction/candidates.md#coded-arm-gains), rounded to
-four decimal places. It is a threshold of convenience, not a claim about what
-size matters.
+must be at least 0.0052 nats per decision and the lower interval end must be above
+zero. Exactly 0.0052 passes the first condition; exactly zero fails the second.
+The threshold is fixed here: a quarter of the training estimate of `zoon` minus
+`alone` under this scoring floor, 0.0209 with interval 0.0133 to 0.0281, rounded
+to four decimal places. The estimate uses this file's interval rule on the
+out-of-fold training scores. It is not printed in
+[candidates.md](../docs/interaction/candidates.md#coded-arm-gains), which scores
+with `person.FLOOR` and gives 0.0253. It is a threshold of convenience, not a
+claim about what size matters.
 
 ### H3
 
@@ -194,9 +222,9 @@ against arm a's simulated groups numbered `half[g][r]`. Let `m[a, s, g]` be the 
 drawn groups. The per-summary value is `sum over g of v[s, g] * m[a, s, g]`,
 with fixed weight
 `v[s, g] = n_g / (number of held-out groups where s is defined)`, omitting games
-where s is undefined. The composite is the mean over the five summaries; the
-difference is the other arm's composite minus `zoon`'s. The point estimate uses
-all `n_g` groups and all 100 simulated groups, which equals `compare.combine`.
+where s is undefined. The composite is the mean over the five summaries. For the
+composite and for each summary, the difference is the other arm's value minus
+`zoon`'s. The point estimate uses all `n_g` groups and all 100 simulated groups, which equals `compare.combine`.
 Each summary's own reported interval uses the same replicates. Each interval is
 `numpy.percentile(values, [2.5, 97.5])`, with its default linear interpolation.
 
@@ -219,20 +247,23 @@ candidates.md, Coded-arm gains.
 ### Power
 
 candidates.md, Power, gives half-effect power against the chosen twin of 0.782 for
-H2 and 0.737 for the composite. These are normal approximations to detecting a
+H2 and 0.737 for the composite. Both quoted figures are for the score with
+`person.FLOOR`. These are normal approximations to detecting a
 two-sided 95% interval excluding zero on either side. They scale training
 intervals from 210 to 143 groups, treat scoring models as fixed, assume held-out
 groups vary as training groups do, and take the true effect as half the estimated
 training effect. They assume independent groups; lab sittings are not identified.
 They come from intervals that resample human groups only and, for H2, without
-stratifying by game, so they overstate the power of the rules fixed here. At this
-number of groups the interval condition, not the threshold, is the binding one.
+stratifying by game. They overstate the power of the H3 rule fixed here; the
+registered H2 interval is about as wide as the note's. At this number of groups
+the interval condition is the binding one for the comparisons with `alone`.
 Power and coverage under the rules fixed here are to be computed on training
 groups by a committed script and quoted here before registration. The quoted
 figures are not power for both comparisons together. The earlier measuring-stick power
 in [measure.md](../docs/interaction/measure.md) concerns different models.
-No training estimate exists against `prompted`, because no model has been called,
-as [prompted.md](../docs/interaction/prompted.md) states. No power is stated for it.
+No training estimate exists against `prompted`: its calls so far used made-up
+histories only, as recorded under Models and in
+[prompted.md](../docs/interaction/prompted.md). No power is stated for it.
 
 ## The coded arms
 
@@ -260,8 +291,8 @@ contribution and the rules, not payoffs or others' contributions.
 
 **Fitting.** Before registration, fit B and its twin once on all 210 training
 groups, in loader order, by `person.fit` with its default start. The objective is
-summed negative log-likelihood plus `RIDGE = 0.01` times the sum of squares of all
-fitted numbers. L-BFGS-B uses an analytic gradient and one start. Constants,
+summed negative log-likelihood plus `person.RIDGE = 0.01` times the sum of squares
+of all fitted numbers. L-BFGS-B uses an analytic gradient and one start. Constants,
 weights and log gaps start at zero; trace fractions at 0.5. Log gaps are bounded
 by `LOG_GAP_LIMIT = 8` in either direction, fractions by zero and one, and other
 numbers are unbounded. The settings are `MAX_ITERATIONS = 2000`,
@@ -273,7 +304,11 @@ Commit the fitted numbers and the amount table in the files marked as added belo
 **The registered run uses those committed numbers as they stand; it does not
 refit the primary arms.** A test refits and requires every predicted band
 probability on the training decisions to agree with the committed numbers' within
-`1e-4`, fixed here. The reported game-left-out fits are separate diagnostics.
+`1e-3`, in the locked environment of `uv.lock`. This test is not part of the run
+guard: its failure blocks registration, not a registered run. A refit with the
+groups in another order moves a predicted probability by up to about 3e-4;
+candidates.md reports the corresponding movement in the fitted numbers.
+The reported game-left-out fits are separate diagnostics.
 
 **Bands.** `src/zoon/interaction/measure.py`, function `band`, uses exact fractions:
 zero is band 0; the whole endowment is band 4; a positive share at most one third
@@ -288,13 +323,14 @@ returns bands uses the same committed table. `chat` returns points directly.
 
 **Simulation streams.** Fixed here: seed 20261120; group label
 `registered|<game>|<n>`, with n from 0 to 99. Use `kernel.uniform`: SHA-256 of the
-compact JSON list `[seed, game, group, round, seat, purpose]`; the first eight bytes
-as a big-endian integer, shifted right 11, divided by `2**53`. Round and seat are
+compact JSON list `[seed, game, group, round, seat, purpose]`, where `group` is
+that string; the first eight bytes as a big-endian integer, shifted right 11, divided by `2**53`. Round and seat are
 zero-based in this key. Purposes are `band` and `amount`. `kernel.play` turns a
 uniform draw into a band and `Amounts.draw` turns one into points. The band-returning arms share these
 kernel streams: the same seed, game, group number, round, seat and purpose pairs
 them. The chat arm returns points directly; its sampling is not made deterministic
-by this key.
+by this key. Its 100 simulated groups per game are numbered 0 to 99 with the
+same group string `registered|<game>|<n>`, so `half[g][r]` names them too.
 Each round collects every seat's choice before applying any of them. The ledger
 uses exact fractions of a point. Logs replay byte for byte.
 
@@ -333,7 +369,7 @@ interrupts the step; it does not exclude a decision.
 
 ### From the model's answer to a probability
 
-`prompted.subsample` fixes 512 training decisions (`SUBSAMPLE_COUNT`), salt
+`prompted.subsample` fixes `SUBSAMPLE_COUNT = 512` training decisions, salt
 `SUBSAMPLE_SALT = "interaction-recalibration-1"`. Quotas are proportional to each
 game's number of training decisions, rounded down, then allocated by largest
 remainder, ties by game name. Within each game take the lowest SHA-256 digests of
@@ -368,7 +404,8 @@ no memory beyond the supplied history. The coded arms fit all training groups;
 Paths in backticks are relative to the repository root. Relative links are
 relative to this document. Everything under `interaction/` is registered,
 including files added there before registration. The data manifest is
-`interaction/data-manifest.json`. The table describes today's state.
+`interaction/data-manifest.json`. The table describes today's state and also
+lists the report's output path outside the registered inputs.
 
 | File | State | Holds |
 |---|---|---|
@@ -380,7 +417,9 @@ including files added there before registration. The data manifest is
 | `interaction/requests/` | Existing today | Rendered request fixtures |
 | `interaction/fitted.json` | Added by the analysis code | B and twin numbers, from the committed fitting procedure |
 | `interaction/amounts.json` | Added by the analysis code | The training band-to-points table |
+| `src/zoon/interaction/run.py` | Added by the analysis code | The run steps |
 | `src/zoon/interaction/chat.py` | Added by the analysis code | The chat request renderer |
+| `docs/interaction/result.md` | Added by the analysis code | The report, outside the registered directory |
 | `interaction/chat-requests/` | Added by the analysis code | Committed chat request fixtures |
 
 ### Paths to be added by the analysis code
@@ -392,6 +431,7 @@ These paths do not exist today and are exempt from the existing-path check:
 - `src/zoon/interaction/run.py`
 - `src/zoon/interaction/chat.py`
 - `interaction/chat-requests/`
+- `docs/interaction/result.md`
 
 The new run module supplies the steps below. The existing spending script
 `src/zoon/interaction/budget.py` needs the chat bound. The analysis code also needs
@@ -413,6 +453,21 @@ its name above. For chat, fix the version to the first response's reported versi
 which must begin with its model name, as in the pilot. Withdrawal means the
 service says the model does not exist on every bounded attempt at a request.
 The outcomes for withdrawal and version change are under Data.
+
+### Calls made before this file
+
+On 2026-11-21 the decision model was sent the four committed format-check
+requests, which use made-up histories. All four replies were usable five-band
+distributions.
+
+On the same day four candidate chat models (`gemini-4-hydrogen`, `gemini-4-argon`,
+`gemini-4-neon`, `gemini-4-carbon`) were sent a toy question and two requests built
+from the made-up histories, 28 answered calls in all, to learn whether they could
+be used. All four answered the first round with the whole endowment.
+`gemini-4-carbon` was chosen as the provider's most capable model among the two
+that reported no thinking tokens at the low setting. Its replies to the made-up
+histories were seen before it was chosen; no participant record was sent to any
+model, and no held-out group has been read.
 
 ### The chat arm
 
@@ -482,8 +537,7 @@ on the Vertex page on the day of registration. Its listed price changes on
 
 Registration goes ahead only when the three placeholders are filled from the
 script's output and each model's bound is beneath its cap. The current script's proposed
-ceiling and pilot cap do not fix this run's cap. No price lookup or model call is
-needed to write this draft.
+ceiling and pilot cap do not fix this run's cap.
 
 ## Order of work
 
@@ -500,14 +554,17 @@ not runnable today. Run them in this order:
 4. `python -m zoon.interaction.run held-out`: the first step to read held-out groups.
    Only this step may call the second sealing step that produces them. Make the
    open-loop calls and score H2 and H3. An unusable chat arm does not block it.
-5. `python -m zoon.interaction.run report`: produce the result with every transcript
-   digest. Inspect and commit the result; the command does not commit it.
+5. `python -m zoon.interaction.run report`: check replay and write
+   `docs/interaction/result.md` with every transcript digest. It is outside
+   `interaction/`, whose registered bytes cannot change. The command may be run
+   again and must reproduce the same file. Inspect and commit the result; the
+   command does not commit it.
 
 Held-out play is not loaded, summarised or rendered before `held-out`. The
 second seal verifies the pinned split and completeness before scoring.
 
 **Guard, repairs and persistence.** The repair boundary is the tag itself.
-Files this document cites are read as they stand at the tagged commit. From that
+Input files this document cites are read as they stand at the tagged commit. From that
 commit, code may change only to fix a fault that stops it running, leaving every
 request, inclusion rule and numerical definition here unchanged; a permitted
 repair cannot change the committed primary fits.
@@ -529,15 +586,17 @@ cannot reuse the pilot's. Each step writes its output and digest atomically,
 bound to its step, mode, registered commit, code or declared repair snapshot,
 and exact earlier-step states, including absence. Only one command may hold
 the run lock. Do not delete or reset state or transcripts during the run.
-A completed step is not repeated. An interrupted step resumes with recorded
+A completed calling step is not repeated; `report` may be run again and must
+reproduce the same file. An interrupted step resumes with recorded
 answers and requests only those missing. A later calling step requires completed
 prerequisites; report records terminal outcomes without requiring later calling
 steps. The held-out prerequisite is completed simulation with recorded
 digests. The report lists every repair's reason, commit and changed files, all
 files differing from the tag, and the registration and step commits.
 
-**Replay and null checks.** Every recorded closed-loop game of `zoon`, `alone`
-and `prompted` must replay from its log to its recorded digest; if one does not,
+**Replay and null checks.** Replay is checked by `report`. Every recorded
+closed-loop game of `zoon`, `alone` and `prompted` must replay from its log to its
+recorded digest; if one does not,
 H3 receives no verdict and H2 is unaffected. The chat arm's games replay from
 the transcript and a failure makes the chat arm unusable.
 
@@ -556,7 +615,9 @@ The report must contain:
 - For each of the four gating comparisons: estimate, both interval ends,
   threshold, whether each condition is met, and the verdict.
 - The recalibration's five numbers.
-- The count of held-out decisions with a returned 0.00 on the chosen band.
+- For each arm, the count of held-out decisions in which the H2 floor raised
+  the chosen band's probability, and the two H2 differences rescored with
+  `person.FLOOR` for the coded arms; the rescoring changes no verdict.
 - Every transcript and log digest.
 - The statement that supervision of the arms is unequal.
 
@@ -570,7 +631,8 @@ None of the following changes either verdict:
   repeat the gating twin comparisons; they are not independent evidence.
 - A game left out: for each omitted game, the mean per-decision difference
   `zoon` minus `alone` on that game's held-out decisions under the seven-game
-  fits, beside the same quantity under the committed fits. These diagnostic
+  fits, beside each arm's own mean log score on those decisions under the
+  seven-game fits and the difference under the committed fits. These diagnostic
   fits use training groups only and do not replace the primary arms.
 - When closeness arises: `measure.against_chance` on held-out groups in game and
   index order with its committed seed. This is a description and excludes nothing.
@@ -615,12 +677,17 @@ nothing and is not run closed loop.
   replicate, preserving the arms' pairing, rather than treating simulated groups as fixed.
 - All simulation finishes and its digests are recorded before any held-out read.
 - The primary coded fits and amount table are committed before registration. The
-  registered run does not refit them; a refit test compares predicted probabilities.
+  registered run does not refit them; a refit test compares predicted probabilities
+  within `1e-3` in the locked environment of `uv.lock`. It is outside the run guard
+  and blocks registration on failure, not a registered run.
 - B and its own twin are fixed; the own-twin comparison duplicates `alone` here.
 - H2 weights decisions and stratifies group resampling by game. Both intervals
-  draw one fewer human group per game. The prompted arm uses its own 0.005 floor
-  before recalibration and the coded arms' floor afterward, and the report counts
-  chosen bands returned as 0.00. Thresholds, endpoint rules, simulation labels and seeds
+  draw one fewer human group per game. Every arm uses the same 0.005 floor for
+  the H2 score; `prompted` also uses it on used probabilities before recalibration.
+  Closed-loop draws keep the committed kernel's probability rules. H2's threshold
+  is 0.0052 nats per decision under the common floor; H3's stays 0.0031. The report
+  counts floor-raised chosen bands by arm and rescores H2 with `person.FLOOR` for
+  the coded arms beside the verdict. Thresholds, endpoint rules, simulation labels and seeds
   are fixed here. Coverage is the central 90%, not an unspecified range.
 - Disguise uses the recalibration subsample and fitted map, with the exchange
   rate adjusted. Game-left-out scoring uses the omitted game's held-out groups.
@@ -628,6 +695,10 @@ nothing and is not run closed loop.
   remain open; the earlier proposed ceiling is not adopted.
 
 ## Open before registration
+
+- **DONE:** the decision-model request format check; see
+  [Calls made before this file](registration.md#calls-made-before-this-file). This satisfies
+  the design note's order of work.
 
 - The three placeholders, **CAP**, **CHAT CAP** and **CHAT BOUND**, filled from
   the spending script's output with dated chat prices.
@@ -638,7 +709,8 @@ nothing and is not run closed loop.
 - Replacement of the path test by tests that bind every constant and number in
   this file to the code.
 - Power and coverage under the registered rules, computed on training groups by
-  a committed script and quoted here.
+  a committed script and quoted here. The script must reproduce the H2 training
+  estimate 0.0209 under the common scoring floor before registration.
 
 ## What is not tested
 
