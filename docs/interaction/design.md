@@ -210,8 +210,9 @@ The pre-registration fixes these rules, with the files committed:
 
 - **H2.** The mean log-likelihood of each held-out person's band in each round. Every arm's
   five probabilities are all floored at 0.005 and divided by their sum before the
-  logarithm. This is half the decision model's reporting step: no arm is scored more
-  finely than the coarsest arm reports. The used decision-model probabilities are
+  logarithm. This is half the decision model's reporting step: a probability it
+  reports as 0.00 lies below 0.005, so no arm's small probabilities are scored below
+  that. The used decision-model probabilities are
   also floored at 0.005 and divided by their sum before recalibration. This common
   scoring floor applies only to H2; closed-loop draws keep `person.FLOOR` for coded
   arms and the recalibrated probabilities for `prompted`, as the kernel does. The

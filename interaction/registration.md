@@ -142,8 +142,9 @@ decisions as a pair.
 
 **Probabilities.** Before the logarithm, every arm's five probabilities are
 floored at `prompted.PROMPTED_FLOOR = 0.005` and divided by their sum. This is half
-the decision model's reporting step; no arm is scored more finely than the
-coarsest arm reports. In addition, `prompted`'s used probabilities, after dividing
+the decision model's reporting step: a probability it reports as 0.00 lies below
+0.005, so no arm's small probabilities are scored below that. The floor does not
+round larger probabilities. In addition, `prompted`'s used probabilities, after dividing
 the returned probabilities by their sum, are floored at 0.005 and divided by their
 sum before recalibration, as the committed code does.
 
@@ -537,7 +538,11 @@ verdict.
 **Decision-model bound.** prompted.md, spending table: 52,024 calls, at most
 96,878,135 input tokens, at most 4.06888167 US dollars. This covers 7,000 open-loop
 calls, 512 recalibration calls, 512 disguise calls and 44,000 closed-loop calls.
-The bound counts requests without reuse, so reuse can reduce it. Its token
+The bound counts requests without reuse, so reuse can reduce it. It counts one
+attempt for each request. A request that is retried is paid for again, and a
+request has at most 4 attempts, so one pass through every step costs at most four
+times the bound; repeating an interrupted step can add to that, and the cap is
+what stops it. Its token
 estimate is characters divided by three, rounded up, plus 400 per decision call,
 with the longest possible earlier-round rendering repeated. Its printed output
 token column assumes one per call; it is not a measured output-token bound.
@@ -555,7 +560,7 @@ on the Vertex page on the day of registration. Its listed price changes on
 2026-12-01; the bound uses the higher price.
 
 Registration goes ahead only when the three placeholders are filled from the
-script's output and each model's bound is beneath its cap. The current script's proposed
+script's output and four times each model's bound is at most its cap. The current script's proposed
 ceiling and pilot cap do not fix this run's cap.
 
 ## Order of work
