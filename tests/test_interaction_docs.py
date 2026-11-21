@@ -643,9 +643,9 @@ def test_draft_status_does_not_reopen_completed_chat_work() -> None:
     root = NOTE.parents[2]
     readme = (root / "README.md").read_text()
     assert (
-        "chat requests, transcripts and replay are implemented and tested; "
-        "the second seal, scoring and intervals, fitted files, run guards and step state, "
-        "report, and power and coverage under the registered rules remain open" in readme
+        "chat requests, transcripts and replay, scoring and intervals, the fitted files, "
+        "and power and coverage under the registered rules are implemented and tested; "
+        "the second seal, run guards and step state, and the report remain open" in readme
     )
     design = " ".join((NOTE.parent / "design.md").read_text().split())
     assert (
