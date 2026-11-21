@@ -143,8 +143,9 @@ decisions as a pair.
 **Probabilities.** Before the logarithm, every arm's five probabilities are
 floored at `prompted.PROMPTED_FLOOR = 0.005` and divided by their sum. This is half
 the decision model's reporting step: a probability it reports as 0.00 lies below
-0.005, so no arm's small probabilities are scored below that. The floor does not
-round larger probabilities. In addition, `prompted`'s used probabilities, after dividing
+0.005. The floor is applied before the division, so a scored probability can fall
+slightly below 0.005, and never below 0.005 / 1.02. The floor does not round
+larger probabilities. In addition, `prompted`'s used probabilities, after dividing
 the returned probabilities by their sum, are floored at 0.005 and divided by their
 sum before recalibration, as the committed code does.
 
