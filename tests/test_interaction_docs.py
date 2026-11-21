@@ -530,13 +530,15 @@ def test_registered_format_check_counts_equal_committed_record() -> None:
     )
     shape_count = len(re.findall(r"^reply (?:with|without) thinking:$", shape_raw.decode(), re.M))
     sentence = re.search(
-        "On (\\d{4}-\\d{2}-\\d{2}) (\\w+) further calls at that limit were made to record "
-        r"which usage fields a reply carries; the record is "
+        "On (\\d{4}-\\d{2}-\\d{2}) (\\w+) further calls at that limit sent one toy "
+        "question and one "
+        r"committed made-up request to record which usage fields a reply carries; the record is "
         r"\[`docs/interaction/reply-shape.txt`\]\(../docs/interaction/reply-shape.txt\)\.",
         normal,
     )
     assert sentence and sentence[1] == "2026-11-21"
     assert sentence[2] == {2: "two"}[shape_count]
+    assert re.findall(r"promptTokenCount=(\d+)", shape_raw.decode()) == ["63", "447"]
     assert "others were printed as zero" in normal
 
     assert (
@@ -584,6 +586,11 @@ def test_output_limit_paragraph_counts_equal_committed_record() -> None:
     assert paragraph
     stated = [int(value) for value in paragraph.groups()]
     empty = [line for line in second if 'text = ""' in line]
+    assert "Thinking tokens count against the limit." in normal
+    assert all(
+        int(re.search(r"output tokens = (\d+)", line)[1]) + thought == 256  # type: ignore[index]
+        for line, thought in zip(empty, thinking(empty), strict=True)
+    )
     assert len(empty) == len(second) - usable(second) and len(set(thinking(empty))) == 1
     names = {line.split()[1] for line in probe}
     assert len(names) == 4 and len(probe) == 4 * stated[4]
@@ -624,7 +631,8 @@ def test_prompted_prose_is_scope_and_record_only() -> None:
         "and the prediction asked for.\n"
         "\n"
         "The chat arm's rules are in [the registration](../../interaction/registration.md),\n"
-        "and its format check is in [the record](format-check-chat.txt).\n"
+        "and its first format check is in [the record](format-check-chat.txt);\n"
+        "[the output-limit record](output-limit.txt) holds the check at the registered limit.\n"
         "\n"
         "The instructions are used under CC BY 4.0: Wang, Hilbe and Zhang, *PNAS* 123(5),\n"
         "e2525760123, [doi:10.1073/pnas.2525760123](https://doi.org/10.1073/pnas.2525760123),\n"
@@ -654,6 +662,10 @@ def test_draft_status_does_not_reopen_completed_chat_work() -> None:
     )
     assert "The chat request check with the committed renderer is DONE;" in design
     assert (
+        "`docs/interaction/format-check-chat.txt` for the first check and "
+        "`docs/interaction/output-limit.txt` for the check at the registered limit."
+    ) in " ".join(design.split())
+    assert (
         "The registration fixes separate decision and chat caps from that script's output."
         in design
     )
@@ -668,8 +680,8 @@ def test_registration_chat_contract_has_only_the_registered_rules() -> None:
         "It plays one seat at a time. Its request is the participant instructions, the\n"
         'line "You are Player n.", the history as rendered for `prompted`, and then:\n'
         "\n"
-        "> How many of your E points do you contribute to the common pool in round "
-        "r? Answer with one whole number of points and nothing else.\n"
+        "> How many of your E points do you contribute to the common pool in "
+        "round r? Answer with one whole number of points and nothing else.\n"
         "\n"
         "Substitute that seat's endowment for E, seat for n and round for r.\n"
         "The instructions already end in `\\n`: append\n"
@@ -694,23 +706,19 @@ def test_registration_chat_contract_has_only_the_registered_rules() -> None:
         "requests are NOT reused across decisions. The transcript identifies the game,\n"
         "group, round, seat and attempt, and a resumed decision uses its recorded replies.\n"
         "An incomplete final line, left by a write the system cut short, is not a record;\n"
-        "it is removed on the next writable opening and the decision is asked again.\n"
-        "Each removal is recorded with its byte offset, length and SHA-256 digest before\n"
-        "the line is removed, and the report lists them.\n"
-        "Read-only opening, including replay and digest computation, refuses an incomplete\n"
-        "final line and changes no bytes. Other damage is refused without repair.\n"
-        "Replay requires the recorded whole-transcript SHA-256, the exact line count and\n"
-        "on-disk entries, rendered decision and recall requests, rounds in order and no\n"
-        "attempt after an accepted reply; it uses every retained attempt without fresh calls.\n"
-        "Changing text or token counts on any line fails replay.\n"
-        "The first cause that makes the arm unusable stands and is never overwritten.\n"
-        "The run machinery stores the cause member's name.\n"
-        "Recall is still asked after the three-reply rule, failed replay or an operator stop\n"
-        "during closed-loop, but not after withdrawal, a version change, the cap or an\n"
-        "operator stop during recall; answered recall questions are kept and judged.\n"
-        'Recall reports separately what stopped recall, labels unsent questions "not asked",\n'
-        'and retains a version-invalid paid reply as "not judged: version", without judging\n'
-        "or flagging it.\n"
+        "every opening refuses it and changes no bytes, as the pilot's transcript does.\n"
+        "The operator removes that line and the decision is asked again. Other damage is refused.\n"
+        "Replay requires the recorded whole-transcript SHA-256 and exact line count, and\n"
+        "uses entries re-read from disk without fresh calls. Rendered decision and recall\n"
+        "requests must match; attempts for each decision must be consecutive from one,\n"
+        "with no attempt after an accepted reply and no more than three attempts.\n"
+        "A later round of a group requires accepted replies for every seat of its earlier rounds.\n"
+        "Changing text or token counts on any line fails replay. A game cannot be scored\n"
+        "when the arm is unusable; its whole transcript can still pass replay.\n"
+        "The arm's status is derived from the transcript and the cap, in file order: the\n"
+        "first invalid or changed version, third unusable reply for one decision, or\n"
+        "cumulative spending above the cap. At the same entry, that is the order of precedence.\n"
+        'Each recall question is labelled "judged", "not judged: version", or "not asked".\n'
         "The accepted points bypass recalibration and the band-to-points step.\n"
         "Run closed loop only, with the H3 simulation count. Score against `zoon` by the\n"
         "same H3 composite, difference and interval. It changes no verdict.\n"
@@ -724,11 +732,13 @@ def test_registration_chat_contract_has_only_the_registered_rules() -> None:
         "A success without a non-empty string modelVersion or integer promptTokenCount is\n"
         "a transient transport fault and is retried within the bounded attempts, with no\n"
         "transcript record. Missing candidatesTokenCount or thoughtsTokenCount means zero,\n"
-        "with or without candidate text; a present non-integer count, including a boolean,\n"
-        "is the same transient fault."
+        "with or without candidate text; a present count that is not a non-negative integer,\n"
+        "including a boolean, is the same transient fault."
     )
     normal = " ".join(text.split())
-    assert "Spending is above the cap when it is reached; equality is allowed." in normal
+    assert (
+        "Cumulative spending above the cap makes the arm unusable; equality is allowed."
+    ) in normal
     assert (
         "answered questions are kept and judged and the questions not yet "
         'answered are recorded "not asked".'
@@ -739,10 +749,7 @@ def test_registration_chat_contract_has_only_the_registered_rules() -> None:
         "VERSION",
         "CAP",
         "REPLAY",
-        "OPERATOR_CLOSED_LOOP",
-        "OPERATOR_RECALL",
     }
-    assert "run machinery stores the member's name" in (chat.Session.__doc__ or "")
     assert chat.points(" \t\n\r00036\r", 36) == 36
     assert all(chat.points(t, 36) is None for t in ("+1", "1.", "37", "\x0c1", "1\xa0"))
     assert chat.request(kernel_view_for_docs()).count("How many of your") == 1

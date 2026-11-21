@@ -92,6 +92,20 @@ def chat_bound_request(game: Game, seat: int, round_: int) -> str:
     )
 
 
+@cache
+def chat_max_estimate() -> Decimal:
+    """Largest admission estimate among all registered decision and recall requests."""
+    return max(
+        *(chat.estimate(prompted.recall(game)) for game in GAMES.values()),
+        *(
+            chat.estimate(chat_bound_request(game, seat, r))
+            for game in GAMES.values()
+            for r in range(1, ROUNDS + 1)
+            for seat in range(game.size)
+        ),
+    )
+
+
 def chat_estimate() -> list[ChatCost]:
     calls = tokens = 0
     for game in GAMES.values():

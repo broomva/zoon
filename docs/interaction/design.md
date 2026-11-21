@@ -360,7 +360,8 @@ Made in the same reviewed change as the pre-registration. Each line names the se
    table from bands to points, and the spending bound. The decision-model format
    check is DONE, as recorded in the registration's "Calls made before registration".
    The chat request check with the committed renderer is DONE; its output is
-   committed in `docs/interaction/format-check-chat.txt`.
+   committed in `docs/interaction/format-check-chat.txt` for the first check and
+   `docs/interaction/output-limit.txt` for the check at the registered limit.
 4. The pre-registration and the analysis code, reviewed, with the amendments to the main
    design.
 5. Registration by tag; then the run; then the result, whatever it is.

@@ -7,7 +7,8 @@ are in [the request files](../../interaction/requests/). These are the materials
 and the prediction asked for.
 
 The chat arm's rules are in [the registration](../../interaction/registration.md),
-and its format check is in [the record](format-check-chat.txt).
+and its first format check is in [the record](format-check-chat.txt);
+[the output-limit record](output-limit.txt) holds the check at the registered limit.
 
 The instructions are used under CC BY 4.0: Wang, Hilbe and Zhang, *PNAS* 123(5),
 e2525760123, [doi:10.1073/pnas.2525760123](https://doi.org/10.1073/pnas.2525760123),

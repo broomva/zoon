@@ -282,3 +282,27 @@ def test_chat_input_estimate_and_dated_prices() -> None:
         (chat_prices, "LOW.input_per_million"),
         (chat_prices, "LOW.output_per_million"),
     } <= settings_sources
+
+
+def test_chat_admission_maximum_bounds_every_registered_request_and_one_pass() -> None:
+    from zoon.interaction import chat
+
+    addition = budget.chat_max_estimate()
+    estimates = [
+        chat.estimate(budget.chat_bound_request(game, seat, r))
+        for game in games.GAMES.values()
+        for r in range(1, games.ROUNDS + 1)
+        for seat in range(game.size)
+    ]
+    recalls = [chat.estimate(prompted.recall(game)) for game in games.GAMES.values()]
+    assert addition == max(estimates + recalls)
+    assert all(value <= addition for value in estimates + recalls)
+    # At each needed call, full payment for all earlier requests leaves enough
+    # for the largest admission estimate, even with the smallest request last.
+    spending = Decimal()
+    requests = estimates * budget.SIMULATED_GROUPS + recalls
+    cap = budget.chat_cap()
+    for value in sorted(requests, reverse=True):
+        assert spending + addition <= cap
+        spending += value
+    assert spending == sum((row.dollars for row in budget.chat_estimate()), Decimal())

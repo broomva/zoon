@@ -495,20 +495,6 @@ def test_invalid_run_identity_is_refused(changes: dict[str, Any]) -> None:
         chat.RunIdentity(**{**asdict(BINDING), **changes})
 
 
-def test_nonconsecutive_attempt_or_attempt_after_success_is_refused(tmp_path: Path) -> None:
-    transcript = chat.Transcript(tmp_path, BINDING, read_only=False)
-    text = chat.request(view())
-    with pytest.raises(chat.GuardRefusal, match="consecutive"):
-        transcript.append(key(attempt=2), text, response())
-    transcript.append(key(), text, response())
-    with pytest.raises(chat.GuardRefusal, match="consecutive"):
-        transcript.append(key(attempt=2), text, response())
-    other = chat.Transcript(tmp_path / "other", BINDING, read_only=False)
-    other.append(key(), text, response("no"))
-    with pytest.raises(chat.GuardRefusal, match="consecutive"):
-        other.append(key(attempt=2), text + "changed", response())
-
-
 @pytest.mark.parametrize("mutation", ["points", "line", "ledger", "reply", "header", "missing"])
 def test_replay_rejects_tampered_log_or_transcript(tmp_path: Path, mutation: str) -> None:
     run = session(tmp_path, chat.StubClient())
@@ -527,58 +513,18 @@ def test_replay_rejects_tampered_log_or_transcript(tmp_path: Path, mutation: str
             records[0]["registered_commit"] = "b" * 40
         log = "".join(kernel.encoded(row) for row in records).encode()
     elif mutation == "missing":
-        run.transcript.entries.pop(key())
+        lines = run.transcript.path.read_bytes().splitlines(keepends=True)
+        run.transcript.path.write_bytes(b"".join(lines[:1] + lines[2:]))
     else:
         entry = run.transcript.entries[key()]
         # Even an equivalent point reply must match the linked transcript bytes.
-        run.transcript.entries[key()] = replace(
-            entry, response=replace(entry.response, text="0" + entry.response.text)
-        )
+        changed = replace(entry, response=replace(entry.response, text="0" + entry.response.text))
+        lines = run.transcript.path.read_bytes().splitlines(keepends=True)
+        lines[1] = changed.bytes
+        run.transcript.path.write_bytes(b"".join(lines))
     with pytest.raises(chat.Unusable) as caught:
         chat.replay(log, run.transcript)
     assert caught.value.cause == chat.Cause.REPLAY
-
-
-def test_cap_admission_counts_spending_reservations_and_current_estimate(tmp_path: Path) -> None:
-    text = chat.request(view())
-    addition = chat.estimate(text)
-    client = Replies([response()] * 3)
-    run = session(tmp_path, client, addition - Decimal("0.00000001"))
-    with pytest.raises(chat.Unusable) as caught:
-        run.decision(view(), GROUP)
-    assert caught.value.cause == chat.Cause.CAP
-    assert not client.requests
-    run = session(tmp_path, client, addition)  # Equality is admitted in a new arm.
-    assert run.decision(view(), GROUP).points == 12
-    run.cap = chat.estimate(chat.request(view(1))) + run.transcript.spent - Decimal("0.00000001")
-    with pytest.raises(chat.Unusable):
-        run.decision(view(1), GROUP)
-    assert len(client.requests) == 1
-    run = session(tmp_path, client, chat.estimate(chat.request(view(1))) + run.transcript.spent)
-    run.reserved = Decimal("0.00000001")
-    with pytest.raises(chat.Unusable):
-        run.decision(view(1), GROUP)
-    assert len(client.requests) == 1
-    run = session(tmp_path, client, chat.estimate(chat.request(view(1))) + run.transcript.spent)
-    assert run.decision(view(1), GROUP).points == 12
-
-
-def test_real_inflight_reservation_and_duplicate_dispatch_are_refused(tmp_path: Path) -> None:
-    run: chat.Session
-
-    class Nested:
-        def ask(self, text: str) -> chat.Response:
-            with pytest.raises(chat.ConsistencyInterruption, match="already in flight"):
-                run.ask(key(), text)
-            with pytest.raises(chat.Unusable) as caught:
-                run.ask(key(1), chat.request(view(1)))
-            assert caught.value.cause == chat.Cause.CAP
-            return response()
-
-    run = session(tmp_path, Nested(), chat.estimate(chat.request(view())))
-    with pytest.raises(chat.Unusable):
-        run.decision(view(), GROUP)
-    assert not run.pending and run.reserved == 0
 
 
 def test_reaching_cap_from_reported_usage_makes_chat_unusable(tmp_path: Path) -> None:
@@ -660,14 +606,6 @@ def test_recall_uses_same_client_and_keeps_full_replies_after_unusable_decision(
     assert chat.recall(run) == replies and len(client.requests) == 11
 
 
-@pytest.mark.parametrize("cause", [chat.Cause.WITHDRAWN, chat.Cause.VERSION, chat.Cause.CAP])
-def test_terminal_reasons_skip_recall(tmp_path: Path, cause: chat.Cause) -> None:
-    client = Replies([])
-    run = chat.Session(chat.Transcript(tmp_path, BINDING, read_only=False), client, terminal=cause)
-    assert all(reply.response is None for reply in chat.recall(run))
-    assert not client.requests
-
-
 def test_recall_interruption_resumes_only_missing_questions(tmp_path: Path) -> None:
     run = session(
         tmp_path, Replies([response("unknown"), chat.TransportInterruption("transport failure")])
@@ -740,7 +678,9 @@ def test_fixtures_command_regenerates_identical_bytes_in_a_new_directory(
 
 def test_replay_failure_does_not_suppress_recall(tmp_path: Path) -> None:
     run = session(tmp_path, chat.StubClient())
-    run.terminal = chat.Cause.REPLAY
+    chat.play(GAMES["2-AI"], run, GROUP)
+    with pytest.raises(chat.Unusable):
+        chat.replay(b"invalid", run.transcript)
     assert all(reply.response is not None for reply in chat.recall(run))
 
 

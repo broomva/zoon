@@ -11,7 +11,7 @@ from decimal import Decimal
 from email.message import Message
 from fractions import Fraction
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 import pytest
 
@@ -74,42 +74,11 @@ def test_admission_estimate_independent_high_price_and_maximum_output() -> None:
     )
 
 
-def test_admission_cap_is_latched_during_play_and_across_processes(tmp_path: Path) -> None:
-    # Round 1 fits; the larger round 2 request is refused at admission.
-    client = Replies([response("0"), response("0")])
-    run = session(tmp_path, client, Decimal("0.0503"))
-    with pytest.raises(chat.Unusable) as caught:
-        chat.play(GAMES["2-AI"], run, GROUP)
-    assert caught.value.cause == run.terminal == chat.Cause.CAP
-    assert len(client.requests) == 2
-    assert chat.recall(run).terminal == chat.Cause.CAP
-    resumed = chat.Session(
-        chat.Transcript(tmp_path, BINDING, read_only=False), client, terminal=run.terminal
-    )
-    result = chat.recall(resumed)
-    assert result.terminal == chat.Cause.CAP
-    assert all(r.status == "not asked" and r.response is None for r in result)
-    assert len(client.requests) == 2
-
-
-def test_withdrawal_is_latched_during_play_and_recall_in_new_process(tmp_path: Path) -> None:
-    client, calls, _ = fake_client([(404, cast(dict[str, Any], {}))] * 4)
-    run = session(tmp_path, client)
-    with pytest.raises(chat.Unusable) as caught:
-        chat.play(GAMES["2-AI"], run, GROUP)
-    assert run.terminal == caught.value.cause == chat.Cause.WITHDRAWN
-    resumed = chat.Session(
-        chat.Transcript(tmp_path, BINDING, read_only=False), client, terminal=run.terminal
-    )
-    assert chat.recall(resumed).terminal == chat.Cause.WITHDRAWN
-    assert len(calls) == 4
-
-
 def test_version_change_in_recall_is_paid_but_not_judged(tmp_path: Path) -> None:
     client = Replies([response("unknown"), response("Wang", version=chat.MODEL + "-002")])
     run = session(tmp_path, client)
     result = chat.recall(run)
-    assert result.terminal == run.terminal == chat.Cause.VERSION
+    assert chat.status(run.transcript, run.cap) == chat.Cause.VERSION
     assert result[0].status == "judged"
     assert result[1].response == response("Wang", version=chat.MODEL + "-002")
     assert result[1].status == "not judged: version" and not result[1].flagged
@@ -119,107 +88,21 @@ def test_version_change_in_recall_is_paid_but_not_judged(tmp_path: Path) -> None
     assert chat.recall(run) == result
 
 
-def test_equal_cap_is_allowed_and_recorded_answer_precedes_cap_check(tmp_path: Path) -> None:
+def test_equal_cap_is_allowed_and_recorded_answer_obeys_status(tmp_path: Path) -> None:
     paid = response(input_tokens=100000, output_tokens=0, thinking_tokens=0)
     run = session(tmp_path, Replies([paid]), chat.cost(paid))
     assert run.decision(view(), GROUP).points == 12
     run.cap = Decimal("0")
-    assert run.decision(view(), GROUP).points == 12
-    with pytest.raises(chat.Unusable):
-        run.decision(view(1), GROUP)
-    assert run.terminal == chat.Cause.CAP
+    with pytest.raises(chat.Unusable) as caught:
+        run.decision(view(), GROUP)
+    assert caught.value.cause is chat.Cause.CAP
 
 
 def test_usable_third_reply_is_accepted_and_later_decisions_continue(tmp_path: Path) -> None:
     run = session(tmp_path, Replies([response("no"), response("no"), response("1"), response("2")]))
     assert run.decision(view(), GROUP).points == 1
     assert run.decision(view(1), GROUP).points == 2
-    assert run.terminal is None
-
-
-@pytest.mark.parametrize("failure", ["write", "short", "interrupt", "exit", "sync"])
-def test_partial_write_rolls_back_and_next_append_works(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failure: str
-) -> None:
-    transcript = chat.Transcript(tmp_path, BINDING, read_only=False)
-    transcript.append(key(), chat.request(view()), response())
-    before = transcript.path.read_bytes()
-    original: Any = Path.open
-    interrupt = KeyboardInterrupt("interrupted") if failure == "interrupt" else SystemExit(3)
-
-    class HalfWrite:
-        def __init__(self, handle: Any) -> None:
-            self.handle = handle
-
-        def __enter__(self) -> Any:
-            return self
-
-        def __exit__(self, *args: Any) -> None:
-            self.handle.close()
-
-        def __getattr__(self, name: str) -> Any:
-            return getattr(self.handle, name)
-
-        def write(self, data: bytes) -> int:
-            if failure == "sync":
-                return self.handle.write(data)
-            written = self.handle.write(data[: len(data) // 2])
-            if failure == "short":
-                return written
-            if failure in ("interrupt", "exit"):
-                raise interrupt
-            raise OSError("write cut short")
-
-    def opening(path: Path, *args: Any, **kwargs: Any) -> Any:
-        handle = original(path, *args, **kwargs)
-        return HalfWrite(handle) if path == transcript.path and args == ("ab",) else handle
-
-    sync_calls = 0
-    original_sync = os.fsync
-
-    def sync(fd: int) -> None:
-        nonlocal sync_calls
-        sync_calls += 1
-        if failure == "sync" and sync_calls == 1:
-            raise OSError("sync interrupted")
-        original_sync(fd)
-
-    with monkeypatch.context() as patch:
-        patch.setattr(Path, "open", opening)
-        patch.setattr(chat.os, "fsync", sync)
-        expected = (
-            KeyboardInterrupt
-            if failure == "interrupt"
-            else SystemExit
-            if failure == "exit"
-            else chat.StorageInterruption
-        )
-        with pytest.raises(expected) as caught:
-            transcript.append(key(1), chat.request(view(1)), response())
-        if failure in ("interrupt", "exit"):
-            assert caught.value is interrupt
-        assert sync_calls == (2 if failure == "sync" else 1)
-    assert transcript.path.read_bytes() == before
-    assert key(1) not in transcript.entries
-    transcript.append(key(1), chat.request(view(1)), response())
-    assert len(chat.Transcript(tmp_path, BINDING, read_only=False).entries) == 2
-
-
-def test_torn_tail_removed_once_and_decision_asked_again_once(tmp_path: Path) -> None:
-    run = session(tmp_path, Replies([response()]))
-    run.decision(view(), GROUP)
-    raw = run.transcript.path.read_bytes()
-    header = raw.split(b"\n", 1)[0] + b"\n"
-    run.transcript.path.write_bytes(raw[:-8])
-    client = Replies([response()])
-    resumed = session(tmp_path, client)
-    assert resumed.tail_removals == 1
-    assert resumed.transcript.path.read_bytes() == header
-    resumed.decision(view(), GROUP)
-    resumed.decision(view(), GROUP)
-    assert len(client.requests) == 1 and resumed.transcript.path.read_bytes() == raw
-    assert session(tmp_path, Replies([])).tail_removals == 1
-    assert session(tmp_path, Replies([])).tail_removals == 1
+    assert chat.status(run.transcript, run.cap) is None
 
 
 def test_append_refuses_torn_tail_without_modifying_it(tmp_path: Path) -> None:
@@ -653,68 +536,13 @@ def test_client_response_guard_includes_bearer(field: str) -> None:
     assert len(calls) == 1
 
 
-@pytest.mark.parametrize("cause", list(chat.Cause))
-def test_every_persisted_cause_stops_play_and_controls_recall(
-    tmp_path: Path, cause: chat.Cause
-) -> None:
-    transcript = chat.Transcript(tmp_path, BINDING, read_only=False)
-    transcript.append(key(), chat.request(view()), response("0"))
-    client = Replies([response("Wang")] * 8)
-    run = chat.Session(transcript, client, Decimal("1000"), terminal=cause)
-    with pytest.raises(chat.Unusable) as caught:
-        chat.play(GAMES["2-AI"], run, GROUP)
-    assert caught.value.cause is run.terminal is cause
-    assert client.requests == []
-    result = chat.recall(run)
-    allowed = cause in (chat.Cause.REPLIES, chat.Cause.REPLAY, chat.Cause.OPERATOR_CLOSED_LOOP)
-    assert len(client.requests) == (8 if allowed else 0)
-    assert result.terminal is run.terminal is cause
-    assert result.stopped_by is (None if allowed else cause)
-    for reply in result:
-        if allowed:
-            identity = chat.Identity(reply.game, "recall", 0, 0, 1, "recall")
-            entry = transcript.entries[identity]
-            assert reply.response == response("Wang")
-            assert reply.status == "judged" and reply.flagged
-            assert reply.line == transcript.lines[identity]
-            assert reply.entry_digest == chat.digest(entry.bytes.decode())
-        else:
-            assert reply.response is None and reply.status == "not asked"
-            assert reply.line is reply.entry_digest is None and not reply.flagged
-    assert chat.recall(run) == result
-    assert len(client.requests) == (8 if allowed else 0)
-
-
-@pytest.mark.parametrize("terminal", ["CAP", chat.Cause.CAP.value, 1, False, object()])
-def test_terminal_requires_enum_member(tmp_path: Path, terminal: object) -> None:
-    with pytest.raises(TypeError, match="Cause"):
-        chat.Session(chat.Transcript(tmp_path, BINDING), Replies([]), terminal=terminal)  # type: ignore[arg-type]
-
-
-def test_operator_stop_during_recall_keeps_answered_questions(tmp_path: Path) -> None:
-    client = Replies([response("Wang"), chat.TransportInterruption("interrupted")])
-    run = session(tmp_path, client)
-    with pytest.raises(chat.TransportInterruption):
-        chat.recall(run)
-    resumed_client = Replies([])
-    resumed = chat.Session(
-        chat.Transcript(tmp_path, BINDING), resumed_client, terminal=chat.Cause.OPERATOR_RECALL
-    )
-    result = chat.recall(resumed)
-    assert result.terminal is result.stopped_by is chat.Cause.OPERATOR_RECALL
-    assert result[0].response == response("Wang")
-    assert result[0].status == "judged" and result[0].flagged
-    assert result[0].line == 2 and result[0].entry_digest is not None
-    assert all(r.status == "not asked" and r.response is None for r in result[1:])
-    assert resumed_client.requests == []
-
-
 @pytest.mark.parametrize("later", [chat.Cause.VERSION, chat.Cause.CAP, chat.Cause.WITHDRAWN])
 def test_first_arm_cause_stands_when_something_else_stops_recall(
     tmp_path: Path, later: chat.Cause
 ) -> None:
     transcript = chat.Transcript(tmp_path, BINDING, read_only=False)
-    transcript.append(key(), chat.request(view()), response("no"))
+    for attempt in range(1, 4):
+        transcript.append(key(attempt=attempt), chat.request(view()), response("no"))
     replies = (
         [response("Wang", version=chat.MODEL + "-002")]
         if later is chat.Cause.VERSION
@@ -723,9 +551,9 @@ def test_first_arm_cause_stands_when_something_else_stops_recall(
         else [chat.Unusable(later)]
     )
     client = Replies(replies)
-    run = chat.Session(transcript, client, Decimal("1"), terminal=chat.Cause.REPLIES)
+    run = chat.Session(transcript, client, Decimal("1"))
     result = chat.recall(run)
-    assert result.terminal is run.terminal is chat.Cause.REPLIES
+    assert chat.status(transcript, run.cap) is chat.Cause.REPLIES
     assert result.stopped_by is later
     assert len(client.requests) == 1
     if later is chat.Cause.VERSION:
@@ -735,27 +563,10 @@ def test_first_arm_cause_stands_when_something_else_stops_recall(
         assert result[0].response == replies[0]
         assert result[0].status == "judged" and result[0].flagged
         assert run.transcript.spent > run.cap
-        assert len(run.transcript.entries) == 2
+        assert len(run.transcript.entries) == 4
     else:
         assert result[0].status == "not asked" and result[0].response is None
     assert all(r.status == "not asked" for r in result[1:])
-
-
-def test_replies_cause_latched_from_loaded_attempts_and_from_decision(tmp_path: Path) -> None:
-    run = session(tmp_path, Replies([response("no")] * 3))
-    with pytest.raises(chat.Unusable) as caught:
-        run.decision(view(), GROUP)
-    assert run.terminal is caught.value.cause is chat.Cause.REPLIES
-    resumed = session(tmp_path, Replies([]))
-    with pytest.raises(chat.Unusable) as caught:
-        resumed.check()
-    assert resumed.terminal is caught.value.cause is chat.Cause.REPLIES
-    # Exercise decision's final stop independently of the post-append check.
-    transcript = chat.Transcript(tmp_path, BINDING)
-    replayed = chat.Session(transcript, Replies([]), Decimal("1000"))
-    with pytest.raises(chat.Unusable):
-        replayed.decision(view(), GROUP)
-    assert replayed.terminal is chat.Cause.REPLIES
 
 
 def test_recorded_version_invalid_answer_is_never_returned_on_resume(tmp_path: Path) -> None:
@@ -765,7 +576,7 @@ def test_recorded_version_invalid_answer_is_never_returned_on_resume(tmp_path: P
     resumed = session(tmp_path, Replies([]))
     with pytest.raises(chat.Unusable) as caught:
         resumed.decision(view(), GROUP)
-    assert caught.value.cause is resumed.terminal is chat.Cause.VERSION
+    assert caught.value.cause is chat.status(resumed.transcript, resumed.cap) is chat.Cause.VERSION
 
 
 @pytest.mark.parametrize("version", ["foreign", chat.MODEL + "-002"])
@@ -778,7 +589,7 @@ def test_recall_checks_first_version_and_prior_decision_versions(
     client = Replies([response("Wang", version=version)])
     run = chat.Session(transcript, client, Decimal("1000"))
     result = chat.recall(run)
-    assert result.terminal is result.stopped_by is run.terminal is chat.Cause.VERSION
+    assert chat.status(run.transcript, run.cap) is result.stopped_by is chat.Cause.VERSION
     assert result[0].response == response("Wang", version=version)
     assert result[0].status == "not judged: version" and not result[0].flagged
     assert result[0].line == (3 if transcript.entries.get(key()) else 2)
@@ -823,79 +634,12 @@ def test_absent_optional_counts_with_text_are_zero(missing: str) -> None:
     assert len(calls) == 1
 
 
-def test_tail_receipt_is_synced_before_truncation_and_survives_openings(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    import hashlib
-
-    transcript = chat.Transcript(tmp_path, BINDING, read_only=False)
-    transcript.append(key(), chat.request(view()), response())
-    complete = transcript.path.read_bytes()
-    tail = b"unfinished\xffline"
-    transcript.path.write_bytes(complete + tail)
-    receipt = {
-        "offset": len(complete),
-        "length": len(tail),
-        "sha256": hashlib.sha256(tail).hexdigest(),
-    }
-    events: list[str] = []
-    original_open: Any = Path.open
-    original_sync = os.fsync
-
-    class Traced:
-        def __init__(self, handle: Any) -> None:
-            self.handle = handle
-
-        def __enter__(self) -> Any:
-            return self
-
-        def __exit__(self, *args: Any) -> None:
-            self.handle.close()
-
-        def __getattr__(self, name: str) -> Any:
-            return getattr(self.handle, name)
-
-        def truncate(self, size: int) -> int:
-            assert events == ["receipt synced"]
-            events.append("truncated")
-            return self.handle.truncate(size)
-
-    def opening(path: Path, *args: Any, **kwargs: Any) -> Any:
-        handle = original_open(path, *args, **kwargs)
-        return Traced(handle) if path == transcript.path and args == ("r+b",) else handle
-
-    def sync(fd: int) -> None:
-        if not events:
-            assert transcript.path.read_bytes() == complete + tail
-            assert transcript.removals_path.read_bytes() == kernel.encoded(receipt).encode()
-            events.append("receipt synced")
-        else:
-            assert events == ["receipt synced", "truncated"]
-            assert transcript.path.read_bytes() == complete
-            events.append("truncation synced")
-        original_sync(fd)
-
-    with monkeypatch.context() as patch:
-        patch.setattr(Path, "open", opening)
-        patch.setattr(chat.os, "fsync", sync)
-        reopened = chat.Transcript(tmp_path, BINDING, read_only=False)
-    assert events == ["receipt synced", "truncated", "truncation synced"]
-    assert reopened.tail_removals == 1
-    assert chat.Transcript(tmp_path, BINDING).tail_removals == 1
-    assert chat.Transcript(tmp_path, BINDING, read_only=False).tail_removals == 1
-    assert transcript.removals_path.read_bytes() == kernel.encoded(receipt).encode()
-    transcript.path.write_bytes(complete + b"another tail")
-    assert chat.Transcript(tmp_path, BINDING, read_only=False).tail_removals == 2
-    assert chat.Transcript(tmp_path, BINDING).tail_removals == 2
-    assert len(transcript.removals_path.read_bytes().splitlines()) == 2
-
-
 @pytest.mark.parametrize("header_only", [False, True])
 def test_read_only_opening_and_replay_refuse_torn_tail_without_writes(
     tmp_path: Path, header_only: bool
 ) -> None:
     transcript = chat.Transcript(tmp_path, BINDING, read_only=False)
-    transcript.append(key(), chat.request(view()), response())
+    log = chat.play(GAMES["2-AI"], chat.Session(transcript, chat.StubClient()), GROUP).bytes
     raw = transcript.path.read_bytes()
     raw = raw.split(b"\n")[0][:-4] if header_only else raw[:-4]
     transcript.path.write_bytes(raw)
@@ -908,13 +652,12 @@ def test_read_only_opening_and_replay_refuse_torn_tail_without_writes(
         with pytest.raises(chat.GuardRefusal, match="incomplete"):
             operation()
         assert {p.name: p.read_bytes() for p in tmp_path.iterdir()} == before
-    with pytest.raises(chat.Unusable):
-        chat.replay(b"{}\n", transcript)
+    with pytest.raises(chat.GuardRefusal, match="incomplete"):
+        chat.replay(log, transcript)
     assert {p.name: p.read_bytes() for p in tmp_path.iterdir()} == before
-    repaired = chat.Transcript(tmp_path, BINDING, read_only=False)
-    assert repaired.tail_removals == 1
-    assert repaired.path.read_bytes() == (b"" if header_only else raw[: raw.rfind(b"\n") + 1])
-    assert len(repaired.removals_path.read_bytes().splitlines()) == 1
+    with pytest.raises(chat.GuardRefusal, match="incomplete"):
+        chat.Transcript(tmp_path, BINDING, read_only=False)
+    assert {p.name: p.read_bytes() for p in tmp_path.iterdir()} == before
 
 
 def test_read_only_transcript_cannot_append(tmp_path: Path) -> None:
@@ -957,26 +700,12 @@ def test_open_failure_is_storage_fault(
     assert (transcript.path.read_bytes() if transcript.path.exists() else None) == before
 
 
-def test_failed_rollback_is_consistency_fault(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    transcript = chat.Transcript(tmp_path, BINDING, read_only=False)
-    transcript.append(key(), chat.request(view()), response())
-
-    def failed_sync(fd: int) -> None:
-        raise OSError("sync unavailable")
-
-    monkeypatch.setattr(chat.os, "fsync", failed_sync)
-    with pytest.raises(chat.ConsistencyInterruption, match="rollback failed"):
-        transcript.append(key(1), chat.request(view(1)), response())
-
-
 @pytest.mark.parametrize("operation", ["open", "digest", "replay", "replay transcript"])
 def test_read_failure_is_storage_fault(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, operation: str
 ) -> None:
     transcript = chat.Transcript(tmp_path, BINDING, read_only=False)
-    transcript.append(key(), chat.request(view()), response())
+    log = chat.play(GAMES["2-AI"], chat.Session(transcript, chat.StubClient()), GROUP).bytes
     original = Path.read_bytes
 
     def read(path: Path) -> bytes:
@@ -991,7 +720,7 @@ def test_read_failure_is_storage_fault(
         elif operation == "digest":
             transcript.digest()
         elif operation == "replay":
-            chat.replay(b"{}\n", transcript)
+            chat.replay(log, transcript)
         else:
             chat.replay_transcript(transcript, "unused")
 
@@ -1170,9 +899,12 @@ def test_replay_transcript_structure_independently_of_digest(tmp_path: Path, dam
     transcript.path.write_bytes(raw)
     expected = transcript.digest()
     assert expected == chat.hashlib.sha256(raw).hexdigest()
-    with pytest.raises(chat.Unusable) as caught:
+    if damage == "disk entry":
         chat.replay_transcript(transcript, expected)
-    assert caught.value.cause is chat.Cause.REPLAY
+    else:
+        with pytest.raises(chat.Unusable) as caught:
+            chat.replay_transcript(transcript, expected)
+        assert caught.value.cause is chat.Cause.REPLAY
 
 
 def test_interruption_base_is_never_raised() -> None:
@@ -1194,3 +926,526 @@ def test_interruption_base_is_never_raised() -> None:
         "ConfigurationInterruption",
         "TransportInterruption",
     } <= set(raised)
+
+
+@pytest.mark.parametrize("failure", ["write", "short", "flush", "sync", "interrupt", "exit"])
+def test_failed_append_leaves_disk_and_requires_a_new_object(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failure: str
+) -> None:
+    transcript = chat.Transcript(tmp_path, BINDING, read_only=False)
+    transcript.append(key(), chat.request(view()), response())
+    before = transcript.path.read_bytes()
+    original: Any = Path.open
+    interrupt = KeyboardInterrupt() if failure == "interrupt" else SystemExit()
+    events: list[str] = []
+
+    class Fault:
+        def __init__(self, handle: Any) -> None:
+            self.handle = handle
+
+        def __enter__(self) -> Any:
+            return self
+
+        def __exit__(self, *args: Any) -> None:
+            self.handle.close()
+
+        def fileno(self) -> int:
+            return self.handle.fileno()
+
+        def write(self, raw: bytes) -> int:
+            events.append("write")
+            complete = failure in ("flush", "sync")
+            count = self.handle.write(raw if complete else raw[: len(raw) // 2])
+            if failure in ("interrupt", "exit"):
+                raise interrupt
+            if failure == "write":
+                raise OSError("failed write")
+            return count
+
+        def flush(self) -> None:
+            events.append("flush")
+            if failure == "flush":
+                raise OSError("failed flush")
+            self.handle.flush()
+
+    def opening(path: Path, *args: Any, **kwargs: Any) -> Any:
+        handle = original(path, *args, **kwargs)
+        return Fault(handle) if path == transcript.path and args == ("ab",) else handle
+
+    def sync(fd: int) -> None:
+        events.append("sync")
+        raise OSError("failed sync")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(Path, "open", opening)
+        patch.setattr(chat.os, "fsync", sync)
+        expected = type(interrupt) if failure in ("interrupt", "exit") else chat.StorageInterruption
+        with pytest.raises(expected):
+            transcript.append(key(1), chat.request(view(1)), response())
+    complete = failure in ("flush", "sync")
+    assert events == (
+        ["write", "flush", "sync"]
+        if failure == "sync"
+        else ["write", "flush"]
+        if failure == "flush"
+        else ["write"]
+    )
+    assert len(transcript.entries) == 1 and key(1) not in transcript.entries
+    raw = transcript.path.read_bytes()
+    assert raw.startswith(before) and len(raw) > len(before)
+    for operation in (
+        lambda: transcript.append(key(1), chat.request(view(1)), response()),
+        lambda: transcript.spent,
+        transcript.read_bytes,
+        transcript.digest,
+        lambda: chat.status(transcript, Decimal("1000")),
+        lambda: chat.read_recall(transcript),
+        lambda: chat.Session(transcript, Replies([])).ask(key(), chat.request(view())),
+    ):
+        with pytest.raises(chat.StorageInterruption):
+            operation()
+    if complete:
+        reopened = chat.Transcript(tmp_path, BINDING)
+        assert len(reopened.entries) == 2 and reopened.spent == 2 * chat.cost(response())
+    else:
+        with pytest.raises(chat.GuardRefusal, match="incomplete"):
+            chat.Transcript(tmp_path, BINDING)
+    assert transcript.path.read_bytes() == raw
+
+
+@pytest.mark.parametrize("initial", [False, True])
+def test_crash_after_each_append_byte_never_changes_a_complete_prefix(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, initial: bool
+) -> None:
+    transcript = chat.Transcript(tmp_path, BINDING, read_only=False)
+    before = b""
+    if not initial:
+        transcript.append(key(), chat.request(view()), response())
+        before = transcript.path.read_bytes()
+    identity = key() if initial else key(1)
+    text = chat.request(view(identity.seat))
+    entry = chat.Entry(BINDING, identity, text, chat.digest(text), response())
+    addition = (kernel.encoded(chat.asdict(BINDING)).encode() if initial else b"") + entry.bytes
+    original: Any = Path.open
+    cut = 0
+
+    class Crash:
+        def __init__(self, handle: Any) -> None:
+            self.handle = handle
+
+        def __enter__(self) -> Any:
+            return self
+
+        def __exit__(self, *args: Any) -> None:
+            self.handle.close()
+
+        def write(self, raw: bytes) -> int:
+            assert raw == addition
+            self.handle.write(raw[:cut])
+            raise KeyboardInterrupt
+
+    def opening(path: Path, *args: Any, **kwargs: Any) -> Any:
+        handle = original(path, *args, **kwargs)
+        return Crash(handle) if path == transcript.path and args == ("ab",) else handle
+
+    for cut in range(len(addition) + 1):
+        transcript.path.write_bytes(before)
+        writer = chat.Transcript(tmp_path, BINDING, read_only=False)
+        with monkeypatch.context() as patch:
+            patch.setattr(Path, "open", opening)
+            with pytest.raises(KeyboardInterrupt):
+                writer.append(identity, text, response())
+        raw = before + addition[:cut]
+        assert transcript.path.read_bytes() == raw
+        for read_only in (False, True):
+            if raw and not raw.endswith(b"\n"):
+                with pytest.raises(
+                    chat.GuardRefusal,
+                    match=(
+                        "incomplete transcript line; restore the last complete line before resuming"
+                    ),
+                ):
+                    chat.Transcript(tmp_path, BINDING, read_only=read_only)
+            else:
+                opened = chat.Transcript(tmp_path, BINDING, read_only=read_only)
+                assert len(opened.entries) == bool(before) + (cut == len(addition))
+            assert transcript.path.read_bytes() == raw
+        assert {p.name for p in tmp_path.iterdir()} == {"chat.jsonl"}
+
+
+@pytest.mark.parametrize("ending", ["complete", "replies"])
+def test_resume_at_every_entry_boundary(tmp_path: Path, ending: str) -> None:
+    replies = [response("0")] * (40 if ending == "complete" else 7)
+    if ending == "replies":
+        replies += [response("no")] * 3
+    replies += [response("Wang")] * 8
+    baseline = session(tmp_path / "whole", Replies(replies))
+    result: kernel.Run | None = None
+    if ending == "complete":
+        result = chat.play(GAMES["2-AI"], baseline, GROUP)
+    else:
+        with pytest.raises(chat.Unusable) as caught:
+            chat.play(GAMES["2-AI"], baseline, GROUP)
+        assert caught.value.cause is chat.Cause.REPLIES
+    recall = chat.recall(baseline)
+    expected = baseline.transcript.path.read_bytes()
+    lines = expected.splitlines(keepends=True)
+    for boundary in range(1, len(lines) + 1):
+        directory = tmp_path / str(boundary)
+        directory.mkdir()
+        (directory / "chat.jsonl").write_bytes(b"".join(lines[:boundary]))
+        client = Replies(replies[boundary - 1 :])
+        resumed = session(directory, client)
+        if ending == "complete":
+            assert result is not None
+            assert chat.play(GAMES["2-AI"], resumed, GROUP).bytes == result.bytes
+        else:
+            with pytest.raises(chat.Unusable) as caught:
+                chat.play(GAMES["2-AI"], resumed, GROUP)
+            assert caught.value.cause is chat.Cause.REPLIES
+        assert chat.recall(resumed) == recall
+        assert resumed.transcript.path.read_bytes() == expected
+        assert len(client.requests) == len(lines) - boundary
+        chat.replay_transcript(resumed.transcript, baseline.transcript.digest())
+
+
+@pytest.mark.parametrize("cause", [chat.Cause.VERSION, chat.Cause.REPLIES, chat.Cause.CAP])
+def test_status_agrees_with_fresh_sessions_at_many_prefixes(
+    tmp_path: Path, cause: chat.Cause
+) -> None:
+    cap = Decimal("1")
+    replies = [response("0")] * 12
+    replies += (
+        [response(version="foreign")]
+        if cause is chat.Cause.VERSION
+        else [response("no")] * 3
+        if cause is chat.Cause.REPLIES
+        else [response(input_tokens=1_000_000)]
+    )
+    writer = session(tmp_path, Replies(replies), cap)
+    keys = [chat.Identity("2-AI", f"registered|2-AI|{n}", 0, 0, 1) for n in range(13)]
+    if cause is chat.Cause.REPLIES:
+        keys += [replace(keys[-1], attempt=n) for n in (2, 3)]
+    for index, identity in enumerate(keys):
+        expected = cause if index == len(keys) - 1 else None
+        if expected:
+            with pytest.raises(chat.Unusable) as caught:
+                writer.ask(identity, chat.request(view()))
+            assert caught.value.cause is expected
+        else:
+            writer.ask(identity, chat.request(view()))
+        resumed = session(tmp_path, Replies([]), cap)
+        assert (
+            chat.status(writer.transcript, cap) is chat.status(resumed.transcript, cap) is expected
+        )
+        for run in (writer, resumed):
+            if expected:
+                with pytest.raises(chat.Unusable) as caught:
+                    run.ask(keys[0], chat.request(view()))
+                assert caught.value.cause is expected
+            else:
+                run.ask(keys[0], chat.request(view()))
+    # Later causes never replace the first one in file order.
+    writer.transcript.append(
+        chat.Identity("2-AI", "recall", 0, 0, 1, "recall"),
+        chat.prompted.recall(GAMES["2-AI"]),
+        response(version="foreign", input_tokens=2_000_000),
+    )
+    assert chat.status(writer.transcript, cap) is cause
+    assert chat.status(session(tmp_path, Replies([]), cap).transcript, cap) is cause
+
+
+@pytest.mark.parametrize("workers", [1, 4])
+@pytest.mark.parametrize("reverse", [False, True])
+def test_cap_refusal_depends_only_on_spending(tmp_path: Path, workers: int, reverse: bool) -> None:
+    from concurrent.futures import ThreadPoolExecutor
+
+    from zoon.interaction import budget
+
+    addition = budget.chat_max_estimate()
+    maximum = max(
+        (
+            budget.chat_bound_request(g, s, r)
+            for g in GAMES.values()
+            for s in range(g.size)
+            for r in range(1, chat.ROUNDS + 1)
+        ),
+        key=chat.estimate,
+    )
+    paid = response(
+        "0",
+        input_tokens=chat.input_tokens(maximum),
+        output_tokens=chat.MAX_OUTPUT_TOKENS,
+        thinking_tokens=0,
+    )
+    assert chat.cost(paid) == addition
+    cap = 3 * addition + (chat.estimate(chat.request(view())) + addition) / 2
+    run = session(tmp_path, Replies([paid] * 3), cap)
+    identities = [chat.Identity("2-AI", f"registered|2-AI|{n}", 0, 0, 1) for n in range(8)]
+    texts = [chat.request(view()), maximum] * 4
+    if reverse:
+        texts.reverse()
+
+    def ask(pair: tuple[chat.Identity, str]) -> bool:
+        try:
+            run.ask(*pair)
+        except chat.Unusable as error:
+            assert error.cause is chat.Cause.CAP
+            return False
+        return True
+
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        results = list(pool.map(ask, zip(identities, texts, strict=True)))
+    assert sum(results) == 3 and run.transcript.spent == 3 * addition
+    assert not run.pending and run.reserved == 0
+    for text in texts:
+        resumed = session(tmp_path, Replies([]), run.cap)
+        with pytest.raises(chat.Unusable) as caught:
+            resumed.ask(chat.Identity("2-AI", "registered|2-AI|99", 0, 0, 1), text)
+        assert caught.value.cause is chat.Cause.CAP
+
+
+def test_cap_waits_for_inflight_calls_and_wakes_after_an_interruption(tmp_path: Path) -> None:
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+
+    from zoon.interaction import budget
+
+    entered, release, waited = Event(), Event(), Event()
+
+    class Blocking:
+        def ask(self, text: str) -> chat.Response:
+            if text == "first":
+                entered.set()
+                assert release.wait(5)
+                raise chat.TransportInterruption("retry later")
+            return response("0")
+
+    run = session(tmp_path, Blocking(), budget.chat_max_estimate())
+    wait = run._lock.wait  # pyright: ignore[reportPrivateUsage]
+
+    def waiting(timeout: float | None = None) -> bool:
+        waited.set()
+        return wait(10 if timeout is None else timeout)
+
+    run._lock.wait = waiting  # pyright: ignore[reportPrivateUsage]
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first = pool.submit(run.ask, key(), "first")
+        assert entered.wait(5)
+        with pytest.raises(chat.ConsistencyInterruption, match="already in flight"):
+            run.ask(key(), "first")
+        second = pool.submit(run.ask, key(1), "second")
+        try:
+            assert waited.wait(5) and not second.done()
+        finally:
+            release.set()
+        with pytest.raises(chat.TransportInterruption):
+            first.result(timeout=5)
+        assert second.result(timeout=5).response.text == "0"
+    assert not run.pending and run.reserved == 0
+
+
+@pytest.mark.parametrize(
+    "field", ["promptTokenCount", "candidatesTokenCount", "thoughtsTokenCount"]
+)
+def test_negative_reply_count_is_retried_and_can_recover(field: str) -> None:
+    data = payload()
+    data["usageMetadata"][field] = -1
+    client, calls, pauses = fake_client([(200, data), (200, payload())])
+    assert client.ask("question").text == "12"
+    assert len(calls) == 2 and pauses == [1]
+    client, calls, pauses = fake_client([(200, data)] * 4)
+    with pytest.raises(chat.TransportInterruption):
+        client.ask("question")
+    assert len(calls) == 4 and pauses == [1, 2, 4]
+
+
+@pytest.mark.parametrize("failure", ["status", "project"])
+def test_failed_second_preflight_withdraws_the_first_success(
+    monkeypatch: pytest.MonkeyPatch, failure: str
+) -> None:
+    states = iter([200, 403])
+    calls: list[str] = []
+
+    def generating(*args: Any) -> Any:
+        calls.append("generate")
+        return generation_ok()
+
+    def metadata(*args: Any) -> tuple[int, dict[str, Any]]:
+        return next(states), {}
+
+    client = chat.VertexClient(generating, token=lambda: "token", preflight_transport=metadata)
+    client.preflight()
+    if failure == "project":
+        monkeypatch.delenv("ZOON_VERTEX_PROJECT")
+    with pytest.raises(chat.ConfigurationInterruption):
+        client.preflight()
+    monkeypatch.setenv("ZOON_VERTEX_PROJECT", "connection-location-sentinel")
+    with pytest.raises(chat.ConfigurationInterruption, match="preflight"):
+        client.ask("question")
+    assert not calls
+
+
+@pytest.mark.parametrize("cause", [chat.Cause.WITHDRAWN, chat.Cause.REPLAY])
+def test_unrecorded_outcome_is_raised_without_session_state(
+    tmp_path: Path, cause: chat.Cause
+) -> None:
+    run = session(tmp_path, Replies([chat.Unusable(cause), response("0")]))
+    with pytest.raises(chat.Unusable) as caught:
+        run.decision(view(), GROUP)
+    assert caught.value.cause is cause
+    assert not run.transcript.entries
+    assert chat.status(run.transcript, run.cap) is None
+    assert run.decision(view(), GROUP).points == 0
+    assert session(tmp_path, Replies([])).decision(view(), GROUP).points == 0
+
+
+def test_recall_reader_derives_all_labels_without_a_client(tmp_path: Path) -> None:
+    transcript = chat.Transcript(tmp_path, BINDING, read_only=False)
+    cells = sorted(GAMES)
+    for cell, reply in zip(
+        cells[:2], [response("Wang"), response("Hilbe", version="foreign")], strict=True
+    ):
+        transcript.append(
+            chat.Identity(cell, "recall", 0, 0, 1, "recall"),
+            chat.prompted.recall(GAMES[cell]),
+            reply,
+        )
+    before = transcript.path.read_bytes()
+    replies = chat.read_recall(chat.Transcript(tmp_path, BINDING))
+    assert len(replies) == 8
+    assert (replies[0].status, replies[0].flagged) == ("judged", True)
+    assert (replies[1].status, replies[1].flagged) == ("not judged: version", False)
+    assert all(
+        r.status == "not asked" and r.response is None and not r.flagged for r in replies[2:]
+    )
+    result = chat.recall(chat.Session(transcript, Replies([])))
+    assert result.replies == replies and result.stopped_by is chat.Cause.VERSION
+    assert transcript.path.read_bytes() == before
+
+
+@pytest.mark.parametrize(
+    "damage",
+    [
+        "digest",
+        "count",
+        "request",
+        "recall",
+        "first attempt",
+        "gap",
+        "accepted",
+        "excess",
+        "round",
+        "missing",
+        "torn",
+        "stale memory",
+    ],
+)
+def test_replay_uses_disk_and_checks_complete_attempt_history(tmp_path: Path, damage: str) -> None:
+    run = session(
+        tmp_path,
+        Replies([response("no"), response("0")] + [response("0")] * 39 + [response("unknown")] * 8),
+    )
+    log = chat.play(GAMES["2-AI"], run, GROUP).bytes
+    chat.recall(run)
+    transcript = run.transcript
+    expected = transcript.digest()
+    lines = transcript.path.read_bytes().splitlines(keepends=True)
+    if damage == "digest":
+        expected = "0" * 64
+    elif damage == "count":
+        lines.pop()
+    elif damage in ("request", "recall"):
+        index = 1 if damage == "request" else len(lines) - 1
+        row = json.loads(lines[index])
+        row["request"] = "different"
+        row["request_digest"] = chat.digest("different")
+        lines[index] = kernel.encoded(row).encode()
+    elif damage in ("first attempt", "gap", "excess"):
+        index = 1 if damage == "first attempt" else 2
+        row = json.loads(lines[index])
+        row["identity"]["attempt"] = {"first attempt": 2, "gap": 3, "excess": 4}[damage]
+        lines[index] = kernel.encoded(row).encode()
+    elif damage == "accepted":
+        row = json.loads(lines[1])
+        row["response"]["text"] = "0"
+        lines[1] = kernel.encoded(row).encode()
+    elif damage == "round":
+        # Round two cannot precede the accepted reply of the last seat in round one.
+        lines[3], lines[4] = lines[4], lines[3]
+    elif damage == "torn":
+        lines[-1] = lines[-1][:-4]
+    elif damage == "stale memory":
+        transcript.entries[key()] = replace(transcript.entries[key()], request="memory only")
+    if damage == "missing":
+        transcript.path.rename(tmp_path / "saved.jsonl")
+    else:
+        transcript.path.write_bytes(b"".join(lines))
+    if damage not in ("digest", "missing", "torn"):
+        expected = transcript.digest()
+    if damage in ("missing", "torn"):
+        for operation in (
+            lambda: chat.replay(log, transcript),
+            lambda: chat.replay_transcript(transcript, expected),
+        ):
+            with pytest.raises(chat.GuardRefusal):
+                operation()
+    elif damage == "stale memory":
+        assert chat.replay(log, transcript).bytes == log
+        chat.replay_transcript(transcript, expected)
+    else:
+        with pytest.raises(chat.Unusable) as caught:
+            chat.replay_transcript(transcript, expected)
+        assert caught.value.cause is chat.Cause.REPLAY
+        if damage != "digest":
+            with pytest.raises(chat.Unusable) as caught:
+                chat.replay(log, transcript)
+            assert caught.value.cause is chat.Cause.REPLAY
+
+
+@pytest.mark.parametrize("cause", [chat.Cause.VERSION, chat.Cause.REPLIES, chat.Cause.CAP])
+def test_unusable_arm_has_a_replayable_record_and_no_game_score(
+    tmp_path: Path, cause: chat.Cause
+) -> None:
+    run = session(tmp_path, chat.StubClient())
+    log = chat.play(GAMES["2-AI"], run, GROUP).bytes
+    if cause is chat.Cause.REPLIES:
+        for attempt in range(1, 4):
+            run.transcript.append(
+                chat.Identity("2-AI", "registered|2-AI|1", 0, 0, attempt),
+                chat.request(view()),
+                response("no", version=chat.MODEL + "-stub"),
+            )
+    else:
+        run.transcript.append(
+            chat.Identity("2-AI", "registered|2-AI|1", 0, 0, 1),
+            chat.request(view()),
+            response(
+                version="foreign" if cause is chat.Cause.VERSION else chat.MODEL + "-stub",
+                input_tokens=300_000_000 if cause is chat.Cause.CAP else 0,
+            ),
+        )
+    if cause is chat.Cause.REPLIES:
+        chat.recall(run)
+    chat.replay_transcript(run.transcript, run.transcript.digest())
+    assert chat.status(run.transcript, run.cap) is cause
+    with pytest.raises(chat.Unusable) as caught:
+        chat.replay(log, run.transcript, run.cap)
+    assert caught.value.cause is cause
+
+
+def test_replay_refuses_a_fourth_attempt_even_when_the_first_three_failed(tmp_path: Path) -> None:
+    transcript = chat.Transcript(tmp_path, BINDING, read_only=False)
+    for attempt in range(1, 4):
+        transcript.append(key(attempt=attempt), chat.request(view()), response("no"))
+    transcript.append(key(1), chat.request(view(1)), response("0"))
+    lines = transcript.path.read_bytes().splitlines(keepends=True)
+    fourth = json.loads(lines[-1])
+    fourth["identity"].update(seat=0, attempt=4)
+    fourth["request"] = chat.request(view())
+    fourth["request_digest"] = chat.digest(fourth["request"])
+    lines[-1] = kernel.encoded(fourth).encode()
+    transcript.path.write_bytes(b"".join(lines))
+    with pytest.raises(chat.Unusable) as caught:
+        chat.replay_transcript(transcript, transcript.digest())
+    assert caught.value.cause is chat.Cause.REPLAY

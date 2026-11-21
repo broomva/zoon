@@ -113,14 +113,16 @@ hypotheses receive no verdict and the report publishes every score already
 computed. Before `held-out` starts, an interruption has no time limit: no
 held-out group has been read.
 
-Recall questions are sent unless the model is withdrawn, its version has changed,
+Recall questions with no recorded answer are sent unless the model is withdrawn,
+its first reported version is invalid, its version has changed,
 or the chat cap is reached. An arm made unusable by the three-reply rule, or ended
 by the operator during `closed-loop`, is still asked. If the operator ends the arm
 during `recall`, answered questions are kept and judged and the questions not yet
 answered are recorded "not asked". `closed-loop` and `recall` complete with the
 chat status recorded and "not asked" for each recall question not sent, and later
 steps proceed. This changes no hypothesis verdict. The chat reply rule is under
-The chat arm.
+The chat arm. A paid reply with an invalid version is retained as "not judged: version",
+without judging or flagging it. Recall reports separately what stopped it asking.
 
 A non-finite probability, score or summary where one is defined is a fault that
 interrupts the step; it is never skipped or averaged around. The only undefined
@@ -468,8 +470,8 @@ does not establish withdrawal.
 A success without a non-empty string modelVersion or integer promptTokenCount is
 a transient transport fault and is retried within the bounded attempts, with no
 transcript record. Missing candidatesTokenCount or thoughtsTokenCount means zero,
-with or without candidate text; a present non-integer count, including a boolean,
-is the same transient fault.
+with or without candidate text; a present count that is not a non-negative integer,
+including a boolean, is the same transient fault.
 The outcomes for withdrawal and version change are under Data.
 
 ### Calls made before registration
@@ -502,8 +504,8 @@ first and twentieth rounds of two games' committed made-up requests, three times
 each. All 12 replies were usable whole numbers. Three reported thinking tokens,
 from 45 to 111, and the others were printed as zero. The exact output is committed in
 [`docs/interaction/format-check-chat.txt`](../docs/interaction/format-check-chat.txt).
-On 2026-11-21 two further calls at that limit were made to record
-which usage fields a reply carries; the record is
+On 2026-11-21 two further calls at that limit sent one toy question and one
+committed made-up request to record which usage fields a reply carries; the record is
 [`docs/interaction/reply-shape.txt`](../docs/interaction/reply-shape.txt).
 
 The output limit was then raised, before registration and after seeing replies.
@@ -544,23 +546,19 @@ Every seat of every round of every simulated group is its own call. Identical
 requests are NOT reused across decisions. The transcript identifies the game,
 group, round, seat and attempt, and a resumed decision uses its recorded replies.
 An incomplete final line, left by a write the system cut short, is not a record;
-it is removed on the next writable opening and the decision is asked again.
-Each removal is recorded with its byte offset, length and SHA-256 digest before
-the line is removed, and the report lists them.
-Read-only opening, including replay and digest computation, refuses an incomplete
-final line and changes no bytes. Other damage is refused without repair.
-Replay requires the recorded whole-transcript SHA-256, the exact line count and
-on-disk entries, rendered decision and recall requests, rounds in order and no
-attempt after an accepted reply; it uses every retained attempt without fresh calls.
-Changing text or token counts on any line fails replay.
-The first cause that makes the arm unusable stands and is never overwritten.
-The run machinery stores the cause member's name.
-Recall is still asked after the three-reply rule, failed replay or an operator stop
-during closed-loop, but not after withdrawal, a version change, the cap or an
-operator stop during recall; answered recall questions are kept and judged.
-Recall reports separately what stopped recall, labels unsent questions "not asked",
-and retains a version-invalid paid reply as "not judged: version", without judging
-or flagging it.
+every opening refuses it and changes no bytes, as the pilot's transcript does.
+The operator removes that line and the decision is asked again. Other damage is refused.
+Replay requires the recorded whole-transcript SHA-256 and exact line count, and
+uses entries re-read from disk without fresh calls. Rendered decision and recall
+requests must match; attempts for each decision must be consecutive from one,
+with no attempt after an accepted reply and no more than three attempts.
+A later round of a group requires accepted replies for every seat of its earlier rounds.
+Changing text or token counts on any line fails replay. A game cannot be scored
+when the arm is unusable; its whole transcript can still pass replay.
+The arm's status is derived from the transcript and the cap, in file order: the
+first invalid or changed version, third unusable reply for one decision, or
+cumulative spending above the cap. At the same entry, that is the order of precedence.
+Each recall question is labelled "judged", "not judged: version", or "not asked".
 The accepted points bypass recalibration and the band-to-points step.
 Run closed loop only, with the H3 simulation count. Score against `zoon` by the
 same H3 composite, difference and interval. It changes no verdict.
@@ -572,9 +570,12 @@ run. **Decision-model cap in US dollars: 17.** **Chat-model cap in US dollars,
 recall included: 2544.** Count spending from reported tokens in recorded
 responses at the fixed prices. Retain and count unusable chat replies before
 retrying them. As in the pilot, do not send a call if that model's spent tokens'
-cost plus the call's estimate and reservations for calls in flight would exceed
-that model's cap. Spending is above the cap when it is reached; equality is
-allowed.
+cost plus the estimate and reservations for calls in flight would exceed its cap.
+For chat, use the largest estimate of any registered decision or recall request.
+A chat call that does not fit waits for calls in flight; it reaches the cap only
+when it still does not fit with none in flight, so reaching the chat cap depends
+on spending alone. Cumulative spending above the cap makes the arm unusable;
+equality is allowed.
 Reaching the decision-model cap gives no verdict for both
 hypotheses. Reaching the chat-model cap makes `chat` unusable and changes no
 verdict.

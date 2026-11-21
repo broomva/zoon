@@ -24,8 +24,8 @@ from decimal import Decimal
 from enum import Enum
 from fractions import Fraction
 from pathlib import Path
-from threading import Lock
-from typing import Any, Literal, NoReturn, Protocol, cast, overload
+from threading import Condition, Lock
+from typing import Any, Literal, Protocol, cast, overload
 
 import numpy as np
 
@@ -127,8 +127,6 @@ class Cause(Enum):
     VERSION = "chat unusable: model version changed or invalid first version"
     CAP = "chat unusable: spending cap reached"
     REPLAY = "chat unusable: game failed replay"
-    OPERATOR_CLOSED_LOOP = "chat unusable: ended by the operator during closed-loop"
-    OPERATOR_RECALL = "chat unusable: ended by the operator during recall"
 
 
 class Unusable(Exception):
@@ -146,7 +144,7 @@ class TransportInterruption(Interruption):
 
 
 class StorageInterruption(Interruption):
-    """A transcript write was rolled back; storage must work before repeating."""
+    """Storage failed; open a new transcript before repeating."""
 
 
 class ConfigurationInterruption(Interruption):
@@ -298,10 +296,9 @@ class VertexClient:
         raise ConfigurationInterruption("chat credentials unavailable")
 
     def preflight(self) -> None:
+        self._preflight_pid = None
         if not os.environ.get("ZOON_VERTEX_PROJECT", ""):
             raise ConfigurationInterruption("ZOON_VERTEX_PROJECT is required")
-
-        self._preflight_pid = None
 
         def probe() -> Response:
             try:
@@ -399,9 +396,9 @@ class VertexClient:
                 version = data.get("modelVersion")
                 if not isinstance(version, str) or not version.strip():
                     raise TransientError
-                if type(usage.get("promptTokenCount")) is not int or any(
-                    type(usage[name]) is not int
-                    for name in ("candidatesTokenCount", "thoughtsTokenCount")
+                if "promptTokenCount" not in usage or any(
+                    type(usage[name]) is not int or usage[name] < 0
+                    for name in ("promptTokenCount", "candidatesTokenCount", "thoughtsTokenCount")
                     if name in usage
                 ):
                     raise TransientError
@@ -513,23 +510,17 @@ class Transcript:
         self.identity = identity
         self.bearer = bearer
         self.read_only = read_only
-        self.removals_path = directory / "chat-tail-removals.jsonl"
-        self.tail_removals = 0
+        self._failed = False
         self.entries: dict[Identity, Entry] = {}
         self.lines: dict[Identity, int] = {}
         protect(asdict(identity))
         storage_failed = False
         try:
-            if self.removals_path.exists():
-                self.tail_removals = len(self.removals_path.read_bytes().splitlines())
             if self.path.exists() and self.path.stat().st_size:
-                raw = self.path.read_bytes()
-                if read_only and not raw.endswith(b"\n"):
-                    raise GuardRefusal("incomplete chat transcript line; writable opening required")
-                complete = raw[: raw.rfind(b"\n") + 1]
-                protect(complete.decode(), self.bearer)
-                lines = complete.split(b"\n")[:-1]
-                if lines and lines[0] + b"\n" != kernel.encoded(asdict(identity)).encode():
+                raw = self.read_bytes()
+                protect(raw.decode(), self.bearer)
+                lines = raw.split(b"\n")[:-1]
+                if lines[0] + b"\n" != kernel.encoded(asdict(identity)).encode():
                     raise GuardRefusal("chat transcript run identity differs or is noncanonical")
                 for line in lines[1:]:
                     row = json.loads(line)
@@ -545,24 +536,6 @@ class Transcript:
                         raise GuardRefusal("noncanonical chat transcript line")
                     self.entries[entry.identity] = entry
                     self.lines[entry.identity] = len(self.entries) + 1
-                if complete != raw:
-                    removed = raw[len(complete) :]
-                    receipt = kernel.encoded(
-                        {
-                            "offset": len(complete),
-                            "length": len(removed),
-                            "sha256": hashlib.sha256(removed).hexdigest(),
-                        }
-                    ).encode()
-                    with self.removals_path.open("ab", buffering=0) as handle:
-                        if handle.write(receipt) != len(receipt):
-                            raise OSError("short removal receipt write")
-                        os.fsync(handle.fileno())
-                    self.tail_removals += 1
-                    with self.path.open("r+b") as handle:
-                        handle.truncate(len(complete))
-                        handle.flush()
-                        os.fsync(handle.fileno())
         except OSError:
             storage_failed = True
         except (GuardRefusal, Interruption):
@@ -572,101 +545,66 @@ class Transcript:
         else:
             return
         if storage_failed:
-            raise StorageInterruption("chat transcript could not be read or repaired")
+            raise StorageInterruption("chat transcript could not be read")
         raise GuardRefusal("invalid chat transcript")
 
+    def usable(self) -> None:
+        if self._failed:
+            raise StorageInterruption("chat transcript storage failed; open a new transcript")
+
     def check(self, entry: Entry) -> None:
+        self.usable()
         validate(entry.response)
         protect(asdict(entry), self.bearer)
         if entry.run != self.identity:
             raise GuardRefusal("chat transcript entry run identity differs")
         if entry.request_digest != digest(entry.request) or entry.identity in self.entries:
             raise GuardRefusal("invalid or duplicate chat transcript identity or digest")
-        key = entry.identity
-        if key.attempt > 1:
-            previous = Identity(key.game, key.group, key.round, key.seat, key.attempt - 1)
-            prior = self.entries.get(previous)
-            if (
-                prior is None
-                or prior.request != entry.request
-                or points(prior.response.text, GAMES[key.game].endowments[key.seat]) is not None
-            ):
-                raise GuardRefusal("chat reply attempts are not consecutive unusable replies")
 
     def append(self, identity: Identity, text: str, response: Response) -> Entry:
+        self.usable()
         if self.read_only:
             raise StorageInterruption("chat transcript is read-only")
         entry = Entry(self.identity, identity, text, digest(text), response)
         self.check(entry)
+        before = self.read_bytes()
+        lines = entry.bytes
+        if not before:
+            lines = kernel.encoded(asdict(self.identity)).encode() + lines
         try:
             self.path.parent.mkdir(parents=True, exist_ok=True)
-            before = self.path.stat().st_size if self.path.exists() else 0
-            if before:
-                with self.path.open("rb") as handle:
-                    handle.seek(-1, os.SEEK_END)
-                    if handle.read(1) != b"\n":
-                        raise GuardRefusal(
-                            "incomplete chat transcript line; reopen before appending"
-                        )
-        except OSError:
-            pass
-        else:
-            return self._append(entry, before)
-        raise StorageInterruption("chat transcript could not be opened")
-
-    def _append(self, entry: Entry, before: int) -> Entry:
-        lines = [entry.bytes]
-        if not before:
-            lines.insert(0, kernel.encoded(asdict(self.identity)).encode())
-        opened = False
-        interrupted: KeyboardInterrupt | SystemExit | None = None
-        try:
-            # Unbuffered writes cannot flush a failed buffered tail after rollback.
             with self.path.open("ab", buffering=0) as handle:
-                opened = True
-                for line in lines:
-                    if handle.write(line) != len(line):
-                        raise OSError("short write")
+                if handle.write(lines) != len(lines):
+                    raise OSError("short write")
+                handle.flush()
                 os.fsync(handle.fileno())
-        except (KeyboardInterrupt, SystemExit) as error:
-            interrupted = error
-        except Exception:
-            pass
+        except BaseException as error:
+            self._failed = True
+            if isinstance(error, (KeyboardInterrupt, SystemExit)):
+                raise
         else:
-            self.entries[entry.identity] = entry
-            self.lines[entry.identity] = len(self.entries) + 1
+            self.entries[identity] = entry
+            self.lines[identity] = len(self.entries) + 1
             return entry
-        if not opened:
-            if interrupted is not None:
-                raise interrupted
-            raise StorageInterruption("chat transcript could not be opened")
-        repaired = False
-        try:
-            with self.path.open("r+b", buffering=0) as handle:
-                handle.truncate(before)
-                os.fsync(handle.fileno())
-            repaired = True
-        except Exception:
-            pass
-        if interrupted is not None:
-            raise interrupted
-        if repaired:
-            raise StorageInterruption("chat transcript write interrupted; no record was written")
-        raise ConsistencyInterruption("chat transcript rollback failed; storage repair required")
+        raise StorageInterruption("chat transcript append failed; open a new transcript")
 
     @property
     def spent(self) -> Decimal:
+        self.usable()
         return sum((cost(e.response) for e in self.entries.values()), Decimal())
 
     def read_bytes(self) -> bytes:
-        """Read without repair, including when the calling step opened for appending."""
+        """Read without changing any bytes."""
+        self.usable()
         try:
             raw = self.path.read_bytes() if self.path.exists() else b""
         except OSError:
             pass
         else:
             if raw and not raw.endswith(b"\n"):
-                raise GuardRefusal("incomplete chat transcript line")
+                raise GuardRefusal(
+                    "incomplete transcript line; restore the last complete line before resuming"
+                )
             return raw
         raise StorageInterruption("chat transcript could not be read")
 
@@ -682,103 +620,89 @@ class Choice:
     attempts: tuple[str, ...]
 
 
+def status(transcript: Transcript, cap: Decimal, *, recall: bool = False) -> Cause | None:
+    """First recorded cause in file order; recall excludes the decision-reply rule."""
+    transcript.usable()
+    version: str | None = None
+    spent = Decimal()
+    for key, entry in transcript.entries.items():
+        reported = entry.response.version
+        if version is None:
+            version = reported
+        if not version.startswith(MODEL) or reported != version:
+            return Cause.VERSION
+        if (
+            not recall
+            and key.kind == "decision"
+            and key.attempt == REPLY_ATTEMPTS
+            and points(entry.response.text, GAMES[key.game].endowments[key.seat]) is None
+        ):
+            return Cause.REPLIES
+        spent += cost(entry.response)
+        if spent > cap:
+            return Cause.CAP
+    return None
+
+
 class Session:
-    """Resume with a Cause member; run machinery stores the member's name."""
+    """A client and spending reservations over an append-only transcript."""
 
-    def __init__(
-        self,
-        transcript: Transcript,
-        client: Client,
-        cap: Decimal | None = None,
-        *,
-        terminal: Cause | None = None,
-    ) -> None:
-        if terminal is not None and not isinstance(cast(object, terminal), Cause):
-            raise TypeError("terminal must be a Cause member or None")
+    def __init__(self, transcript: Transcript, client: Client, cap: Decimal | None = None) -> None:
+        from zoon.interaction.budget import chat_cap, chat_max_estimate
+
         if cap is None:
-            from zoon.interaction.budget import chat_cap
-
             cap = chat_cap()
         if not cap.is_finite() or cap < 0:
             raise ValueError("chat cap must be finite and non-negative")
         self.transcript, self.client, self.cap = transcript, client, cap
         self.reserved = Decimal()
         self.pending: set[Identity] = set()
-        self._lock = Lock()
-        self.terminal = terminal
-
-    @property
-    def tail_removals(self) -> int:
-        return self.transcript.tail_removals
-
-    def stop(self, cause: Cause) -> NoReturn:
-        self.terminal = self.terminal or cause
-        raise Unusable(cause)
+        self._lock = Condition()
+        self._estimate = chat_max_estimate()
 
     def check(self, *, recall: bool = False) -> None:
-        if self.terminal is not None and (
-            not recall
-            or self.terminal in (Cause.WITHDRAWN, Cause.VERSION, Cause.CAP, Cause.OPERATOR_RECALL)
-        ):
-            self.stop(self.terminal)
-        self.check_version()
-        if self.transcript.spent > self.cap:
-            self.stop(Cause.CAP)
-        if not recall and any(
-            key.kind == "decision"
-            and key.attempt == REPLY_ATTEMPTS
-            and points(entry.response.text, GAMES[key.game].endowments[key.seat]) is None
-            for key, entry in self.transcript.entries.items()
-        ):
-            self.stop(Cause.REPLIES)
-
-    def check_version(self) -> None:
-        versions = [e.response.version for e in self.transcript.entries.values()]
-        if versions and (
-            not versions[0].startswith(MODEL) or any(v != versions[0] for v in versions)
-        ):
-            self.stop(Cause.VERSION)
+        cause = status(self.transcript, self.cap, recall=recall)
+        if cause is not None:
+            raise Unusable(cause)
 
     def ask(self, identity: Identity, text: str) -> Entry:
         with self._lock:
-            recorded = self.transcript.entries.get(identity)
-            if recorded is not None:
-                if recorded.request_digest != digest(text):
-                    raise GuardRefusal("chat decision request changed on resume")
-                self.check_version()
-                return recorded
-            self.check(recall=identity.kind == "recall")
-            if identity in self.pending:
-                raise ConsistencyInterruption("chat decision already in flight")
-            if self.transcript.read_only:
-                raise StorageInterruption("chat transcript is read-only")
-            addition = estimate(text)
-            if self.transcript.spent + self.reserved + addition > self.cap:
-                self.stop(Cause.CAP)
-            self.reserved += addition
+            while True:
+                self.check(recall=identity.kind == "recall")
+                recorded = self.transcript.entries.get(identity)
+                if recorded is not None:
+                    if recorded.request_digest != digest(text):
+                        raise GuardRefusal("chat decision request changed on resume")
+                    return recorded
+                if identity in self.pending:
+                    raise ConsistencyInterruption("chat decision already in flight")
+                if self.transcript.read_only:
+                    raise StorageInterruption("chat transcript is read-only")
+                if self.transcript.spent + self.reserved + self._estimate <= self.cap:
+                    break
+                if not self.pending:
+                    raise Unusable(Cause.CAP)
+                self._lock.wait()
+            self.reserved += self._estimate
             self.pending.add(identity)
         try:
-            response: Response | None = None
             try:
                 response = self.client.ask(text)
-            except Unusable as error:
-                self.stop(error.cause)
-            except (Interruption, GuardRefusal):
+            except (Unusable, Interruption, GuardRefusal):
                 raise
             except Exception:
-                failed = True
+                pass
             else:
-                failed = False
-            if failed or response is None:
-                raise ConsistencyInterruption("chat client failed; internal fault")
-            with self._lock:
-                entry = self.transcript.append(identity, text, response)
-                self.check(recall=identity.kind == "recall")
-                return entry
+                with self._lock:
+                    entry = self.transcript.append(identity, text, response)
+                    self.check(recall=identity.kind == "recall")
+                    return entry
+            raise ConsistencyInterruption("chat client failed; internal fault")
         finally:
             with self._lock:
-                self.reserved -= addition
+                self.reserved -= self._estimate
                 self.pending.remove(identity)
+                self._lock.notify_all()
 
     def decision(self, view: kernel.View, group: str) -> Choice:
         text = request(view)
@@ -792,7 +716,7 @@ class Session:
                 return Choice(
                     value, self.transcript.lines[key], digest(entry.bytes.decode()), tuple(attempts)
                 )
-        self.stop(Cause.REPLIES)
+        raise Unusable(Cause.REPLIES)
 
 
 def _play(
@@ -839,13 +763,19 @@ def _play(
 
 
 def play(game: Game, session: Session, group: str) -> kernel.Run:
+    session.check()
     return _play(game, group, session.transcript.identity, session.decision)
 
 
-def replay(log: bytes, transcript: Transcript) -> kernel.Run:
+def replay(log: bytes, transcript: Transcript, cap: Decimal | None = None) -> kernel.Run:
     """No client, no sampling: rebuild requests and ledger and require identical bytes."""
+    from zoon.interaction.budget import chat_cap
+
+    transcript = replay_transcript(transcript, transcript.digest())
+    cause = status(transcript, chat_cap() if cap is None else cap)
+    if cause is not None:
+        raise Unusable(cause)
     try:
-        Transcript(transcript.path.parent, transcript.identity, bearer=transcript.bearer)
         header = json.loads(log.splitlines()[0])
         if any(header.get(k) != v for k, v in asdict(transcript.identity).items()):
             raise GuardRefusal("chat log run identity differs")
@@ -871,8 +801,6 @@ def replay(log: bytes, transcript: Transcript) -> kernel.Run:
         if result.bytes != log:
             raise Unusable(Cause.REPLAY)
         return result
-    except StorageInterruption:
-        raise
     except Exception:
         pass
     raise Unusable(Cause.REPLAY)
@@ -891,7 +819,6 @@ class Recall:
 @dataclass(frozen=True)
 class RecallResult(Sequence[Recall]):
     replies: tuple[Recall, ...]
-    terminal: Cause | None
     stopped_by: Cause | None
 
     def __len__(self) -> int:
@@ -907,42 +834,47 @@ class RecallResult(Sequence[Recall]):
         return self.replies[index]
 
 
-def recall(session: Session) -> RecallResult:
+def read_recall(transcript: Transcript) -> tuple[Recall, ...]:
+    """Derive all recall labels and string-match flags without a client."""
+    transcript.usable()
     replies: list[Recall] = []
-    stopped = False
-    stopped_by: Cause | None = None
-    versions = [e.response.version for e in session.transcript.entries.values()]
-    version = versions[0] if versions else None
-    for cell, game in sorted(GAMES.items()):
+    version = next((e.response.version for e in transcript.entries.values()), None)
+    for cell in sorted(GAMES):
         key = Identity(cell, "recall", 0, 0, 1, "recall")
-        if not stopped:
-            try:
-                session.ask(key, prompted.recall(game))
-            except Unusable as error:
-                stopped = True
-                stopped_by = error.cause
-        entry = session.transcript.entries.get(key)
+        entry = transcript.entries.get(key)
         response = entry.response if entry else None
-        if version is None and response:
-            version = response.version
         invalid = bool(
             response and (not response.version.startswith(MODEL) or response.version != version)
         )
-        status = "not asked" if response is None else "not judged: version" if invalid else "judged"
+        label = "not asked" if response is None else "not judged: version" if invalid else "judged"
         replies.append(
             Recall(
                 cell,
                 response,
                 bool(response and not invalid and recognition.flagged(response.text, RECALL_KEYS)),
-                session.transcript.lines.get(key),
-                status,
+                transcript.lines.get(key),
+                label,
                 digest(entry.bytes.decode()) if entry else None,
             )
         )
-    return RecallResult(tuple(replies), session.terminal, stopped_by)
+    return tuple(replies)
 
 
-def replay_transcript(transcript: Transcript, expected_digest: str) -> None:
+def recall(session: Session) -> RecallResult:
+    stopped_by = status(session.transcript, session.cap, recall=True)
+    for cell, game in sorted(GAMES.items()):
+        if stopped_by is not None:
+            break
+        key = Identity(cell, "recall", 0, 0, 1, "recall")
+        if key not in session.transcript.entries:
+            try:
+                session.ask(key, prompted.recall(game))
+            except Unusable as error:
+                stopped_by = error.cause
+    return RecallResult(read_recall(session.transcript), stopped_by)
+
+
+def replay_transcript(transcript: Transcript, expected_digest: str) -> Transcript:
     """Verify the whole-file SHA-256 and every retained attempt and recall request.
 
     The run machinery records Transcript.digest() after each completed calling
@@ -950,22 +882,27 @@ def replay_transcript(transcript: Transcript, expected_digest: str) -> None:
     Partial games need no invented completed game log to check their attempts.
     """
     raw = transcript.read_bytes()
+    if not raw:
+        raise GuardRefusal("missing chat transcript")
     if hashlib.sha256(raw).hexdigest() != expected_digest:
         raise Unusable(Cause.REPLAY)
     disk_lines = raw.split(b"\n")[:-1]
     if len(disk_lines) != len(transcript.entries) + bool(raw):
         raise Unusable(Cause.REPLAY)
+    directory, identity, bearer = transcript.path.parent, transcript.identity, transcript.bearer
     histories: dict[tuple[str, str], tuple[kernel.Observation, ...]] = {}
     rows: dict[tuple[str, str], dict[int, int]] = {}
-    seen: set[Identity] = set()
+    attempts: dict[tuple[str, str, int, int], int] = {}
     try:
+        transcript = Transcript(directory, identity, bearer=bearer)
         for key, entry in transcript.entries.items():
-            if key in seen or entry.run != transcript.identity:
-                raise GuardRefusal("unowned transcript entry")
-            seen.add(key)
             if key.kind == "recall":
                 text = prompted.recall(GAMES[key.game])
             else:
+                decision = (key.game, key.group, key.round, key.seat)
+                if key.attempt != attempts.get(decision, 0) + 1:
+                    raise GuardRefusal("chat attempts are not consecutive")
+                attempts[decision] = key.attempt
                 group = (key.game, key.group)
                 history = histories.get(group, ())
                 game = GAMES[key.game]
@@ -989,13 +926,12 @@ def replay_transcript(transcript: Transcript, expected_digest: str) -> None:
                     rows[group] = {}
             if entry.request != text or entry.request_digest != digest(text):
                 raise GuardRefusal("chat transcript request differs from replay")
-            # Also bind in-memory entries to the canonical lines on disk.
-            if disk_lines[transcript.lines[key] - 1] + b"\n" != entry.bytes:
-                raise GuardRefusal("chat transcript entry differs from disk")
+    except StorageInterruption:
+        raise
     except Exception:
         pass
     else:
-        return
+        return transcript
     raise Unusable(Cause.REPLAY)
 
 
