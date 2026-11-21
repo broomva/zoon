@@ -508,15 +508,19 @@ def test_smoke_client_selection_without_constructing_live_client(
         chosen.append("live selected")
         return stub
 
+    checked: list[str] = []
+
     def inspect_client(client: clients.Client) -> list[str]:
         assert isinstance(client, clients.StubClient)
         assert client.family == "decision"
+        checked.append("format check ran")
         return []
 
     monkeypatch.setattr(clients, "DecisionClient", offline)
     monkeypatch.setattr(prompted, "smoke", inspect_client)
     prompted.main(arguments)
     assert chosen == (["live selected"] if "--live" in arguments else [])
+    assert checked == ["format check ran"]
 
 
 def test_smoke_requests_equal_rendered_made_up_groups() -> None:
@@ -1045,3 +1049,38 @@ def test_format_check_refuses_stub_and_live_together(monkeypatch: pytest.MonkeyP
     monkeypatch.setattr(clients, "StubClient", refuse)
     with pytest.raises(SystemExit):
         prompted.main(["smoke", "--stub", "--live"])
+
+
+@pytest.mark.parametrize("round_", [0, -1, ROUNDS + 1, 7])
+def test_training_view_refuses_a_round_outside_the_history(round_: int) -> None:
+    group = Group("2-FE", "made-up", ((1, 2),) * 5)
+    assert len(prompted.training_view(group, 0, 1).history) == 0
+    assert len(prompted.training_view(group, 0, 6).history) == 5
+    with pytest.raises(ValueError, match="round outside this group's history"):
+        prompted.training_view(group, 0, round_)
+    full = Group("2-FE", "made-up", ((1, 2),) * ROUNDS)
+    assert len(prompted.training_view(full, 1, ROUNDS).history) == ROUNDS - 1
+    with pytest.raises(ValueError, match="round outside this group's history"):
+        prompted.training_view(full, 1, ROUNDS + 1)
+
+
+def test_probabilities_whose_sum_is_not_a_number_are_refused() -> None:
+    with pytest.raises(ValueError, match="five finite non-negative"):
+        prompted.Recalibration().apply(np.full(5, 1e308))
+    with pytest.raises(ValueError, match="five finite non-negative"):
+        prompted.fit([(np.full(5, 1e308), 0)])
+    assert prompted.Recalibration().apply(np.full(5, 1e300)) == pytest.approx([0.2] * 5)
+
+
+def test_format_check_reads_its_requests_as_utf8(monkeypatch: pytest.MonkeyPatch) -> None:
+    read_text: Any = Path.read_text
+    encodings: list[object] = []
+
+    def recorded(path: Path, *arguments: object, **options: object) -> str:
+        if path.parent == prompted.DIRECTORY / "requests":
+            encodings.append(options.get("encoding"))
+        return read_text(path, *arguments, **options)
+
+    monkeypatch.setattr(Path, "read_text", recorded)
+    prompted.smoke(clients.StubClient("decision"))
+    assert encodings == ["utf-8"] * (2 * len(prompted.SMOKE_GAMES))

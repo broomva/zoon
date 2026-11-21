@@ -334,12 +334,16 @@ def test_prompted_table_and_quoted_figures_match_the_paste() -> None:
     )
     assert prose.count(citation) == 1
     prose = prose.replace(citation, "")
-    table = {
-        *quoted,
+    table = [
         "| Call | Calls | Input tokens at most | Output tokens at most | USD at most |",
         "|---|---:|---:|---:|---:|",
-    }
-    prose = "\n".join(line for line in prose.splitlines() if line not in table)
+        *quoted,
+    ]
+    lines = prose.splitlines()
+    first = lines.index(table[0])
+    # The header says what the figures are, so it is checked with them, in place.
+    assert lines[first : first + len(table)] == table
+    prose = "\n".join(lines[:first] + lines[first + len(table) :])
     assert not re.search(r"\d", prose)
     assert paste.startswith("zoon interaction: prompted spending bound\n")
     assert "[budget] total at most proposed ceiling = " in paste

@@ -148,6 +148,8 @@ def request(view: kernel.View, multiplier: int = 1) -> prompts.Decision:
 
 def training_view(group: Group, seat: int, round_: int) -> kernel.View:
     game = GAMES[group.cell]
+    if not 1 <= round_ <= min(ROUNDS, len(group.rounds) + 1):
+        raise ValueError("round outside this group's history")
     return kernel.View(
         game,
         seat,
@@ -160,13 +162,17 @@ def training_view(group: Group, seat: int, round_: int) -> kernel.View:
 
 def _probability_logs(probabilities: Floats) -> Floats:
     probabilities = np.asarray(probabilities, dtype=float)
-    if (
-        probabilities.ndim == 0
-        or probabilities.shape[-1] != len(ANSWERS)
-        or not np.isfinite(probabilities).all()
-        or (probabilities < 0).any()
-        or (probabilities.sum(axis=-1) <= 0).any()
-    ):
+    valid = (
+        probabilities.ndim > 0
+        and probabilities.shape[-1] == len(ANSWERS)
+        and not (probabilities < 0).any()
+    )
+    if valid:
+        with np.errstate(over="ignore"):
+            sums = probabilities.sum(axis=-1)
+        # Non-negative entries with a finite sum are all finite themselves.
+        valid = bool(np.isfinite(sums).all() and (sums > 0).all())
+    if not valid:
         raise ValueError("five finite non-negative probabilities are required")
     floored = np.maximum(probabilities, person.FLOOR)
     return np.log(floored / floored.sum(axis=-1, keepdims=True))
@@ -403,7 +409,7 @@ def smoke(client: clients.Client) -> list[str]:
     for cell in SMOKE_GAMES:
         for r in (1, ROUNDS):
             name = f"{cell}-type-0-round-{r}.json"
-            value = json.loads((DIRECTORY / "requests" / name).read_text())
+            value = json.loads((DIRECTORY / "requests" / name).read_text(encoding="utf-8"))
             decision = prompts.Decision(
                 value["state"].removeprefix(FIXTURE_LABEL),
                 value["question"],
