@@ -114,7 +114,21 @@ def test_material_bytes_must_be_canonical(name: str, change: str, tmp_path: Path
 
 @pytest.mark.parametrize(
     "change",
-    ["arms", "form", "count", "missing", "string", "boolean", "fraction", "extra", "row_extra"],
+    [
+        "arms",
+        "form",
+        "count",
+        "missing",
+        "string",
+        "boolean",
+        "fraction",
+        "extra",
+        "row_extra",
+        "twin_type",
+        "count_type",
+        "first_fraction",
+        "negative_fraction",
+    ],
 )
 def test_fitted_refuses_invalid_schema(change: str, tmp_path: Path) -> None:
     document = json.loads(registered.FITTED.read_bytes())
@@ -126,6 +140,14 @@ def test_fitted_refuses_invalid_schema(change: str, tmp_path: Path) -> None:
         row["letter"] = "C"
     elif change == "count":
         row["count"] -= 1
+    elif change == "twin_type":
+        row["twin"] = int(row["twin"])
+    elif change == "count_type":
+        row["count"] = float(row["count"])
+    elif change == "first_fraction":
+        row["numbers"][-len(registered.FORMS["zoon"].traces)] = 1.01
+    elif change == "negative_fraction":
+        row["numbers"][-1] = -0.01
     elif change == "missing":
         del row["numbers"]
     elif change == "string":
@@ -145,7 +167,19 @@ def test_fitted_refuses_invalid_schema(change: str, tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(
-    "change", ["unsorted", "missing", "duplicate", "string", "boolean", "values", "extra", "key"]
+    "change",
+    [
+        "unsorted",
+        "missing",
+        "duplicate",
+        "string",
+        "boolean",
+        "values",
+        "extra",
+        "key",
+        "band_boolean",
+        "empty",
+    ],
 )
 def test_amounts_refuse_invalid_schema(change: str, tmp_path: Path) -> None:
     document = json.loads(registered.AMOUNTS.read_bytes())
@@ -161,6 +195,10 @@ def test_amounts_refuse_invalid_schema(change: str, tmp_path: Path) -> None:
         rows[0][2][0] = str(rows[0][2][0])
     elif change == "boolean":
         rows[0][0] = True
+    elif change == "band_boolean":
+        rows[0][1] = True
+    elif change == "empty":
+        rows[0][2] = []
     elif change == "values":
         rows[0][2].reverse()
     elif change == "extra":
@@ -196,3 +234,15 @@ def test_write_materials_writes_each_destination(
 def test_writer_refuses_nonfinite_numbers() -> None:
     with pytest.raises(ValueError):
         registered.encoded({"number": float("nan")})
+
+
+@pytest.mark.parametrize("name", ["fitted", "amounts"])
+def test_material_reader_refuses_missing_checksum(name: str, tmp_path: Path) -> None:
+    source = registered.FITTED if name == "fitted" else registered.AMOUNTS
+    document = json.loads(source.read_bytes())
+    document.pop("sha256")
+    path = tmp_path / source.name
+    path.write_bytes(registered.encoded(document))
+    reader = registered.read_fitted if name == "fitted" else registered.read_amounts
+    with pytest.raises(ValueError, match="invalid material document"):
+        reader(path)
