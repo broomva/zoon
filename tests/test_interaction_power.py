@@ -27,12 +27,14 @@ def test_power_table_is_the_paste_and_no_prose_digits() -> None:
     prose, paste = note()
     table = [line for line in prose.splitlines() if line.startswith("|")]
     expected = ["| Quantity | Result |", "|---|---|"]
-    printed = dict(line.split(" = ", 1) for line in paste.splitlines()[1:])
+    printed = dict(
+        line.split(" = ", 1) for line in paste.splitlines()[1:] if not line.startswith("[settings]")
+    )
     expected += [f"| {label} | {value} |" for label, value in printed.items()]
     assert table == expected
-    assert not re.search(
-        r"\d", "\n".join(line for line in prose.splitlines() if not line.startswith("|"))
-    )
+    prose_lines = [line for line in prose.splitlines() if line and not line.startswith("|")]
+    assert len(prose_lines) <= 12
+    assert not re.search(r"\d", "\n".join(prose_lines))
     assert paste.splitlines()[0] == power.TITLE
     assert [line.split(" = ", 1)[0] for line in paste.splitlines()] == power.labels()
     assert [
@@ -203,7 +205,7 @@ def test_main_prints_current_labels_without_long_calculation(
         return source
 
     def rates(*_args: object, **_kwargs: object) -> power.Rates:
-        return power.Rates(1, 0, 0.5, 1)
+        return power.Rates(1, 0, 0, 0, 0.5, 1)
 
     monkeypatch.setattr(power, "h2_training", training)
     monkeypatch.setattr(power, "checked_training_h2", checked)
@@ -216,9 +218,10 @@ def test_main_prints_current_labels_without_long_calculation(
     monkeypatch.setattr(power, "h2_rates", rates)
     monkeypatch.setattr(power, "h3_rates", rates)
     power.main()
-    assert [
-        line.split(" = ", 1)[0] for line in capsys.readouterr().out.splitlines()
-    ] == power.labels()
+    output = capsys.readouterr().out.splitlines()
+    assert [line.split(" = ", 1)[0] for line in output] == power.labels()
+    assert "[H2] pass at half effect = 0.500 (se 0.007)" in output
+    assert "[H3] pass at half effect = 0.500 (se 0.011)" in output
 
 
 def test_changed_required_training_h2_stops() -> None:
@@ -287,4 +290,57 @@ def test_power_targets_the_printed_training_effect_rather_than_pool_truth() -> N
         0.0052,
         training_effect=0.04,
     )
-    assert result.values() == (1, 0, 1, 1)
+    assert result.values() == (1, 0, 0, 0, 1, 1)
+
+
+def test_coverage_and_one_sided_errors_partition_trials_with_inclusive_bounds() -> None:
+    result = power.trial_rates(
+        np.full(5, 0.02),
+        np.array([0.0, 0.02, 0.021, 0.0, 0.03]),
+        np.array([0.02, 0.04, 0.04, 0.019, 0.04]),
+        0.02,
+        0.0052,
+    )
+    assert result.coverage == 0.4
+    assert result.lower_above_truth == 0.4
+    assert result.upper_below_truth == 0.2
+    assert sum(result.values()[:3]) == pytest.approx(1)
+
+
+def test_trial_generator_is_independent_of_registered_interval_generator(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    assert power.TRIAL_SEED != score.SEED
+    groups = synthetic()
+    differences = np.arange(len(groups), dtype=float)[:, None]
+    counts = dict.fromkeys(GAMES, 3)
+    sampled: list[list[int]] = []
+    original = power.sample_groups
+
+    def sample(
+        groups: list[data.Group], counts: dict[str, int], rng: np.random.Generator
+    ) -> tuple[list[data.Group], measure.Ints]:
+        trial, indices = original(groups, counts, rng)
+        sampled.append(indices.tolist())
+        return trial, indices
+
+    monkeypatch.setattr(power, "sample_groups", sample)
+    power.h2_rates(groups, differences, counts, trials=2, resamples=7)
+    first = sampled.copy()
+    sampled.clear()
+    monkeypatch.setattr(score, "SEED", score.SEED + 1)
+    power.h2_rates(groups, differences, counts, trials=2, resamples=7)
+    assert sampled == first
+
+
+@pytest.mark.parametrize(
+    ("value", "trials", "expected"),
+    [
+        (0.032, power.H2_TRIALS, "0.032 (se 0.002)"),
+        (0.032, power.H3_TRIALS, "0.032 (se 0.004)"),
+        (0.0, power.H2_TRIALS, "0.000 (se 0.000)"),
+        (1.0, power.H3_TRIALS, "1.000 (se 0.000)"),
+    ],
+)
+def test_formatted_rate_uses_its_trial_count(value: float, trials: int, expected: str) -> None:
+    assert power.formatted_rate(value, trials) == expected

@@ -3,6 +3,7 @@
 import sys
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from math import sqrt
 from types import ModuleType
 
 import numpy as np
@@ -12,10 +13,11 @@ from zoon.interaction.data import Group
 from zoon.interaction.games import GAMES
 from zoon.interaction.measure import Floats
 
-TRIALS = 200
-TRIAL_RESAMPLES = score.RESAMPLES
+H2_TRIALS = 5_000
+H3_TRIALS = 2_000
+TRIAL_RESAMPLES = 1_000
 POOL_GROUPS = 2000
-SEED = 20261120
+TRIAL_SEED = 20261121
 HALF_EFFECT = 0.5
 NULL_EFFECT = 0.0
 TRAINING_EFFECT = 1.0
@@ -29,6 +31,8 @@ TRAINING_RESCORE = "[training, H2, out of fold, person floor] zoon minus alone"
 TRAINING_H3 = "[training, H3, in-sample laws] alone minus zoon"
 RATE_LABELS = (
     "coverage at training effect",
+    "lower end above truth",
+    "upper end below truth",
     "pass at zero",
     "pass at half effect",
     "pass at training effect",
@@ -36,9 +40,11 @@ RATE_LABELS = (
 
 # Resolve attributes at rendering time, so no pasted setting can silently become stale.
 SETTINGS: tuple[tuple[str, ModuleType, str], ...] = (
-    ("seed", sys.modules[__name__], "SEED"),
+    ("registered interval seed", score, "SEED"),
+    ("power trial seed", sys.modules[__name__], "TRIAL_SEED"),
     ("registered interval replicates", score, "RESAMPLES"),
-    ("power trials", sys.modules[__name__], "TRIALS"),
+    ("H2 power trials", sys.modules[__name__], "H2_TRIALS"),
+    ("H3 power trials", sys.modules[__name__], "H3_TRIALS"),
     ("power interval replicates", sys.modules[__name__], "TRIAL_RESAMPLES"),
     ("pool groups per game and arm", sys.modules[__name__], "POOL_GROUPS"),
     ("pool prefix", sys.modules[__name__], "POOL_PREFIX"),
@@ -114,12 +120,21 @@ def sample_groups(
 @dataclass(frozen=True)
 class Rates:
     coverage: float
+    lower_above_truth: float
+    upper_below_truth: float
     null: float
     half: float
     full: float
 
     def values(self) -> tuple[float, ...]:
-        return self.coverage, self.null, self.half, self.full
+        return (
+            self.coverage,
+            self.lower_above_truth,
+            self.upper_below_truth,
+            self.null,
+            self.half,
+            self.full,
+        )
 
 
 def trial_rates(
@@ -144,7 +159,7 @@ def trial_rates(
     for multiplier in (NULL_EFFECT, HALF_EFFECT, TRAINING_EFFECT):
         shift = multiplier * target - truth
         passed.append(float(np.mean((estimates + shift >= threshold) & (lows + shift > 0))))
-    return Rates(coverage, *passed)
+    return Rates(coverage, float(np.mean(lows > truth)), float(np.mean(highs < truth)), *passed)
 
 
 def h2_rates(
@@ -152,10 +167,10 @@ def h2_rates(
     differences: Floats,
     counts: Mapping[str, int],
     *,
-    trials: int = TRIALS,
+    trials: int = H2_TRIALS,
     resamples: int = TRIAL_RESAMPLES,
 ) -> Rates:
-    rng = np.random.default_rng(SEED)
+    rng = np.random.default_rng(TRIAL_SEED)
     means = {cell: differences[mine].mean(axis=0) for cell, mine in score.by_game(groups).items()}
     residual = differences.copy()
     for cell, mine in score.by_game(groups).items():
@@ -230,7 +245,7 @@ def pool_truth(
     # Fair CRPS on the whole finite pool is the expectation of fair CRPS for a
     # subset drawn without replacement. Human expectations use each game's training
     # distribution; weights use the registered held-out counts.
-    trial, _ = sample_groups(groups, counts, np.random.default_rng(SEED))
+    trial, _ = sample_groups(groups, counts, np.random.default_rng(TRIAL_SEED))
     weights = score.h3_weights(trial)
     humans = score.observed(groups)
     scores: dict[str, Floats] = {}
@@ -251,10 +266,10 @@ def h3_rates(
     counts: Mapping[str, int],
     *,
     training_effect: float,
-    trials: int = TRIALS,
+    trials: int = H3_TRIALS,
     resamples: int = TRIAL_RESAMPLES,
 ) -> Rates:
-    rng = np.random.default_rng(SEED)
+    rng = np.random.default_rng(TRIAL_SEED)
     truth = pool_truth(groups, simulations, counts)
     estimates: list[float] = []
     lows: list[float] = []
@@ -288,6 +303,11 @@ def h3_rates(
 def formatted(label: str, interval: score.Interval) -> str:
     point, low, high = interval.table()[0]
     return f"{label} = {point:.4f} [{low:.4f}, {high:.4f}]"
+
+
+def formatted_rate(value: float, trials: int) -> str:
+    se = sqrt(value * (1 - value) / trials)
+    return f"{value:.3f} (se {se:.3f})"
 
 
 def labels() -> list[str]:
@@ -328,9 +348,9 @@ def main() -> None:
     h2_power = h2_rates(groups, differences, counts)
     simulations_pool = pool(laws, amounts)
     h3_power = h3_rates(groups, simulations_pool, counts, training_effect=float(h3.estimate[0]))
-    for hypothesis, rates in (("H2", h2_power), ("H3", h3_power)):
+    for hypothesis, rates, trials in (("H2", h2_power, H2_TRIALS), ("H3", h3_power, H3_TRIALS)):
         for label, value in zip(RATE_LABELS, rates.values(), strict=True):
-            print(f"[{hypothesis}] {label} = {value:.4f}", flush=True)
+            print(f"[{hypothesis}] {label} = {formatted_rate(value, trials)}", flush=True)
 
 
 if __name__ == "__main__":
