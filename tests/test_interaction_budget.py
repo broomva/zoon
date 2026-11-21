@@ -213,6 +213,7 @@ def test_settings_table_resolves_named_attributes_outside_the_table() -> None:
         "ROUNDS": games.ROUNDS,
         "SIMULATED_GROUPS": compare.SIMULATED_GROUPS,
         "CEILING": pilot_budget.CEILING,
+        "DECISION_CAP_MULTIPLE": 4,
     }
     tree = ast.parse(inspect.getsource(budget))
     ceiling = next(

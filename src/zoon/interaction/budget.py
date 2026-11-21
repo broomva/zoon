@@ -15,6 +15,7 @@ from zoon.pilot import clients, prices, prompts
 
 CEILING = pilot_budget.CEILING
 SIMULATED_GROUPS = compare.SIMULATED_GROUPS
+DECISION_CAP_MULTIPLE = 4
 
 
 @cache
@@ -114,7 +115,7 @@ def whole_dollars(value: Decimal) -> Decimal:
 
 
 def decision_cap(rows: Sequence[pilot_budget.Cost]) -> Decimal:
-    return whole_dollars(4 * sum((r.dollars for r in rows), Decimal()))
+    return whole_dollars(DECISION_CAP_MULTIPLE * sum((r.dollars for r in rows), Decimal()))
 
 
 def chat_cap() -> Decimal:
@@ -122,6 +123,7 @@ def chat_cap() -> Decimal:
 
 
 SETTINGS: tuple[tuple[str, object, str], ...] = (
+    ("decision cap multiple", sys.modules[__name__], "DECISION_CAP_MULTIPLE"),
     ("rounds", sys.modules[__name__], "ROUNDS"),
     ("simulated groups per game", sys.modules[__name__], "SIMULATED_GROUPS"),
     ("recalibration count limit", prompted, "SUBSAMPLE_COUNT"),
@@ -154,6 +156,7 @@ SETTINGS: tuple[tuple[str, object, str], ...] = (
     ("chat input bytes per token", chat, "INPUT_BYTES_PER_TOKEN"),
     ("chat input overhead tokens", chat, "INPUT_OVERHEAD"),
     ("chat smoke repeats", chat, "SMOKE_REPEATS"),
+    ("chat smoke default", chat, "SMOKE_DEFAULT"),
     ("chat input USD per million", chat_prices, "HIGH.input_per_million"),
     ("chat output USD per million", chat_prices, "HIGH.output_per_million"),
     ("chat lower input USD per million", chat_prices, "LOW.input_per_million"),
@@ -188,6 +191,8 @@ def report(groups: Sequence[Group], held: Mapping[str, int]) -> list[str]:
     return [
         "zoon interaction: prompted spending bound",
         *settings(),
+        "[assumption] chat input uses byte-fallback tokenisation",
+        "[assumption] service bounds candidate plus thinking tokens by maximum output tokens",
         f"[data] training groups = {len(groups)}",
         f"[data] held-out groups = {sum(held.values())}",
         *[

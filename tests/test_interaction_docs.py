@@ -3,13 +3,14 @@
 import ast
 import inspect
 import re
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
 
 from tests.test_interaction_measure import played_groups
 from tests.test_interaction_training import require_training
-from zoon.interaction import measure
+from zoon.interaction import kernel, measure
 
 NOTE = Path(__file__).parent.parent / "docs" / "interaction" / "measure.md"
 # Lines the note's argument rests on. A run must print each one.
@@ -421,3 +422,140 @@ def test_registration_constants_match_current_code() -> None:
         clients.retry(fail, pause=observed.append)
     assert calls == attempts
     assert observed == pauses
+
+
+def test_registration_chat_settings_rules_and_figures_match_code() -> None:
+    from zoon.interaction import budget, chat, chat_prices, data
+
+    text = (NOTE.parents[2] / "interaction" / "registration.md").read_text()
+    normal = " ".join(text.split())
+    for name, value in {
+        "chat.MAX_OUTPUT_TOKENS": chat.MAX_OUTPUT_TOKENS,
+        "budget.DECISION_CAP_MULTIPLE": budget.DECISION_CAP_MULTIPLE,
+        "chat_prices.LOW_THROUGH": chat_prices.LOW_THROUGH,
+    }.items():
+        quoted = re.findall(rf"`{re.escape(name)} = ([^`]+)`", text)
+        assert quoted and all(ast.literal_eval(q) == value for q in quoted)
+    assert f"Thinking level {chat.THINKING_LEVEL}; temperature {chat.TEMPERATURE};" in normal
+    assert f"at most {chat.MAX_OUTPUT_TOKENS} output tokens" in normal
+    assert f"with at most {chat.MAX_OUTPUT_TOKENS} output tokens per call" in normal
+    words = {3: "Three", 4: "Four"}
+    assert f"{words[chat.REPLY_ATTEMPTS]} unusable replies for one decision" in normal
+    assert "leading zeroes are allowed" in normal
+    assert "space, tab, line feed and carriage return only" in normal
+    retry = re.search(
+        r"For both models, a request has at most (\d+) attempts, "
+        r"with pauses of (\d+), (\d+) and (\d+) seconds",
+        normal,
+    )
+    assert retry and int(retry[1]) == chat.TRANSPORT_ATTEMPTS
+    assert tuple(map(float, retry.groups()[1:])) == chat.TRANSPORT_PAUSES
+    assert f"each have threshold `{chat.SAFETY_SETTINGS[0]['threshold']}`" in normal
+    keys = re.search(
+        r'Flag a reply containing the run "([^"]+)", "([^"]+)" or "([^"]+)", '
+        r'or the adjacent runs "([^"]+)"',
+        normal,
+    )
+    assert keys and keys.groups() == chat.RECALL_KEYS
+    question = re.search(r"^> How many of your .*$", text, re.M)
+    assert question
+    rendered = question[0][2:].replace(" E ", " 36 ").replace("round r?", "round 1?")
+    assert chat.request(kernel_view_for_docs()).endswith(rendered)
+    separators = re.search(
+        r"one `(.*?)`, then `You are Player n\.`, then `(.*?)`, "
+        r"then the history, then `(.*?)`, then the question",
+        normal,
+    )
+    assert separators
+    assert tuple(ast.literal_eval('"' + part + '"') for part in separators.groups()) == (
+        chat.INSTRUCTION_SEPARATOR,
+        chat.SECTION_SEPARATOR,
+        chat.SECTION_SEPARATOR,
+    )
+    rounds = re.search(r"history joins rounds with `(.*?)`", normal)
+    assert rounds and ast.literal_eval('"' + rounds[1] + '"') == chat.ROUND_SEPARATOR
+    assert f"on {chat_prices.READ} from the provider's" in normal
+    assert f"{chat_prices.HIGH_FROM}; the bound uses the higher price." in normal
+    multiple = {4: "four", 3: "three"}
+    assert (
+        f"The decision-model cap is {multiple[budget.DECISION_CAP_MULTIPLE]} times its bound"
+        in normal
+    )
+    require_training()
+    rows = budget.estimate(data.load(), data.held_out_counts())
+    assert f"**Decision-model cap in US dollars: {budget.decision_cap(rows)}.**" in normal
+    assert f"recall included: {budget.chat_cap()}.**" in normal
+    bound = sum((r.dollars for r in budget.chat_estimate()), start=Decimal())
+    assert f"**Chat-model bound in US dollars: {budget.dollars(bound)}.**" in normal
+
+
+def kernel_view_for_docs() -> "kernel.View":
+    from zoon.interaction import kernel
+    from zoon.interaction.games import GAMES
+
+    return kernel.View(GAMES["2-AI"], 0, ())
+
+
+def test_registered_format_check_counts_equal_committed_record() -> None:
+    import hashlib
+
+    from zoon.interaction import chat
+
+    raw = (NOTE.parent / "format-check-chat.txt").read_bytes()
+    assert (
+        hashlib.sha256(raw).hexdigest()
+        == "daf600cdcd5486ff7cc0fe381838bd074f9be1f7151c4833755dc50b00660d1d"
+    )
+    lines = raw.decode().splitlines()
+    normal = " ".join((NOTE.parents[2] / "interaction" / "registration.md").read_text().split())
+    paragraph = re.search(
+        r"was run once at the settings fixed here: (\d+) calls, .*?"
+        r"All (\d+) replies were usable whole numbers\. (\w+) reported thinking tokens, "
+        r"from (\d+) to (\d+)",
+        normal,
+    )
+    assert paragraph
+    assert int(paragraph[1]) == len(lines) == 12
+    assert int(paragraph[2]) == sum("usable = True" in line for line in lines) == 12
+    thoughts = [int(re.search(r"thinking tokens = (\d+)", line)[1]) for line in lines]  # type: ignore[index]
+    nonzero = [value for value in thoughts if value]
+    assert paragraph[3] == {3: "Three"}[len(nonzero)]
+    assert (int(paragraph[4]), int(paragraph[5])) == (min(nonzero), max(nonzero))
+    assert len(lines) == len(chat.smoke(chat.StubClient()))
+    assert (
+        "[`docs/interaction/format-check-chat.txt`](../docs/interaction/format-check-chat.txt)"
+        in normal
+    )
+
+
+def test_prompted_prose_is_scope_and_record_only() -> None:
+    prose, _ = prompted_note()
+    # Pin the scope paragraphs so settings cannot silently migrate back to prose,
+    # including number words that the generic digit check cannot catch.
+    start = prose.index("The spending program reads")
+    end = prose.index("| Call |", start)
+    # Nothing may be inserted between the attribution and the scope paragraph.
+    assert prose[:start].endswith(
+        "supplementary appendix, sections 5B and 5D. "
+        "The other games use substituted parameters.\n\n"
+    )
+    assert prose[start:end] == (
+        "The spending program reads training groups and held-out counts only. Its settings,\n"
+        "assumptions and output are recorded below. Vertex price confirmation remains due\n"
+        "on registration day. The format checks are outside the bound.\n\n"
+    )
+
+
+def test_draft_status_does_not_reopen_completed_chat_work() -> None:
+    root = NOTE.parents[2]
+    readme = (root / "README.md").read_text()
+    assert (
+        "chat requests, transcripts and replay are implemented and tested; "
+        "run machinery and power and coverage under the registered rules remain open" in readme
+    )
+    design = " ".join((NOTE.parent / "design.md").read_text().split())
+    assert (
+        "the chat bound are filled from the spending script, and both format checks are DONE;"
+        in design
+    )
+    assert "The chat request check with the committed renderer is DONE;" in design

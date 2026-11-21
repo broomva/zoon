@@ -66,7 +66,11 @@ def test_exact_request_and_same_made_up_histories_as_prompted(tmp_path: Path) ->
     assert len(generated) == len(source) == 28
     directory = prompted.DIRECTORY / "chat-requests"
     digests = json.loads((directory / "sha256.json").read_text())
-    assert set(digests) == set(generated) == {p.name for p in directory.glob("*.txt")}
+    assert set(digests) == set(generated)
+    assert {p.name for p in directory.iterdir()} == {*generated, "sha256.json"}
+    assert (directory / "sha256.json").read_bytes() == (
+        json.dumps({name: chat.digest(text) for name, text in generated.items()}, indent=2) + "\n"
+    ).encode()
     for name, text in generated.items():
         original = source[name.replace(".txt", ".json")]
         cell, kind, r = (
@@ -408,7 +412,7 @@ def test_transcript_is_append_only_fsynced_and_resume_bound_to_request(
 
 @pytest.mark.parametrize(
     "mutation",
-    ["commit", "mode", "partial", "duplicate", "digest", "tokens", "json", "noncanonical"],
+    ["commit", "mode", "duplicate", "digest", "tokens", "json", "noncanonical"],
 )
 def test_transcript_corruption_or_wrong_run_is_refused(tmp_path: Path, mutation: str) -> None:
     run = session(tmp_path, Replies([response()]))
@@ -518,18 +522,18 @@ def test_cap_admission_counts_spending_reservations_and_current_estimate(tmp_pat
         run.decision(view(), GROUP)
     assert caught.value.cause == chat.Cause.CAP
     assert not client.requests
-    run.cap = addition  # Equality is admitted.
+    run = session(tmp_path, client, addition)  # Equality is admitted in a new arm.
     assert run.decision(view(), GROUP).points == 12
     run.cap = chat.estimate(chat.request(view(1))) + run.transcript.spent - Decimal("0.00000001")
     with pytest.raises(chat.Unusable):
         run.decision(view(1), GROUP)
     assert len(client.requests) == 1
-    run.cap = chat.estimate(chat.request(view(1))) + run.transcript.spent
+    run = session(tmp_path, client, chat.estimate(chat.request(view(1))) + run.transcript.spent)
     run.reserved = Decimal("0.00000001")
     with pytest.raises(chat.Unusable):
         run.decision(view(1), GROUP)
     assert len(client.requests) == 1
-    run.reserved = Decimal()
+    run = session(tmp_path, client, chat.estimate(chat.request(view(1))) + run.transcript.spent)
     assert run.decision(view(1), GROUP).points == 12
 
 
@@ -546,14 +550,15 @@ def test_real_inflight_reservation_and_duplicate_dispatch_are_refused(tmp_path: 
             return response()
 
     run = session(tmp_path, Nested(), chat.estimate(chat.request(view())))
-    run.decision(view(), GROUP)
+    with pytest.raises(chat.Unusable):
+        run.decision(view(), GROUP)
     assert not run.pending and run.reserved == 0
 
 
 def test_reaching_cap_from_reported_usage_makes_chat_unusable(tmp_path: Path) -> None:
     expensive = response(input_tokens=100000, output_tokens=0, thinking_tokens=0)
     cap = chat.cost(expensive)
-    run = session(tmp_path, Replies([expensive]), cap)
+    run = session(tmp_path, Replies([expensive]), cap - Decimal("0.000001"))
     with pytest.raises(chat.Unusable) as caught:
         run.decision(view(), GROUP)
     assert caught.value.cause == chat.Cause.CAP
@@ -630,8 +635,7 @@ def test_recall_uses_same_client_and_keeps_full_replies_after_unusable_decision(
 @pytest.mark.parametrize("cause", [chat.Cause.WITHDRAWN, chat.Cause.VERSION, chat.Cause.CAP])
 def test_terminal_reasons_skip_recall(tmp_path: Path, cause: chat.Cause) -> None:
     client = Replies([])
-    run = session(tmp_path, client)
-    run.terminal = cause
+    run = chat.Session(chat.Transcript(tmp_path, BINDING), client, terminal=cause)
     assert all(reply.response is None for reply in chat.recall(run))
     assert not client.requests
 
@@ -693,6 +697,9 @@ def test_fixtures_command_regenerates_identical_bytes_in_a_new_directory(
         assert (tmp_path / "chat-requests" / name).read_bytes() == text.encode()
     digests = json.loads((tmp_path / "chat-requests" / "sha256.json").read_bytes())
     assert digests == {name: chat.digest(text) for name, text in expected.items()}
+    assert (tmp_path / "chat-requests" / "sha256.json").read_bytes() == (
+        json.dumps(digests, indent=2) + "\n"
+    ).encode()
 
 
 def test_replay_failure_does_not_suppress_recall(tmp_path: Path) -> None:

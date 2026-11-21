@@ -6,43 +6,18 @@ Its question and declared answers, with an empty history and a made-up later his
 are in [the request files](../../interaction/requests/). These are the materials given
 and the prediction asked for.
 
-The chat arm has [its own request fixtures](../../interaction/chat-requests/),
-point-reply client, transcript and replay. Its recall check matches the registered
-runs of letters and digits and retains replies in full. No live run or held-out
-history reader is supplied here. The registration fixes separate spending caps.
-The decision model was sent format-check requests twice on made-up histories, four
-calls each time; the registration's section on calls made before registration
-records both. The replies were usable, and no other call has been made for this
-arm. The format check is for the maintainer:
-`python -m zoon.interaction.prompted smoke --live`.
-Both format checks are outside the bound. The chat check defaults to a seeded
-stub: `python -m zoon.interaction.chat smoke`. Live calls require `--live`.
+The chat arm has [its own request fixtures](../../interaction/chat-requests/).
+The registration records the format checks made on made-up histories and fixes
+separate spending caps. The chat check's output is kept in
+[the format-check record](format-check-chat.txt).
 
 The instructions are used under CC BY 4.0: Wang, Hilbe and Zhang, *PNAS* 123(5),
 e2525760123, [doi:10.1073/pnas.2525760123](https://doi.org/10.1073/pnas.2525760123),
 supplementary appendix, sections 5B and 5D. The other games use substituted parameters.
 
-The spending bound reads training groups and held-out counts only. The decision
-price and character estimate are from the pilot and its figures are unchanged.
-The chat bound counts a call for every seat, round and group, plus recall, with
-no request reuse. For each game it exhaustively finds the longest legal row
-rendering, then repeats it to bound each history, just as the decision bound does.
-
-The chat input estimate is one token per UTF byte, plus an envelope allowance
-printed below. It is deliberately more generous than the decision estimator and
-than both measured chat requests reported during model selection. A measured
-sample cannot prove a universal tokenizer bound: this estimate assumes byte
-fallback tokenisation and bounds the rendered input under that assumption.
-Output includes thinking and is bounded by the configured maximum. The listed
-later chat price is used for both the bound and admission; the earlier price is
-kept beside it. The read date and price page are printed below; Vertex price
-confirmation remains due on registration day.
-
-Each bound covers one pass. The decision cap rounds up four times its bound;
-the chat cap rounds up its one-pass bound. Unusable replies and retries are
-paid from that same chat cap; reaching it makes only that arm unusable.
-Reservations for calls in flight count in admission. The settings and caps below
-are fixed by the code for the draft registration.
+The spending program reads training groups and held-out counts only. Its settings,
+assumptions and output are recorded below. Vertex price confirmation remains due
+on registration day. The format checks are outside the bound.
 
 | Call | Calls | Input tokens at most | Output tokens at most | USD at most |
 |---|---:|---:|---:|---:|
@@ -59,6 +34,7 @@ Output of `python -m zoon.interaction.budget`:
 
 ```
 zoon interaction: prompted spending bound
+[settings] decision cap multiple = 4
 [settings] rounds = 20
 [settings] simulated groups per game = 100
 [settings] recalibration count limit = 512
@@ -91,6 +67,7 @@ zoon interaction: prompted spending bound
 [settings] chat input bytes per token = 1
 [settings] chat input overhead tokens = 400
 [settings] chat smoke repeats = 3
+[settings] chat smoke default = stub
 [settings] chat input USD per million = 4.00
 [settings] chat output USD per million = 20.00
 [settings] chat lower input USD per million = 2.00
@@ -99,6 +76,8 @@ zoon interaction: prompted spending bound
 [settings] chat lower price through = 2026-11-30
 [settings] chat price read = 2026-11-21
 [settings] chat price page = https://ai.google.dev/gemini-api/docs/pricing
+[assumption] chat input uses byte-fallback tokenisation
+[assumption] service bounds candidate plus thinking tokens by maximum output tokens
 [data] training groups = 210
 [data] held-out groups = 143
 [open loop] calls = 7000 | input tokens <= 13015060 | output tokens <= 7000 | USD <= 0.54663252
