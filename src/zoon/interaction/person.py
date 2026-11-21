@@ -49,8 +49,12 @@ class Candidate:
         return self.traces + (("anchor",) if self.letter == "E" else ())
 
     @property
+    def has_intercept(self) -> bool:
+        return self.letter == "B"
+
+    @property
     def constants(self) -> int:
-        return 5 if self.letter == "B" else len(measure.STRATA)
+        return 5 if self.has_intercept else len(measure.STRATA)
 
     @property
     def phase_size(self) -> int:
@@ -65,7 +69,7 @@ class Candidate:
         return np.r_[phase, phase, np.zeros(len(self.features)), np.full(len(self.traces), 0.5)]
 
     def base(self, game: Game, seat: int) -> Floats:
-        if self.letter == "B":
+        if self.has_intercept:
             unit = sum(game.endowments) / game.size / B_MEAN_ENDOWMENT
             canonical = replace(game, endowments=tuple(round(e / unit) for e in game.endowments))
             return np.array([1.0, *measure.traits(canonical, seat)])
@@ -148,7 +152,7 @@ class Person:
 
     def probabilities(self, game: Game, seat: int, state: State = State()) -> Floats:
         c = self.candidate
-        if c.letter != "B" and game.cell not in self.games:
+        if not c.has_intercept and game.cell not in self.games:
             raise ValueError(f"no fitted constant for game {game.cell}")
         start = c.phase_size if state.seen else 0
         phase = self.numbers[start : start + c.phase_size]
@@ -343,7 +347,7 @@ def fit(groups: Sequence[Group], candidate: Candidate, *, start_nudge: float = 0
 
 
 def log_likelihoods(person: Person, groups: Sequence[Group]) -> Floats:
-    if person.candidate.letter != "B" and any(g.cell not in person.games for g in groups):
+    if not person.candidate.has_intercept and any(g.cell not in person.games for g in groups):
         raise ValueError("no fitted constant for a scored game")
     logs = likelihood(person.numbers, records(groups, person.candidate), person.candidate)[2]
     # Public scores use the measuring stick's groups, rounds, seats order.
@@ -359,7 +363,7 @@ def log_likelihoods(person: Person, groups: Sequence[Group]) -> Floats:
 def out_of_sample(
     groups: Sequence[Group], candidate: Candidate, leave_out_game: bool = False
 ) -> Floats:
-    if leave_out_game and candidate.letter != "B":
+    if leave_out_game and not candidate.has_intercept:
         raise ValueError("game-left-out scores need a form with an intercept")
     labels = [g.cell if leave_out_game else measure.fold_of(g) for g in groups]
     decision_group = np.repeat(

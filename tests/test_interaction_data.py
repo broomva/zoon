@@ -291,3 +291,61 @@ def test_matlab_text_cells_are_unwrapped() -> None:
     assert module._scalar(np.array(["FE"])) == "FE"
     assert module._scalar(np.float64(3.0)) == 3.0
     assert module._scalar("AI") == "AI"
+
+
+def test_fetch_reuses_hash_correct_files_without_network(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import hashlib
+
+    raw = tmp_path / "cached"
+    raw.mkdir()
+    files: dict[str, object] = {}
+    for filename in data.FILES:
+        content = b"synthetic cached data"
+        (raw / filename).write_bytes(content)
+        files[filename] = {
+            "url": f"https://zenodo.org/api/records/16918146/files/{filename}/content",
+            "size": len(content),
+            "sha256": hashlib.sha256(content).hexdigest(),
+        }
+    data.MANIFEST.write_text(json.dumps({"files": files}))
+
+    def refuse_network(*args: object, **kwargs: object) -> None:
+        raise AssertionError("cached data must not be downloaded")
+
+    monkeypatch.setattr(data.urllib.request, "urlopen", refuse_network)
+    before = {p.name: p.read_bytes() for p in raw.iterdir()}
+    data.fetch(raw)
+    assert {p.name: p.read_bytes() for p in raw.iterdir()} == before
+    assert json.loads(data.MANIFEST.read_text())["files"] == files
+
+
+def test_fetch_downloads_a_missing_file_with_a_time_limit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import hashlib
+    import io
+
+    content = b"synthetic download"
+    files = {
+        filename: {
+            "url": f"https://zenodo.org/api/records/16918146/files/{filename}/content",
+            "size": len(content),
+            "sha256": hashlib.sha256(content).hexdigest(),
+        }
+        for filename in data.FILES
+    }
+    data.MANIFEST.write_text(json.dumps({"files": files}))
+    asked: list[tuple[str, object]] = []
+
+    def download(url: str, *, timeout: object = None) -> io.BytesIO:
+        asked.append((url, timeout))
+        return io.BytesIO(content)
+
+    monkeypatch.setattr(data.urllib.request, "urlopen", download)
+    raw = tmp_path / "fresh"
+    data.fetch(raw)
+    assert asked == [(files[filename]["url"], data.DOWNLOAD_TIMEOUT) for filename in data.FILES]
+    assert data.DOWNLOAD_TIMEOUT > 0
+    assert {p.name: p.read_bytes() for p in raw.iterdir()} == dict.fromkeys(data.FILES, content)

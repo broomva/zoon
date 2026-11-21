@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from tests.test_interaction_measure import played_groups
+from tests.test_interaction_training import require_training
 from zoon.interaction import measure
 
 NOTE = Path(__file__).parent.parent / "docs" / "interaction" / "measure.md"
@@ -295,16 +296,71 @@ def test_candidate_pasted_settings_match_the_current_code() -> None:
 
 
 def test_candidate_pasted_amounts_match_the_training_file() -> None:
-    from collections import Counter
+    from zoon.interaction import compare, data
 
-    from zoon.interaction import data, kernel
-
-    if not data.TRAINING.is_file():
-        pytest.skip("training file is absent; the pasted amount table needs training groups")
+    require_training()
     _, paste = candidate_note()
     amounts = [line for line in paste.splitlines() if line.startswith("[amounts,")]
-    expected: list[str] = []
-    for (endowment, band), values in kernel.Amounts.build(data.load()).rows.items():
-        counts = ", ".join(f"{point}:{count}" for point, count in sorted(Counter(values).items()))
-        expected.append(f"[amounts, endowment {endowment}, band {band}] points:count = {counts}")
-    assert amounts == expected
+    assert amounts == [entry.render() for entry in compare.amount_entries(data.load())]
+
+
+def prompted_note() -> tuple[str, str]:
+    text = (NOTE.parent / "prompted.md").read_text()
+    prefix, paste = text.rsplit("\n```\n", 2)[:2]
+    return prefix, paste.rstrip("`\n")
+
+
+def test_prompted_table_and_quoted_figures_match_the_paste() -> None:
+    prose, paste = prompted_note()
+    rows: list[str] = []
+    for line in paste.splitlines():
+        match = re.fullmatch(
+            r"\[(open loop|recalibration|disguise|closed loop|recall|total)\] calls = (\d+) "
+            r"\| input tokens <= (\d+) \| output tokens <= (\d+) \| USD <= (\S+)",
+            line,
+        )
+        if match:
+            rows.append("| " + " | ".join(match.groups()) + " |")
+    quoted = [line for line in prose.splitlines() if re.match(r"\| (?!Call|---)", line)]
+    assert len(rows) == 5
+    assert quoted == rows
+    # Attribution identifies the source and its licence; these are not measured figures.
+    # It is exempt from the digit rule, so it is pinned whole.
+    citation = (
+        "The instructions are used under CC BY 4.0: Wang, Hilbe and Zhang, *PNAS* 123(5),\n"
+        "e2525760123, [doi:10.1073/pnas.2525760123](https://doi.org/10.1073/pnas.2525760123),\n"
+        "supplementary appendix, sections 5B and 5D. The other games use substituted "
+        "parameters.\n\n"
+    )
+    assert prose.count(citation) == 1
+    prose = prose.replace(citation, "")
+    table = [
+        "| Call | Calls | Input tokens at most | Output tokens at most | USD at most |",
+        "|---|---:|---:|---:|---:|",
+        *quoted,
+    ]
+    lines = prose.splitlines()
+    first = lines.index(table[0])
+    # The header says what the figures are, so it is checked with them, in place.
+    assert lines[first : first + len(table)] == table
+    prose = "\n".join(lines[:first] + lines[first + len(table) :])
+    assert not re.search(r"\d", prose)
+    assert paste.startswith("zoon interaction: prompted spending bound\n")
+    assert "[budget] total at most proposed ceiling = " in paste
+
+
+def test_prompted_pasted_settings_match_current_objects() -> None:
+    from zoon.interaction import budget
+
+    _, paste = prompted_note()
+    assert [
+        line for line in paste.splitlines() if line.startswith("[settings]")
+    ] == budget.settings()
+
+
+def test_prompted_full_paste_matches_training_only_bound() -> None:
+    from zoon.interaction import budget, data
+
+    require_training()
+    _, paste = prompted_note()
+    assert paste == "\n".join(budget.report(data.load(), data.held_out_counts()))

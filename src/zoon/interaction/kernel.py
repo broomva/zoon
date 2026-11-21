@@ -84,6 +84,7 @@ class View:
     game: Game
     seat: int
     history: tuple[Observation, ...]
+    open_channel: bool = True
 
 
 class Agent(Protocol):
@@ -107,7 +108,6 @@ class Coded:
         else:
             state, observations = person.State(), view.history
         for observation in observations:
-            # No missing contribution or payoff is inferred from the rules.
             visible = dict(observation.contributions)
             row = tuple(visible.get(s, 0) for s in range(view.game.size))
             state = self.law.update(state, view.game, view.seat, row)
@@ -199,7 +199,7 @@ def play(
     rounds: list[tuple[int, ...]] = []
     for r in range(ROUNDS):
         returned = [
-            np.array(agent(View(game, s, histories[s])), dtype=np.float64, copy=True)
+            np.array(agent(View(game, s, histories[s], open_channel)), dtype=np.float64, copy=True)
             for s, agent in enumerate(agents)
         ]
         laws = [distribution(p) for p in returned]

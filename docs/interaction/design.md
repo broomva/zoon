@@ -173,8 +173,10 @@ What the pre-registration fixes, with the files committed:
 - **Recalibration.** Five ordered bands need more than a temperature. The decision model's
   arm gets a temperature and one shift for each band, the shifts summing to zero, so five
   fitted numbers. They are fitted by maximum likelihood on a subsample of training decisions
-  drawn by a committed rule. So the arm cannot lose only because its probabilities are too
-  extreme or lean toward a band.
+  drawn by a committed rule, with a small penalty toward no recalibration, so that the fit
+  has one answer whatever the model returns. The temperature enters as an inverse
+  temperature that cannot be negative. So the arm cannot lose only because its probabilities
+  are too extreme or lean toward a band.
 - **The chat model** is run in the closed loop only. It is asked for a number of points and
   its answer is taken as it stands, with no recalibration and no band step, since that is
   how such agents are run. It is reported and decides nothing.
