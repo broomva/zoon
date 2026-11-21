@@ -101,10 +101,17 @@ reported version that does not begin with the model name make `chat` unusable,
 with no scores.
 
 If chat requests alone keep `closed-loop` or `recall` from completing, the operator
-may end the chat arm with a recorded reason before `held-out` begins. `chat` is
-then unusable, the step completes, the report prints the reason, and no verdict
-changes. This is the only operator decision the run allows, and it cannot be
-taken once `held-out` has started.
+may end the chat arm with a recorded reason before `held-out` begins. The command
+is accepted only while `closed-loop` or `recall` is interrupted and its last
+failure was a chat transport failure. `chat` is then unusable, the step completes,
+the report prints the reason and the number of chat decisions already answered,
+and no verdict changes. Apart from a declared repair, this is the only operator
+decision the run allows, and it cannot be taken once `held-out` has started.
+
+If `held-out` has not completed within 30 days of its first start, both
+hypotheses receive no verdict and the report publishes every score already
+computed. Before `held-out` starts, an interruption has no time limit: no
+held-out group has been read.
 
 Recall questions are sent unless the model is withdrawn, its version has changed,
 or the chat cap is reached. An arm made unusable by the three-reply rule, or ended
@@ -143,9 +150,10 @@ sum before recalibration, as the committed code does.
 This common floor is a rule of the H2 score only. In the closed loop the coded
 arms draw from their probabilities with `person.FLOOR = 1e-9`, and `prompted`
 from its recalibrated probabilities, as the committed kernel does. For each arm,
-report the number of held-out decisions in which the floor raised the chosen
-band's probability. Beside the verdict and changing nothing, report the two H2
-differences rescored with `person.FLOOR` for the coded arms.
+report the number of held-out decisions in which this scoring floor raised the
+chosen band's probability. Beside the verdict and changing nothing, report the
+two H2 differences, with their intervals, rescored with `person.FLOOR` in place of
+the scoring floor for the coded arms only; `prompted` is scored as above.
 
 **Interval.** Games are in `sorted(GAMES)` order; within a game, held-out groups
 are in order of their group index. Let `n_g` be the number of held-out groups in
@@ -235,8 +243,7 @@ has, for an average over simulated groups, the variance of a fresh ensemble of
 the full size. The simulated groups of `zoon`, `alone` and `prompted` are paired
 by the shared kernel streams, so the same half is used for every arm, which
 keeps that pairing. Drawing halves independently per arm would discard it and
-roughly double the simulation variance of a difference. Statistical review of
-this interval is required before registration. This differs from
+roughly double the simulation variance of a difference. This differs from
 `compare.interval`, which resamples human groups only.
 
 **Pass rule.** Against `alone` and against `prompted` separately, the composite
@@ -255,8 +262,10 @@ intervals from 210 to 143 groups, treat scoring models as fixed, assume held-out
 groups vary as training groups do, and take the true effect as half the estimated
 training effect. They assume independent groups; lab sittings are not identified.
 They come from intervals that resample human groups only and, for H2, without
-stratifying by game. They overstate the power of the H3 rule fixed here; the
-registered H2 interval is about as wide as the note's. At this number of groups
+stratifying by game. They overstate the power of the H3 rule fixed here. The
+registered H2 interval is about as wide as the note's, but the H2 figure
+overstates too, because the estimate under the common floor is smaller: 0.0209
+against 0.0253. At this number of groups
 the interval condition is the binding one for the comparisons with `alone`.
 Power and coverage under the rules fixed here are to be computed on training
 groups by a committed script and quoted here before registration. The quoted
@@ -455,21 +464,29 @@ which must begin with its model name, as in the pilot. Withdrawal means the
 service says the model does not exist on every bounded attempt at a request.
 The outcomes for withdrawal and version change are under Data.
 
-### Calls made before this file
+### Calls made before registration
 
 The decision model was sent format-check requests twice, four calls each time,
-all on made-up histories: once before the request renderer was written, and on
-2026-11-21 with the four committed format-check requests. All eight replies were
-usable five-band distributions.
+all on made-up histories: on 2026-11-20, before the request renderer was written,
+and on 2026-11-21 with the four committed format-check requests. All eight replies
+were usable five-band distributions.
 
-On the same day four candidate chat models (`gemini-4-hydrogen`, `gemini-4-argon`,
-`gemini-4-neon`, `gemini-4-carbon`) were sent a toy question and two requests built
-from the made-up histories, 28 answered calls in all, to learn whether they could
-be used. All four answered the first round with the whole endowment.
+On 2026-11-21 four candidate chat models (`gemini-4-hydrogen`, `gemini-4-argon`,
+`gemini-4-neon`, `gemini-4-carbon`) were tried, to learn whether they could be
+used. Each was sent one toy question: a first attempt with a setting the service
+refused, 4 refused calls, then 4 answered calls. Each was then sent two requests
+built from the made-up histories, a first round and a twentieth round, three
+times each at temperature 0: 24 answered calls. That is 28 answered calls. All
+four answered the first round with the whole endowment every time, and their
+twentieth-round answers varied between repeats.
+
 `gemini-4-carbon` was chosen as the provider's most capable model among the two
 that reported no thinking tokens at the low setting. Its replies to the made-up
-histories were seen before it was chosen; no participant record was sent to any
-model, and no held-out group has been read.
+histories were seen before it was chosen, and the chat arm's settings and reply
+rule in this file were written after them: the temperature, because the answers
+varied even at temperature 0, and the thinking level, because the service refuses
+to turn thinking off. The replies are not kept in the repository. No participant
+record was sent to any model, and no held-out group has been read.
 
 ### The chat arm
 
@@ -596,9 +613,11 @@ steps. The held-out prerequisite is completed simulation with recorded
 digests. The report lists every repair's reason, commit and changed files, all
 files differing from the tag, and the registration and step commits.
 
-**Replay and null checks.** Replay is checked by `report`. Every recorded
-closed-loop game of `zoon`, `alone` and `prompted` must replay from its log to its
-recorded digest; if one does not,
+**Replay and null checks.** Replay is checked by `report`. Replay is
+`kernel.replay` on the log's bytes. Every recorded closed-loop game of `zoon`,
+`alone` and `prompted` must replay from its log to its recorded digest, and for
+`prompted` every probability vector in the log must also equal the recalibrated
+answer recorded in the transcript for that request; if either check fails,
 H3 receives no verdict and H2 is unaffected. The chat arm's games replay from
 the transcript and a failure makes the chat arm unusable.
 
@@ -634,8 +653,9 @@ None of the following changes either verdict:
 - A game left out: for each omitted game, the mean per-decision difference
   `zoon` minus `alone` on that game's held-out decisions under the seven-game
   fits, beside each arm's own mean log score on those decisions under the
-  seven-game fits and the difference under the committed fits. These diagnostic
-  fits use training groups only and do not replace the primary arms.
+  seven-game fits and the difference under the committed fits, all with the H2
+  scoring floor. These diagnostic fits use training groups only and do not
+  replace the primary arms.
 - When closeness arises: `measure.against_chance` on held-out groups in game and
   index order with its committed seed. This is a description and excludes nothing.
 - The chat comparison, or its unusable status; fitted-number counts; calls,
@@ -699,14 +719,13 @@ nothing and is not run closed loop.
 ## Open before registration
 
 - **DONE:** the decision-model request format check; see
-  [Calls made before this file](registration.md#calls-made-before-this-file). This satisfies
+  [Calls made before registration](registration.md#calls-made-before-registration). This satisfies
   the design note's order of work.
 
 - The three placeholders, **CAP**, **CHAT CAP** and **CHAT BOUND**, filled from
   the spending script's output with dated chat prices.
 - The analysis code and its files, including the paths marked as added above,
   the second seal and run machinery, and the required checks.
-- Statistical review of the H3 interval.
 - A format check of the chat request with the committed renderer.
 - Replacement of the path test by tests that bind every constant and number in
   this file to the code.

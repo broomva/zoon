@@ -9,9 +9,10 @@ and the prediction asked for.
 This step includes no general chat-model arm, live run, held-out history reader or rule
 for deciding recall. The recall wording is a renderer only. The spending cap remains
 the maintainer's decision.
-The format check was run once by the maintainer on the committed made-up requests
-after this bound was produced, and its replies were usable; no other call has been
-made for this arm. The format check is for the maintainer:
+The decision model was sent format-check requests twice on made-up histories, four
+calls each time; the registration's section on calls made before registration
+records both. The replies were usable, and no other call has been made for this
+arm. The format check is for the maintainer:
 `python -m zoon.interaction.prompted smoke --live`.
 The format check is outside the bound.
 

@@ -383,6 +383,11 @@ def test_registration_constants_match_current_code() -> None:
         "person.FLOOR": person.FLOOR,
         "person.RIDGE": person.RIDGE,
         "split.SALT": split.SALT,
+        "LOG_GAP_LIMIT": person.LOG_GAP_LIMIT,
+        "MAX_ITERATIONS": person.MAX_ITERATIONS,
+        "FIT_METHOD": prompted.FIT_METHOD,
+        "BETA_LOWER_BOUND": prompted.BETA_LOWER_BOUND,
+        "prompted.DISGUISE": prompted.DISGUISE,
     }
     for name, expected in constants.items():
         quoted = re.findall(rf"`{re.escape(name)} = ([^`]+)`", text)

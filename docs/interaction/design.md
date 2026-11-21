@@ -317,8 +317,7 @@ committed renderer; replacement of the path test by tests binding every register
 and number to the code; and power and coverage under the registered rules, computed on
 training groups by a committed script and quoted in the registration. That script must
 reproduce the H2 training estimate 0.0209 under the common scoring floor. The
-decision-model request format check is DONE; the registration's "Calls made before
-this file" records it, satisfying the order below.
+decision-model request format check is DONE; the registration's "Calls made before registration" records it, satisfying the order below.
 
 ## What this changes in the main design
 
@@ -357,7 +356,7 @@ Made in the same reviewed change as the pre-registration. Each line names the se
 2. The comparison of the candidates on training groups, and the power of the H3 measure.
 3. Rendered instructions, a format check of the prompted requests on made-up histories, the
    table from bands to points, and the spending bound. The decision-model format
-   check is DONE, as recorded in the registration's "Calls made before this file".
+   check is DONE, as recorded in the registration's "Calls made before registration".
    The chat request check with the committed renderer remains open.
 4. The pre-registration and the analysis code, reviewed, with the amendments to the main
    design.
