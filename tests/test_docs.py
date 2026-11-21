@@ -65,3 +65,53 @@ def test_a_note_that_cites_quotes_only_printed_figures(name: str) -> None:
     quoted = {number.lstrip("+") for number in NUMBER.findall(prose)}
     assert quoted, "the note quotes no figures"
     assert sorted(quoted - printed) == []
+
+
+def test_interaction_registration_links_and_existing_paths() -> None:
+    """Only the explicitly listed analysis additions may name paths not present today."""
+    root = NOTES.parent.parent
+    document = root / "prereg" / "interaction.md"
+    text = document.read_text()
+    additions = text.split("### Paths to be added by the analysis code\n", 1)[1].split("\n## ", 1)[
+        0
+    ]
+    exempt = set(re.findall(r"^- `([^`]+)`$", additions, flags=re.MULTILINE))
+    assert exempt, "analysis additions must be an explicit path list"
+    assert "do not exist today" in additions
+    assert "exempt from the existing-path check" in additions
+    for path in exempt:
+        assert not Path(path).is_absolute() and ".." not in Path(path).parts
+
+    links = re.findall(r"!?\[[^\]]*\]\(([^)]+)\)", text)
+    assert links, "the registration must link its sources"
+    for link in links:
+        if re.match(r"[a-zA-Z][a-zA-Z0-9+.-]*:", link):
+            continue
+        target, _, fragment = link.partition("#")
+        linked = document.parent / target
+        assert linked.exists(), link
+        if fragment:
+            headings = re.findall(r"^#+ (.+)$", linked.read_text(), flags=re.MULTILINE)
+            anchors = {re.sub(r"[^\w -]", "", h.lower()).replace(" ", "-") for h in headings}
+            assert fragment in anchors, link
+
+    # Links resolve from prereg/; all other named paths resolve from the root.
+    prose = re.sub(r"!?\[[^\]]*\]\([^)]+\)", "", text)
+    paths = set(
+        re.findall(
+            r"(?<![\w./-])(?:[\w.-]+/)+[\w.-]*|"
+            r"(?<![\w./-])[\w.-]+\.(?:md|py|json|txt)(?![\w.-])",
+            prose,
+        )
+    )
+    assert paths and exempt <= paths
+    for path in paths - exempt:
+        # A short filename in prose names a note already linked in the document.
+        candidates = [root / path]
+        if "/" not in path:
+            candidates.extend(
+                document.parent / link.split("#", 1)[0]
+                for link in links
+                if Path(link.split("#", 1)[0]).name == path
+            )
+        assert any(candidate.exists() for candidate in candidates), path
