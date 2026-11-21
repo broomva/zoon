@@ -67,9 +67,10 @@ counts are through `zoon.interaction.data.held_out_counts()`.
 
 **What ends the run, and what only interrupts it.** Both hypotheses receive
 "no verdict" if the decision model is withdrawn or reports another version; the
-spending cap is reached; or the held-out groups are not exactly the 143 pinned by
-the split, or any one is unreadable. A fault of the chat model, its withdrawal or
-its version change makes `chat` unusable, with no scores and no change of verdict.
+decision model's spending cap is reached; or the held-out groups are not exactly
+the 143 pinned by the split, or any one is unreadable. A fault of the chat model,
+its withdrawal, its version change or reaching its own spending cap makes `chat`
+unusable, with no scores and no change of verdict.
 Everything else interrupts a step and is resumed by repeating its command.
 Recorded answers are kept. Only missing answers are requested.
 
@@ -143,9 +144,11 @@ Take percentiles 2.5 and 97.5, with the H2 interpolation rule. Use a separate
 `numpy.random.default_rng(20261120)` stream labelled `H3-interval`, with games,
 human groups and arms in name order and simulated groups in group-number order.
 
-The fair score is unbiased in ensemble size. A half-ensemble carries simulation
-error without bias and overstates it, which is the cautious side. Statistical
-review of this interval is required before registration. This differs from
+The fair score is unbiased in ensemble size, so a half-ensemble has the same
+expected score as the full one. Half of an ensemble drawn without replacement
+stands in for a fresh ensemble of the full size: for an average over simulated
+groups the two have the same variance. Statistical review of this interval is
+required before registration. This differs from
 `compare.interval`, which resamples human groups only.
 
 **Pass rule.** Against `alone` and against `prompted` separately, the composite
@@ -369,12 +372,15 @@ same H3 composite, difference and interval. It changes no verdict.
 
 ## Spending
 
-One cap covers the whole run, both models and recall included. **Cap in US
-dollars: CAP.** Count spending from reported tokens in recorded responses at the
-fixed prices. Retain and count unusable chat replies before retrying them.
-As in the pilot, do not send a call if spent tokens' cost plus its estimate and
-reservations for calls in flight would exceed the cap. A cap stop gives no
-verdict for both hypotheses, even if chat calls reached it.
+Each model has its own cap, so that an arm that decides nothing cannot end the
+run. **Decision-model cap in US dollars: CAP.** **Chat-model cap in US dollars,
+recall included: CHAT CAP.** Count spending from reported tokens in recorded
+responses at the fixed prices. Retain and count unusable chat replies before
+retrying them. As in the pilot, do not send a call if that model's spent tokens'
+cost plus the call's estimate and reservations for calls in flight would exceed
+that model's cap. Reaching the decision-model cap gives no verdict for both
+hypotheses. Reaching the chat-model cap makes `chat` unusable and changes no
+verdict.
 
 **Decision-model bound.** prompted.md, spending table: 52,024 calls, at most
 96,878,135 input tokens, at most 4.06888167 US dollars. This covers 7,000 open-loop
@@ -393,8 +399,8 @@ Read the published [Vertex pricing page](https://cloud.google.com/vertex-ai/gene
 on the day of registration and record the prices and read date with the bound.
 Its listed price changes on 2026-12-01; the bound uses the higher price.
 
-Registration goes ahead only when both placeholders are filled from the script's
-output and the combined bound is beneath the cap. The current script's proposed
+Registration goes ahead only when the three placeholders are filled from the
+script's output and each model's bound is beneath its cap. The current script's proposed
 ceiling and pilot cap do not fix this run's cap. No price lookup or model call is
 needed to write this draft.
 
@@ -506,8 +512,8 @@ nothing and is not run closed loop.
 
 ## Open before registration
 
-- The two placeholders, **CHAT BOUND** and **CAP**, filled from the spending
-  script's output with dated chat prices.
+- The three placeholders, **CAP**, **CHAT CAP** and **CHAT BOUND**, filled from
+  the spending script's output with dated chat prices.
 - The analysis code and its files, including the paths marked as added above,
   the second seal and run machinery, and the required checks.
 - Statistical review of the H3 interval.
