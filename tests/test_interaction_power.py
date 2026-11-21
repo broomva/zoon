@@ -46,9 +46,9 @@ def test_power_table_is_the_paste_and_no_prose_digits() -> None:
         "the full-effect variation; a real smaller effect would not keep that variation.\n"
         "The effect rates are a guide, not the power of the registered test.\n"
         "Each figure concerns one comparison with `alone`; nothing concerns the prompted arm.\n"
-        "The paste records one run. A test regenerates both open-loop training interval lines\n"
-        "and the in-sample closed-loop training interval line; "
-        "it does not regenerate the other lines."
+        "The paste records one run. A test recomputes both open-loop training interval lines\n"
+        "and the in-sample closed-loop training interval line, and renders the title, settings\n"
+        "and fit lines from the code; it does not recompute the other lines."
     )
     assert not re.search(r"\d", "\n".join(prose_lines))
     assert paste.splitlines()[0] == power.TITLE

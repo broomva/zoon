@@ -9,8 +9,9 @@ Coverage is of the trial expectation. Effects are shifts of location that keep
 the full-effect variation; a real smaller effect would not keep that variation.
 The effect rates are a guide, not the power of the registered test.
 Each figure concerns one comparison with `alone`; nothing concerns the prompted arm.
-The paste records one run. A test regenerates both open-loop training interval lines
-and the in-sample closed-loop training interval line; it does not regenerate the other lines.
+The paste records one run. A test recomputes both open-loop training interval lines
+and the in-sample closed-loop training interval line, and renders the title, settings
+and fit lines from the code; it does not recompute the other lines.
 
 | Quantity | Result |
 |---|---|
