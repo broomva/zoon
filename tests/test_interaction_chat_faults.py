@@ -133,10 +133,11 @@ def test_complete_damage_is_never_repaired(tmp_path: Path, damage: str) -> None:
         other = chat.Transcript(tmp_path / "other", replace(BINDING, mode="live"), read_only=False)
         other.append(key(1), chat.request(view(1)), response())
         raw += other.path.read_bytes().split(b"\n")[1] + b"\n"
-    raw += b"torn"
+    assert raw.endswith(b"\n")
     transcript.path.write_bytes(raw)
-    with pytest.raises(chat.GuardRefusal):
+    with pytest.raises(chat.GuardRefusal) as caught:
         chat.Transcript(tmp_path, BINDING, read_only=False)
+    assert "incomplete" not in str(caught.value)
     assert transcript.path.read_bytes() == raw
 
 
@@ -404,15 +405,19 @@ def test_ledger_each_field_is_exact_fraction(tmp_path: Path) -> None:
 def test_replay_checks_request_even_with_matching_links(tmp_path: Path) -> None:
     run = session(tmp_path, chat.StubClient())
     result = chat.play(GAMES["2-AI"], run, GROUP)
+    path = run.transcript.path
+    chat.replay(result.bytes, chat.replay_transcript(run.transcript, run.transcript.digest()))
     entry = run.transcript.entries[key()]
     changed = replace(entry, request="different", request_digest=chat.digest("different"))
-    run.transcript.entries[key()] = changed
-    records = [json.loads(line) for line in result.bytes.splitlines()]
-    records[1]["entry_digest"] = chat.digest(changed.bytes.decode())
-    records[1]["attempts"] = [chat.digest(changed.bytes.decode())]
-    log = "".join(kernel.encoded(row) for row in records).encode()
-    with pytest.raises(chat.Unusable):
-        chat.replay(log, chat.replay_transcript(run.transcript, run.transcript.digest()))
+    lines = path.read_bytes().split(b"\n")
+    assert lines[1] + b"\n" == entry.bytes
+    lines[1] = changed.bytes.removesuffix(b"\n")
+    path.write_bytes(b"\n".join(lines))
+    fresh = chat.Transcript(tmp_path, BINDING)
+    assert fresh.entries[key()].request == "different"
+    with pytest.raises(chat.Unusable) as caught:
+        chat.replay_transcript(fresh, fresh.digest())
+    assert caught.value.cause is chat.Cause.REPLAY
 
 
 @pytest.mark.parametrize("kind", ["unusable", "recall"])

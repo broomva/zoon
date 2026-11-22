@@ -482,12 +482,12 @@ def test_registration_chat_settings_rules_and_figures_match_code() -> None:
         f"The decision-model cap is {multiple[budget.DECISION_CAP_MULTIPLE]} times its bound"
         in normal
     )
-    require_training()
-    rows = budget.estimate(data.load(), data.held_out_counts())
-    assert f"**Decision-model cap in US dollars: {budget.decision_cap(rows)}.**" in normal
     assert f"recall included: {budget.chat_cap()}.**" in normal
     bound = sum((r.dollars for r in budget.chat_estimate()), start=Decimal())
     assert f"**Chat-model bound in US dollars: {budget.dollars(bound)}.**" in normal
+    require_training()
+    rows = budget.estimate(data.load(), data.held_out_counts())
+    assert f"**Decision-model cap in US dollars: {budget.decision_cap(rows)}.**" in normal
 
 
 def kernel_view_for_docs() -> "kernel.View":
@@ -555,7 +555,7 @@ def test_output_limit_paragraph_counts_equal_committed_record() -> None:
     raw = (NOTE.parent / "output-limit.txt").read_bytes()
     assert (
         hashlib.sha256(raw).hexdigest()
-        == "448de8ed4571fe337008d4c267c225be77c8ff7b1f1706aee80389a34dac9eed"
+        == "985005acbdbb0d7816f604cafd23b26a79c678c6e135b9bc39005271d71abf1f"
     )
     sections: dict[int, list[str]] = {}
     for block in raw.decode().split("\n\n")[1:]:

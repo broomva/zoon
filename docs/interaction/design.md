@@ -314,9 +314,10 @@ measures, thresholds, intervals, streams, prompted and chat rules, controls, sto
 and order of work. Its "Open before registration" list is exhaustive: confirmation of the
 chat price on the day of registration; the analysis code and its files and required
 checks; replacement of the path test by tests binding every registered constant
-and number to the code; and power and coverage under the registered rules, computed on
-training groups by a committed script and quoted in the registration. That script must
-reproduce the H2 training estimate 0.0209 under the common scoring floor. The caps and
+and number to the code; and the quoting in the registration of power and coverage under
+the registered rules. A committed script computes them on training groups and reproduces
+the H2 training estimate 0.0209 under the common scoring floor; its output is in
+[power.md](power.md). The caps and
 the chat bound are filled from the spending script, and both format checks are DONE;
 the registration's "Calls made before registration" records them, satisfying the order
 below.

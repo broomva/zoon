@@ -1,5 +1,7 @@
 Calls made on 2026-11-21 to gemini-4-carbon to set the output limit. Each line is one
-call on a committed made-up request. Cost columns are omitted.
+call on a committed made-up request. Cost columns are omitted. The requests are the
+named files of interaction/chat-requests, unchanged since they were first committed;
+their digests are in sha256.json there.
 
 second run with at most 256 output tokens:
 [smoke 2-AI-type-0-round-1.txt 1] version = gemini-4-carbon | text = "" | usable = False | points = None | input tokens = 463 | output tokens = 3 | thinking tokens = 253
