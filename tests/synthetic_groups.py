@@ -1,6 +1,7 @@
 """Synthetic raw files shaped like the published public goods data. No real record is used."""
 
 import random
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, cast
 
@@ -26,12 +27,17 @@ def _rounds(rng: random.Random, cell: str) -> tuple[tuple[int, ...], ...]:
 
 
 def write_raw(
-    raw_dir: Path, groups_per_game: int, unreadable: frozenset[Key] = frozenset()
+    raw_dir: Path,
+    groups_per_game: int | Mapping[str, int],
+    unreadable: frozenset[Key] = frozenset(),
 ) -> Intended:
     """Write both files and return the first-session contributions they were built from.
 
     The contribution cells of an `unreadable` group hold text.
     """
+    counts = (
+        {c: groups_per_game for c in GAMES} if isinstance(groups_per_game, int) else groups_per_game
+    )
     rng = random.Random(7)
     intended: Intended = {}
     raw_dir.mkdir(parents=True, exist_ok=True)
@@ -40,8 +46,9 @@ def write_raw(
     with writer:
         for treatment, sheet in data.PAIR_SHEETS.items():
             cell = f"2-{treatment}"
+            count = counts[cell]
             rows: list[list[object]] = []
-            for number in range(1, groups_per_game + 1):
+            for number in range(1, count + 1):
                 key = (cell, str(number))
                 rounds = intended[key] = _rounds(rng, cell)
                 for seat, label in enumerate((data.FOCAL_LABEL, f"Type2_{number:02d}")):
@@ -50,7 +57,7 @@ def write_raw(
                     ]
                     extra = [SENTINEL] * (SESSION_ONE_ROUNDS - ROUNDS + 1)
                     rows.append([number if seat == 0 else None, label, *cells, *extra])
-                for label in (f"Type2_{number % groups_per_game + 1:02d}", data.FOCAL_LABEL):
+                for label in (f"Type2_{number % count + 1:02d}", data.FOCAL_LABEL):
                     rows.append([None, label, *[SENTINEL] * (SESSION_ONE_ROUNDS + 1)])
             cast(Any, pd.DataFrame(rows, columns=columns)).to_excel(
                 writer, sheet_name=sheet, index=False
@@ -65,8 +72,9 @@ def write_raw(
     table: list[dict[str, object]] = []
     for cell in ("4-FE", "4-AI", "4-MI"):
         treatment = cell.removeprefix("4-")
-        for number in range(1, 2 * groups_per_game + 1):
-            session = 1 if number <= groups_per_game else 2
+        count = counts[cell]
+        for number in range(1, 2 * count + 1):
+            session = 1 if number <= count else 2
             key = (cell, str(number))
             rounds = _rounds(rng, cell)
             if session == 1:

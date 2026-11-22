@@ -40,3 +40,19 @@ def test_training_requirement(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -
     assert outcome() == "run"
     monkeypatch.delenv("ZOON_REQUIRE_TRAINING")
     assert outcome() == "run"
+
+
+@pytest.mark.parametrize("required", [False, True])
+def test_repository_checks_the_training_requirement_at_its_boundary(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, required: bool
+) -> None:
+    from tests.interaction_run_support import repository
+
+    monkeypatch.setattr(data, "TRAINING", tmp_path / "absent.json")
+    monkeypatch.setenv("ZOON_REQUIRE_TRAINING", "1" if required else "0")
+    with pytest.raises(
+        pytest.fail.Exception if required else pytest.skip.Exception,
+        match="training file is absent",
+    ):
+        repository(tmp_path / "repo")
+    assert not (tmp_path / "repo").exists()

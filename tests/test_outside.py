@@ -202,7 +202,7 @@ def test_committed_manifest_names_the_outside_files() -> None:
     assert all(study.filename in recorded for study in outside.STUDIES.values())
     assert outside.RAW_DIR != fetch.RAW_DIR
     assert outside.RAW_DIR.parent == fetch.RAW_DIR.parent == fetch.REPO / "data"
-    assert "data/" in (fetch.REPO / ".gitignore").read_text().split()
+    assert "/data/" in (fetch.REPO / ".gitignore").read_text().split()
 
 
 def test_outside_loader_stays_out_of_the_task_data(tmp_path: Path) -> None:

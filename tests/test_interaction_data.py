@@ -274,7 +274,7 @@ def test_other_sessions_rounds_and_answers_are_never_used(tmp_path: Path) -> Non
 
 
 def test_the_loaders_take_a_file_and_nothing_that_could_widen_them() -> None:
-    assert list(inspect.signature(data.load).parameters) == ["training"]
+    assert list(inspect.signature(data.load).parameters) == ["training", "manifest"]
     assert list(inspect.signature(data.held_out_counts).parameters) == ["training"]
 
 
@@ -349,3 +349,58 @@ def test_fetch_downloads_a_missing_file_with_a_time_limit(
     assert asked == [(files[filename]["url"], data.DOWNLOAD_TIMEOUT) for filename in data.FILES]
     assert data.DOWNLOAD_TIMEOUT > 0
     assert {p.name: p.read_bytes() for p in raw.iterdir()} == dict.fromkeys(data.FILES, content)
+
+
+@pytest.mark.parametrize("length", [19, 21])
+def test_a_seat_has_exactly_the_registered_round_count(length: int) -> None:
+    module: Any = data
+    with pytest.raises(data.RecordFault, match="20 rounds"):
+        module._by_seat(GAMES["2-FE"], [[0] * ROUNDS, [0] * length])
+
+
+def test_training_manifest_is_explicit_and_never_inferred_from_layout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import hashlib
+
+    training = tmp_path / "data/groups/training.json"
+    training.parent.mkdir(parents=True)
+    training.write_text(
+        json.dumps(
+            {"groups": [{"cell": "2-FE", "index": "synthetic", "rounds": [[0, 0]] * ROUNDS}]}
+        )
+    )
+    explicit = tmp_path / "interaction/data-manifest.json"
+    explicit.parent.mkdir()
+    explicit.write_text(
+        json.dumps({"training": {"sha256": hashlib.sha256(training.read_bytes()).hexdigest()}})
+    )
+    absent = tmp_path / "absent.json"
+    monkeypatch.setattr(data, "MANIFEST", absent)
+    assert data.load(training, manifest=explicit) == [
+        data.Group("2-FE", "synthetic", ((0, 0),) * ROUNDS)
+    ]
+    with pytest.raises(FileNotFoundError):
+        data.load(training)
+
+
+def test_training_is_parsed_from_the_bytes_whose_digest_was_checked(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    raw, training, _ = _prepare(tmp_path)
+    data.seal(raw, training)
+    expected = data.load(training)
+    original = Path.read_bytes
+    reads = 0
+
+    def replaced(path: Path) -> bytes:
+        nonlocal reads
+        content = original(path)
+        if path == training:
+            reads += 1
+            training.write_text(json.dumps({"groups": [], "held_out": {}}))
+        return content
+
+    monkeypatch.setattr(Path, "read_bytes", replaced)
+    assert data.load(training) == expected
+    assert reads == 1
