@@ -382,6 +382,9 @@ As in the pilot, divide by their sum if it is within 0.05 of one; otherwise retr
 the reply as a fault. Retain both returned and used probabilities. Then use the
 floor and recalibration rules here. A reply still unreadable after retries
 interrupts the step; it does not exclude a decision.
+If a reply contains credential metadata, record only a sanitised unusable receipt:
+the reported version without any credential value and valid token counts (zero
+where unavailable or invalid), then interrupt without recording the reply content.
 
 ### From the model's answer to a probability
 
@@ -407,6 +410,8 @@ is negative, it solves on the boundary and checks the one-sided gradient, as the
 committed procedure does. Failure raises, with no fallback; Data fixes the
 no-verdict outcome when this fit raises on the recorded answers.
 These settings are printed in prompted.md.
+A saved recalibration is bound to a digest of its original 512 request keys;
+resuming with different keys is refused without refitting.
 
 In the closed loop, the simulated history is rendered by the same code. Identical
 requests are deduplicated by the canonical request before dispatch; the transcript

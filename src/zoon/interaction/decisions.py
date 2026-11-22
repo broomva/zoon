@@ -1,6 +1,6 @@
 """Decision transcripts with per-decision identity and serial budget admission.
 
-The pilot supplies the transport, bounded retry, validation, estimates and
+The pilot supplies bounded retry, response validation, estimates and the
 transcript reader. These records wrap a rendered request in its decision identity:
 calibration calls each selected decision, including identical rendered requests.
 Later callers can deduplicate by using the canonical request hash as identity.
@@ -71,7 +71,7 @@ class LiveClient:
     """The pilot client, with SDK observations for paid retries and admission.
 
     Live requests are serial so every SDK attempt can check the current ledger
-    before transport. The SDK and credentials are left to the pilot client.
+    before transport. Credentials are left to the SDK.
     Injected SDKs exercise this path without a service or credential.
     """
 
@@ -91,45 +91,74 @@ class LiveClient:
     ) -> clients.Response:
         sdk: Any = self.sdk or importlib.import_module("typesafe_sdk")
 
-        class Transport:
-            def __init__(self, transport: Any) -> None:
-                self.transport = transport
-
-            def system_one(self, state: str, questions: dict[str, object]) -> Any:
+        def call() -> clients.Response:
+            try:
                 admit()
-                result = self.transport.system_one(state, questions)
+                transport = sdk.TypeSafeClient(model=prices.DECISION.model, timeout=30.0)
+                result = transport.system_one(
+                    request.state,
+                    {
+                        "q": sdk.Choice(
+                            instructions=request.question,
+                            criteria={a.answer: a.description for a in request.answers},
+                        )
+                    },
+                )
                 version = getattr(result, "model", None)
                 usage = getattr(result, "usage", None)
-                incoming = getattr(usage, "input_tokens", None)
-                outgoing = getattr(usage, "output_tokens", 0)
-                if (
-                    not isinstance(version, str)
-                    or not version
-                    or type(incoming) is not int
-                    or incoming < 0
-                    or type(outgoing) is not int
-                    or outgoing < 0
-                ):
-                    raise clients.TransientError
+                incoming: Any = getattr(usage, "input_tokens", None)
+                outgoing: Any = getattr(usage, "output_tokens", 0)
+                valid_incoming = type(incoming) is int and incoming >= 0
+                valid_outgoing = type(outgoing) is int and outgoing >= 0
                 secret = os.environ.get("TYPESAFE_API_KEY", "")
                 if secret and secret in repr((version, getattr(result, "answers", None), usage)):
-                    raise clients.StepFailure(
-                        "connection metadata in response; no transcript was written"
+                    received(
+                        clients.Response(
+                            {},
+                            None,
+                            "",
+                            version if isinstance(version, str) and secret not in version else "",
+                            incoming if valid_incoming else 0,
+                            outgoing if valid_outgoing else 0,
+                        ),
+                        False,
                     )
-                if version != prices.DECISION.model:
-                    received(clients.Response({}, None, "", version, incoming, outgoing), True)
-                    return result
+                    raise clients.StepFailure(
+                        "connection metadata in response; reply content was not recorded"
+                    )
+                if isinstance(version, str) and version and version != prices.DECISION.model:
+                    received(
+                        clients.Response(
+                            {},
+                            None,
+                            "",
+                            version,
+                            incoming if valid_incoming else 0,
+                            outgoing if valid_outgoing else 0,
+                        ),
+                        True,
+                    )
+                    raise clients.TerminalStop(clients.StopReason.VERSION)
+                if (
+                    not version
+                    or not isinstance(version, str)
+                    or not valid_incoming
+                    or not valid_outgoing
+                ):
+                    raise clients.TransientError
                 returned: dict[str, float] = {}
+                unique = False
                 with suppress(AttributeError, KeyError, TypeError, ValueError):
-                    returned = {
-                        str(k): float(v) for k, v in result.answers["q"].probabilities.items()
-                    }
+                    raw = result.answers["q"].probabilities
+                    returned = {str(k): float(v) for k, v in raw.items()}
+                    unique = len(returned) == len(raw)
                 if not set(returned) <= {a.answer for a in request.answers}:
                     returned = {}
                 finite = all(math.isfinite(v) and 0 <= v <= 1 for v in returned.values())
                 total = sum(returned.values())
                 valid = (
-                    finite
+                    unique
+                    and finite
                     and set(returned) == {a.answer for a in request.answers}
                     and total > 0
                     and abs(total - 1) <= 0.05 + 1e-12
@@ -144,16 +173,29 @@ class LiveClient:
                     returned if finite else None,
                 )
                 received(response, valid)
-                return result
+                if not valid:
+                    raise clients.TransientError
+                return response
+            except (
+                clients.StepFailure,
+                clients.TerminalStop,
+                clients.TransientError,
+                TimeoutError,
+            ):
+                raise
+            except Exception as error:
+                status = getattr(error, "status_code", None)
+                if status == 429 or (isinstance(status, int) and 500 <= status < 600):
+                    raise clients.TransientError from None
+                if "timeout" in type(error).__name__.lower():
+                    raise TimeoutError from None
+                if status in (404, 410):
+                    raise clients.ModelMissing("decision") from None
+                if status in (401, 403):
+                    raise clients.StepFailure("decision authentication failed") from None
+                raise clients.TransientError from None
 
-        class SDK:
-            def Choice(self, *, instructions: str, criteria: dict[str, str]) -> Any:
-                return sdk.Choice(instructions=instructions, criteria=criteria)
-
-            def TypeSafeClient(self, *, model: str, timeout: float) -> Transport:
-                return Transport(sdk.TypeSafeClient(model=model, timeout=timeout))
-
-        return clients.DecisionClient(SDK()).ask(request)
+        return clients.retry(call)
 
 
 class Session:

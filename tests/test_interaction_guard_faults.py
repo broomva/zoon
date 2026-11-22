@@ -170,6 +170,8 @@ def test_stub_never_reads_raw_sources_and_live_requires_them(
     "name,allowed",
     [
         ("src/pkg/__pycache__/module.cpython-312.pyc", True),
+        ("src/pkg/__pycache__/café.cpython-312.pyc", True),
+        ("src/pkg/__pycache__/café.txt", False),
         ("interaction/__pycache__/module.pyc", True),
         ("src/pkg/module.pyc", False),
         ("src/pkg/__pycache__/module.py", False),
@@ -290,6 +292,7 @@ def test_steps_register_their_own_transcript_format(root: Path) -> None:
 
 def test_root_data_ignore_does_not_hide_source_packages(root: Path) -> None:
     (root / ".gitignore").write_bytes((data.REPO / ".gitignore").read_bytes())
+    assert git(root, "check-ignore", "data/groups/training.json") == "data/groups/training.json"
     path = root / "src/zoon/interaction/data/__init__.py"
     path.parent.mkdir(parents=True)
     path.write_text("value = 1\n")
@@ -297,3 +300,46 @@ def test_root_data_ignore_does_not_hide_source_packages(root: Path) -> None:
         "src/zoon/interaction/data/__init__.py"
         in git(root, "ls-files", "--others", "--exclude-standard").splitlines()
     )
+
+
+def test_clean_checkout_accepts_literal_tracked_paths(root: Path) -> None:
+    for name in ("café.md", " spaced\tname\n.md "):
+        path = root / "docs" / name
+        path.parent.mkdir(exist_ok=True)
+        path.write_text("document\n")
+    commit(root)
+    git(root, "tag", "-f", guard.TAG)
+    assert before(root).differences == {}
+
+
+def test_head_cannot_move_during_checkout_verification(
+    root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    captured = git(root, "rev-parse", "HEAD")
+    original = guard.git
+    calls: list[tuple[str, ...]] = []
+    snapshots: list[str] = []
+    original_snapshot = guard.snapshot_tree
+
+    def snapshot(directory: Path, commit: str) -> dict[str, str]:
+        snapshots.append(commit)
+        return original_snapshot(directory, commit)
+
+    def moving(directory: Path, *arguments: str) -> str:
+        calls.append(arguments)
+        result = original(directory, *arguments)
+        if arguments == ("rev-parse", "HEAD") and result == captured:
+            # Move history while leaving the disk and index unchanged.
+            replacement = git(
+                root, "commit-tree", "HEAD^{tree}", "-p", captured, "-m", "Add history"
+            )
+            git(root, "update-ref", "HEAD", replacement)
+        return result
+
+    monkeypatch.setattr(guard, "git", moving)
+    monkeypatch.setattr(guard, "snapshot_tree", snapshot)
+    with pytest.raises(clients.GuardRefusal, match="HEAD moved"):
+        before(root)
+    assert ("merge-base", "--is-ancestor", captured, captured) in calls
+    assert snapshots and set(snapshots) == {captured}
+    assert not (root / "data/interaction/run/live/binding.json").exists()

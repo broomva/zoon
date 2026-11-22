@@ -9,6 +9,7 @@ reads the raw sources; both modes verify training and regenerate registered mate
 from __future__ import annotations
 
 import fcntl
+import io
 import json
 import os
 import subprocess
@@ -20,12 +21,16 @@ from typing import Any, cast
 from zoon.interaction import chat, data, prompted, registered
 from zoon.interaction.games import GAMES
 from zoon.pilot import clients, prompts
-from zoon.pilot.run import digest, encoded, git, tree, verify_data
+from zoon.pilot.run import digest, encoded, git, verify_data
 
 ORDER = ("calibrate", "closed-loop", "recall", "held-out", "report")
 TAG = "registered-interaction"
 SCHEMA = 1
 _AUTHORITY = object()
+
+
+class StateReplacedError(OSError):
+    """State was replaced, but syncing its directory failed."""
 
 
 def atomic(path: Path, document: dict[str, Any]) -> None:
@@ -37,21 +42,44 @@ def atomic(path: Path, document: dict[str, Any]) -> None:
         handle.flush()
         os.fsync(handle.fileno())
     temporary.replace(path)
-    descriptor = os.open(path.parent, os.O_RDONLY)
     try:
-        os.fsync(descriptor)
-    finally:
-        os.close(descriptor)
+        descriptor = os.open(path.parent, os.O_RDONLY)
+        try:
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+    except OSError as error:
+        raise StateReplacedError("state replaced but directory sync failed") from error
+
+
+def git_paths(root: Path, *arguments: str) -> list[bytes]:
+    """Read NUL-delimited Git output without quoting or trimming file names."""
+    try:
+        raw = subprocess.run(["git", *arguments], cwd=root, capture_output=True, check=True).stdout
+    except subprocess.CalledProcessError:
+        raise clients.GuardRefusal("could not read checkout paths") from None
+    return raw.split(b"\0")[:-1]
 
 
 def snapshot_tree(root: Path, commit: str) -> dict[str, str]:
-    """Keep tracked file modes beside content digests; either can change execution."""
-    content = tree(root, commit)
-    return {
-        name: metadata.split()[0] + ":" + content[name]
-        for line in git(root, "ls-tree", "-r", commit).splitlines()
-        for metadata, name in [line.split("\t", 1)]
-    }
+    """Keep literal tracked paths, file modes and content digests."""
+    entries = [line.split(b"\t", 1) for line in git_paths(root, "ls-tree", "-rz", commit)]
+    objects = [metadata.split()[2] for metadata, _ in entries]
+    stream = io.BytesIO(
+        subprocess.run(
+            ["git", "cat-file", "--batch"],
+            cwd=root,
+            input=b"\n".join(objects) + b"\n",
+            capture_output=True,
+            check=True,
+        ).stdout
+    )
+    result: dict[str, str] = {}
+    for metadata, name in entries:
+        size = int(stream.readline().split()[2])
+        result[os.fsdecode(name)] = metadata.split()[0].decode() + ":" + digest(stream.read(size))
+        stream.read(1)
+    return result
 
 
 def checkpoint(transcript: clients.Transcript, keys: list[str] | None = None) -> dict[str, Any]:
@@ -85,6 +113,7 @@ class HeldOutPermit:
     def __init__(self, authority: object, guard: Guard) -> None:
         if authority is not _AUTHORITY:
             raise clients.GuardRefusal("only the guard can issue a held-out permit")
+        self.activation = guard.activation
         self.guard: object = guard
         self.__authority = authority
 
@@ -97,6 +126,7 @@ def require_permit(permit: object) -> Guard:
         not isinstance(permit, HeldOutPermit)
         or not permit.authorized()
         or not isinstance(permit.guard, Guard)
+        or permit.activation != permit.guard.activation
         or not permit.guard.active
         or permit.guard.mode != "live"
         or permit.guard.checked_step != "held-out"
@@ -124,6 +154,7 @@ class Guard:
         self.directory = self.storage / "run" / self.mode
         self.transcript_directory = self.storage / "transcripts" / self.mode
         self.active = False
+        self.activation = 0
         self.checked_step: str | None = None
         self.registered_commit = ""
         self.commit = ""
@@ -206,6 +237,7 @@ class Guard:
 
     def before(self, step: str, repair: str | None = None) -> None:
         self._require_lock()
+        self.activation += 1
         self.checked_step = None
         if step not in ORDER:
             raise clients.GuardRefusal("unknown step")
@@ -244,6 +276,8 @@ class Guard:
                 for prior in [states[n]]
             ):
                 raise clients.GuardRefusal("report requires completed steps or a terminal outcome")
+            if git(self.root, "rev-parse", "HEAD") != self.commit:
+                raise clients.GuardRefusal("HEAD moved during checkout verification")
             atomic(
                 self.directory / "binding.json",
                 {**self.identity, "schema": SCHEMA, "repairs": self.repairs},
@@ -270,29 +304,31 @@ class Guard:
         )
         if tagged is not None and tagged != self.registered_commit:
             raise clients.GuardRefusal("binding belongs to another registered commit")
-        git(self.root, "merge-base", "--is-ancestor", self.registered_commit, "HEAD")
+        git(self.root, "merge-base", "--is-ancestor", self.registered_commit, self.commit)
         original, head = (
             snapshot_tree(self.root, self.registered_commit),
-            snapshot_tree(self.root, "HEAD"),
+            snapshot_tree(self.root, self.commit),
         )
         names = original.keys() | head.keys()
-        ignored = git(
+        ignored = git_paths(
             self.root,
             "ls-files",
+            "-z",
             "--others",
             "--ignored",
             "--exclude-standard",
             "--",
             "src/",
             "interaction/",
-        ).splitlines()
+        )
         if any(
             not (
                 "__pycache__" in Path(name).parts[:-1]
                 and name.endswith(".pyc")
                 and (self.root / name).is_file()
             )
-            for name in ignored
+            for raw in ignored
+            for name in [os.fsdecode(raw)]
         ):
             raise clients.GuardRefusal("ignored files under src/ or interaction/ are refused")
         if git(self.root, "status", "--porcelain", "--untracked-files=all") or any(
@@ -324,7 +360,7 @@ class Guard:
             ):
                 raise clients.GuardRefusal("repair history is not an ordered registered binding")
             try:
-                git(self.root, "merge-base", "--is-ancestor", record["commit"], "HEAD")
+                git(self.root, "merge-base", "--is-ancestor", record["commit"], self.commit)
             except clients.GuardRefusal:
                 raise clients.GuardRefusal(
                     "declared repair commit must remain an ancestor of HEAD"
@@ -408,7 +444,9 @@ class Guard:
     def input_bytes(self, name: str) -> bytes:
         """Read a cited tracked input from the registered tree, even after docs change."""
         self._require_lock()
-        if self.checked_step is None or name not in tree(self.root, self.registered_commit):
+        if self.checked_step is None or name not in snapshot_tree(
+            self.root, self.registered_commit
+        ):
             raise clients.GuardRefusal("input must be tracked at the guarded registration")
         try:
             return subprocess.run(

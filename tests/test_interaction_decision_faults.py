@@ -307,7 +307,7 @@ def test_storage_fault_is_not_retried_and_resumes_cleanly(
     assert sdk.calls == 1025
 
 
-def test_connection_metadata_check_precedes_recording(
+def test_connection_metadata_leaves_only_a_sanitised_paid_receipt(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     marker = "synthetic-connection-value"
@@ -315,11 +315,22 @@ def test_connection_metadata_check_precedes_recording(
     response = reply()
     response.answers["private"] = marker
     sdk = SDK(lambda n: response)
-    ledger = session(tmp_path, decisions.LiveClient(sdk))
-    with pytest.raises(clients.StepFailure, match="no transcript was written"):
-        ledger.ask_many(requests())
-    assert not ledger.transcript.entries
-    assert not ledger.transcript.path.exists()
+    root = repository(tmp_path / "repo")
+    runner = run.Run(root, client=decisions.LiveClient(sdk))
+    with pytest.raises(clients.StepFailure, match="reply content was not recorded"):
+        runner.execute()
+    state = json.loads((runner.guard.directory / "calibrate.json").read_bytes())
+    assert state["status"] == "interrupted" and state["payload"]["calls"] == 1
+    assert sdk.calls == 1
+    ledger = clients.Transcript(
+        runner.guard.transcript_directory, "decision", runner.guard.identity
+    )
+    assert len(ledger.entries) == 1
+    assert ledger.spent == prices.DECISION.dollars(12, 1)
+    assert marker.encode() not in ledger.path.read_bytes()
+    entry = next(iter(ledger.entries.values()))
+    assert ":failed:1" in str(entry.request)
+    assert entry.response == clients.Response({}, None, "", prices.DECISION.model, 12, 1)
 
 
 def test_each_live_receipt_is_synced_before_the_next_request(
@@ -372,3 +383,66 @@ def test_version_is_recorded_before_returning_the_sdk_reply(
         pytest.fail("paid version reply was not recorded before returning from the SDK")
     assert stopped.value.reason == clients.StopReason.VERSION
     assert len(ledger.transcript.entries) == sdk.calls == result.reads == 1
+
+
+@pytest.mark.parametrize(
+    "usage,incoming,outgoing",
+    [
+        (None, 0, 0),
+        (SimpleNamespace(input_tokens=12, output_tokens="bad"), 12, 0),
+        (SimpleNamespace(input_tokens=True, output_tokens=3), 0, 3),
+        (SimpleNamespace(input_tokens=-1, output_tokens=-1), 0, 0),
+    ],
+)
+def test_version_change_is_terminal_even_without_valid_usage(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, usage: Any, incoming: int, outgoing: int
+) -> None:
+    bounded = clients.retry
+
+    def retry(call: Callable[[], clients.Response]) -> clients.Response:
+        return bounded(call, pause=lambda seconds: None)
+
+    monkeypatch.setattr(clients, "retry", retry)
+    root = repository(tmp_path / "repo")
+    sdk = SDK(lambda n: SimpleNamespace(model="another-version", usage=usage))
+    runner = run.Run(root, client=decisions.LiveClient(sdk))
+    state = runner.execute()
+    assert state["status"] == "terminal"
+    assert state["payload"]["outcome"]["reason"] == "VERSION"
+    assert state["payload"]["calls"] == sdk.calls == 1
+    assert state["payload"]["input_tokens"] == incoming
+    assert state["payload"]["output_tokens"] == outgoing
+    assert runner.session is not None
+    assert len(runner.session.transcript.entries) == 1
+
+
+def test_normalised_label_collision_is_unusable_before_a_good_retry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from zoon.pilot import prompts
+
+    request = prompts.Decision(
+        "state", "question", (prompts.Answer("1", "first"), prompts.Answer("2", "second"))
+    )
+    bad = {1: 0.8, "1": 0.5, "2": 0.5}
+    good = {"1": 0.25, "2": 0.75}
+    sdk = SDK(
+        lambda n: SimpleNamespace(
+            model=prices.DECISION.model,
+            usage=SimpleNamespace(input_tokens=12, output_tokens=1),
+            answers={"q": SimpleNamespace(probabilities=bad if n == 1 else good)},
+        )
+    )
+    bounded = clients.retry
+
+    def retry(call: Callable[[], clients.Response]) -> clients.Response:
+        return bounded(call, pause=lambda seconds: None)
+
+    monkeypatch.setattr(clients, "retry", retry)
+    ledger = session(tmp_path, decisions.LiveClient(sdk))
+    responses = ledger.ask_many([("decision", request)])
+    assert responses[0].probabilities == good
+    assert sdk.calls == len(ledger.transcript.entries) == 2
+    first = next(iter(ledger.transcript.entries.values()))
+    assert ":failed:1" in str(first.request)
+    assert not first.response.probabilities

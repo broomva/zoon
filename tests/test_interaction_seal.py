@@ -131,15 +131,17 @@ def test_seal_refuses_wrong_counts_and_changed_sources(
         ready(gate)
         permit = gate.permit()
         training = root / "data" / "groups" / "training.json"
-        document = json.loads(training.read_bytes())
+        original_training = training.read_bytes()
+        document = json.loads(original_training)
         document["held_out"]["2-FE"] -= 1
         training.write_text(json.dumps(document))
         manifest = root / "interaction" / "data-manifest.json"
         pinned = json.loads(manifest.read_bytes())
         pinned["training"]["sha256"] = digest(training.read_bytes())
         manifest.write_text(json.dumps(pinned))
-        with pytest.raises(data.RecordFault, match="pinned split"):
+        with pytest.raises(ValueError, match="does not match"):
             data.open_held_out(permit)
+        training.write_bytes(original_training)
         source = root / "data" / "groups" / "raw" / data.PAIRS_FILE
         source.write_bytes(b"changed")
         with pytest.raises(ValueError, match="does not match"):
@@ -303,3 +305,51 @@ def test_simulation_digest_paths_cannot_leave_storage(
         gate.before("held-out")
         with pytest.raises(clients.GuardRefusal, match="simulation digest"):
             gate.permit()
+
+
+@pytest.mark.parametrize("filename", data.FILES)
+def test_second_seal_uses_the_registered_manifest_snapshot(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, filename: str
+) -> None:
+    root, _ = sealed_repository(tmp_path, monkeypatch)
+    gate = Guard(root)
+    with gate.lock():
+        ready(gate)
+        permit = gate.permit()
+        source = root / "data/groups/raw" / filename
+        if filename == data.PAIRS_FILE:
+            import openpyxl
+
+            book = openpyxl.load_workbook(source)
+            sheet = book[data.PAIR_SHEETS["FE"]]
+            sheet.cell(row=2, column=3, value=0)
+            book.save(source)
+            book.close()
+        else:
+            frame = pd.read_pickle(source)
+            frame.loc[0, data.FOUR_VALUE] = 0
+            frame.to_pickle(source)
+        manifest = root / "interaction/data-manifest.json"
+        document = json.loads(manifest.read_bytes())
+        document["files"][filename].update(
+            size=source.stat().st_size, sha256=digest(source.read_bytes())
+        )
+        manifest.write_text(json.dumps(document))
+        with pytest.raises(ValueError, match="does not match"):
+            data.open_held_out(permit)
+
+
+def test_held_out_permit_expires_on_the_next_activation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root, _ = sealed_repository(tmp_path, monkeypatch)
+    gate = Guard(root)
+    with gate.lock():
+        ready(gate)
+        permit = gate.permit()
+        assert guard.require_permit(permit) is gate
+    with gate.lock():
+        gate.before("held-out")
+        with pytest.raises(clients.GuardRefusal, match="live held-out"):
+            guard.require_permit(permit)
+        assert guard.require_permit(gate.permit()) is gate

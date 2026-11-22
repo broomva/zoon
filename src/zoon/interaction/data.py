@@ -140,9 +140,13 @@ def fetch(raw_dir: Path = RAW_DIR) -> None:
     _record(document)
 
 
-def _check(path: Path, manifest: Path | None = None) -> None:
+def _check(path: Path, manifest: Path | bytes | None = None) -> None:
     """Refuse a raw file that is missing from the manifest or differs from it."""
-    document = _manifest() if manifest is None else json.loads(manifest.read_bytes())
+    document = (
+        _manifest()
+        if manifest is None
+        else json.loads(manifest if isinstance(manifest, bytes) else manifest.read_bytes())
+    )
     entry = document["files"].get(path.name)
     if entry is None or entry["sha256"] != _sha256(path) or entry["size"] != path.stat().st_size:
         raise ValueError(f"{path.name} does not match {MANIFEST.name}")
@@ -182,17 +186,19 @@ def _by_seat(game: Game, seats: list[list[object]]) -> Rounds:
 
 
 def _pairs(
-    path: Path, permit: HeldOutPermit | None = None, *, _seal: object = None
+    path: Path,
+    permit: HeldOutPermit | None = None,
+    *,
+    _seal: object = None,
+    manifest: bytes | None = None,
 ) -> tuple[list[Group], dict[str, int]]:
     """Read training pairs, or held-out pairs under the second seal's permit."""
-    manifest = None
     if permit is not None:
         from zoon.interaction.guard import require_permit
 
-        gate = require_permit(permit)
+        require_permit(permit)
         if _seal is not _SECOND_SEAL:
             raise clients.GuardRefusal("held-out readers are internal to the second seal")
-        manifest = gate.root / "interaction" / "data-manifest.json"
     _check(path, manifest)
     openpyxl: Any = importlib.import_module("openpyxl")
     book = openpyxl.load_workbook(path, read_only=True, data_only=True)
@@ -251,7 +257,11 @@ def _scalar(cell: object) -> object:
 
 
 def _fours(
-    path: Path, permit: HeldOutPermit | None = None, *, _seal: object = None
+    path: Path,
+    permit: HeldOutPermit | None = None,
+    *,
+    _seal: object = None,
+    manifest: bytes | None = None,
 ) -> tuple[list[Group], dict[str, int]]:
     """Read training fours, or held-out fours under the second seal's permit.
 
@@ -259,14 +269,12 @@ def _fours(
     never leaves this function: the identifier columns decide which rows are wanted, and only
     those rows' contributions are taken out of it.
     """
-    manifest = None
     if permit is not None:
         from zoon.interaction.guard import require_permit
 
-        gate = require_permit(permit)
+        require_permit(permit)
         if _seal is not _SECOND_SEAL:
             raise clients.GuardRefusal("held-out readers are internal to the second seal")
-        manifest = gate.root / "interaction" / "data-manifest.json"
     _check(path, manifest)
     matio: Any = importlib.import_module("matio")
     frame = cast(pd.DataFrame, matio.load_from_mat(str(path))["all_data"])
@@ -336,13 +344,15 @@ def seal(raw_dir: Path = RAW_DIR, training: Path = TRAINING) -> None:
     _record(manifest)
 
 
-def _read(training: Path, manifest: Path | None = None) -> dict[str, Any]:
+def _read(training: Path, manifest: Path | bytes | None = None) -> dict[str, Any]:
     """Return the training file's contents after checking its hash against the manifest."""
-    document = json.loads((MANIFEST if manifest is None else manifest).read_bytes())
+    source = MANIFEST if manifest is None else manifest
+    document = json.loads(source if isinstance(source, bytes) else source.read_bytes())
     entry = document.get("training")
-    if entry is None or entry["sha256"] != _sha256(training):
+    raw = training.read_bytes()
+    if entry is None or entry["sha256"] != hashlib.sha256(raw).hexdigest():
         raise ValueError(f"{training.name} does not match {MANIFEST.name}")
-    return cast(dict[str, Any], json.loads(training.read_text()))
+    return cast(dict[str, Any], json.loads(raw))
 
 
 def load(training: Path = TRAINING, *, manifest: Path | None = None) -> list[Group]:
@@ -380,10 +390,14 @@ def open_held_out(permit: object = None) -> list[Group]:
     # Narrowing after require_permit deliberately keeps the public argument opaque.
     capability = cast("HeldOutPermit", permit)
     directory = guard.root / "data" / "groups"
-    manifest = guard.root / "interaction" / "data-manifest.json"
+    manifest = guard.input_bytes("interaction/data-manifest.json")
     document = _read(directory / "training.json", manifest)
-    pairs, pair_counts = _pairs(directory / "raw" / PAIRS_FILE, capability, _seal=_SECOND_SEAL)
-    fours, four_counts = _fours(directory / "raw" / FOURS_FILE, capability, _seal=_SECOND_SEAL)
+    pairs, pair_counts = _pairs(
+        directory / "raw" / PAIRS_FILE, capability, _seal=_SECOND_SEAL, manifest=manifest
+    )
+    fours, four_counts = _fours(
+        directory / "raw" / FOURS_FILE, capability, _seal=_SECOND_SEAL, manifest=manifest
+    )
     groups = sorted([*pairs, *fours], key=lambda g: (g.cell, g.index))
     counts = {**pair_counts, **four_counts}
     indices = {(g.cell, g.index) for g in groups}

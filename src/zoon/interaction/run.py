@@ -13,7 +13,7 @@ from typing import Any, NoReturn
 import numpy as np
 
 from zoon.interaction import budget, data, decisions, measure, prompted, score
-from zoon.interaction.guard import Guard, checkpoint
+from zoon.interaction.guard import Guard, StateReplacedError, checkpoint, digest, encoded
 from zoon.pilot import clients
 
 
@@ -111,6 +111,8 @@ class Run:
                 ) from None
             except data.RecordFault:
                 return self.terminal(Outcome.RECORDS)
+            except StateReplacedError:
+                raise
             except BaseException as error:
                 self.guard.save(
                     step,
@@ -133,6 +135,9 @@ class Run:
             )
             for d in sample
         ]
+        request_digest = digest(encoded([decisions.request_key(r) for r in requests]))
+        if "recalibration" in self.payload and self.payload.get("fit_requests") != request_digest:
+            raise clients.GuardRefusal("saved recalibration was fitted to different requests")
         original = self.session.ask_many(requests)
         pairs = [
             (
@@ -153,6 +158,7 @@ class Run:
             except Exception:
                 return self.terminal(Outcome.FIT)
             self.payload["recalibration"] = recalibration.numbers.tolist()
+            self.payload["fit_requests"] = request_digest
             self.guard.save("calibrate", {**self.payload, **self.totals()}, status="running")
         values = self.payload["recalibration"]
         recalibration = prompted.Recalibration(values[0], tuple(values[1:]))

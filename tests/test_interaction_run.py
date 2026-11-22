@@ -11,7 +11,7 @@ import numpy as np
 import pytest
 
 from tests.interaction_run_support import repository
-from zoon.interaction import decisions, prompted, run, score
+from zoon.interaction import decisions, guard, prompted, run, score
 from zoon.interaction.guard import checkpoint, encoded
 from zoon.pilot import clients, prices
 
@@ -50,6 +50,10 @@ def test_stub_calibration_interrupt_resume_and_refuse_repeat(tmp_path: Path) -> 
     assert path.read_bytes().startswith(before)
     uninterrupted = run.Run(root, stub=True, storage=plain_storage).execute()
     assert final == uninterrupted
+    assert path.read_bytes() == (plain_storage / "transcripts/stub/decision.jsonl").read_bytes()
+    assert (resumed_storage / "run/stub/calibrate.json").read_bytes() == (
+        plain_storage / "run/stub/calibrate.json"
+    ).read_bytes()
     assert final["status"] == "completed"
     assert final["payload"]["calls"] == 2 * prompted.SUBSAMPLE_COUNT
     assert len(final["payload"]["answers"]["keys"]) == prompted.SUBSAMPLE_COUNT
@@ -474,3 +478,65 @@ def test_cli_interrupt_prints_only_the_exception(
         pytest.fail("command propagated an interrupt traceback")
     assert status == 1
     assert capsys.readouterr().err == "KeyboardInterrupt: \n"
+
+
+@pytest.mark.parametrize("changed", [False, True])
+def test_resumed_fit_requires_its_original_request_keys(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, changed: bool
+) -> None:
+    root = repository(tmp_path / "repo")
+    storage = tmp_path / "resumed"
+    runner = run.Run(root, stub=True, storage=storage, client=InterruptedClient(fail_at=520))
+    with pytest.raises(clients.StepFailure):
+        runner.execute()
+    original = prompted.subsample
+    if changed:
+
+        def different(groups: Sequence[run.data.Group]) -> list[prompted.TrainingDecision]:
+            return [replace(d, round=1) for d in original(groups)]
+
+        monkeypatch.setattr(prompted, "subsample", different)
+        ledger = runner.guard.transcript_directory / "decision.jsonl"
+        previous = ledger.read_bytes()
+        with pytest.raises(clients.GuardRefusal, match="fitted to different requests"):
+            run.Run(root, stub=True, storage=storage).execute()
+        assert ledger.read_bytes() == previous
+    else:
+        completed = run.Run(root, stub=True, storage=storage).execute()
+        plain_storage = tmp_path / "plain"
+        assert completed == run.Run(root, stub=True, storage=plain_storage).execute()
+        for name in ("run/stub/calibrate.json", "transcripts/stub/decision.jsonl"):
+            assert (storage / name).read_bytes() == (plain_storage / name).read_bytes()
+
+
+@pytest.mark.parametrize("replaced", [False, True])
+def test_state_sync_failure_preserves_the_visible_state_and_storage_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, replaced: bool
+) -> None:
+    import stat
+
+    root = repository(tmp_path / "repo")
+    runner = run.Run(root, stub=True)
+    original = guard.os.fsync
+    failed = False
+
+    def sync(descriptor: int) -> None:
+        nonlocal failed
+        if not failed and "disguise" in runner.payload:
+            is_directory = stat.S_ISDIR(guard.os.fstat(descriptor).st_mode)
+            if is_directory == replaced:
+                failed = True
+                raise OSError("storage sync failed")
+        original(descriptor)
+
+    monkeypatch.setattr(guard.os, "fsync", sync)
+    with pytest.raises(guard.StateReplacedError if replaced else OSError) as error:
+        runner.execute()
+    assert failed
+    if replaced:
+        assert "directory sync failed" in str(error.value)
+        assert isinstance(error.value.__cause__, OSError)
+    else:
+        assert str(error.value) == "storage sync failed"
+    state = json.loads((runner.guard.directory / "calibrate.json").read_bytes())
+    assert state["status"] == ("completed" if replaced else "interrupted")

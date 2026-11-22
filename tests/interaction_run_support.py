@@ -5,6 +5,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
+from tests.test_interaction_training import require_training
 from zoon.interaction import data, registered
 from zoon.interaction.guard import TAG, digest
 
@@ -22,6 +23,7 @@ def commit(root: Path, message: str = "Change implementation") -> str:
 
 
 def repository(root: Path, *, tag: bool = True) -> Path:
+    require_training()
     root.mkdir(parents=True, exist_ok=True)
     git(root, "init", "-q")
     git(root, "config", "user.name", "Example")

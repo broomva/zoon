@@ -362,11 +362,14 @@ def test_training_manifest_is_explicit_and_never_inferred_from_layout(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     import hashlib
-    import shutil
 
     training = tmp_path / "data/groups/training.json"
     training.parent.mkdir(parents=True)
-    shutil.copyfile(data.TRAINING, training)
+    training.write_text(
+        json.dumps(
+            {"groups": [{"cell": "2-FE", "index": "synthetic", "rounds": [[0, 0]] * ROUNDS}]}
+        )
+    )
     explicit = tmp_path / "interaction/data-manifest.json"
     explicit.parent.mkdir()
     explicit.write_text(
@@ -374,6 +377,30 @@ def test_training_manifest_is_explicit_and_never_inferred_from_layout(
     )
     absent = tmp_path / "absent.json"
     monkeypatch.setattr(data, "MANIFEST", absent)
-    assert len(data.load(training, manifest=explicit)) == 210
+    assert data.load(training, manifest=explicit) == [
+        data.Group("2-FE", "synthetic", ((0, 0),) * ROUNDS)
+    ]
     with pytest.raises(FileNotFoundError):
         data.load(training)
+
+
+def test_training_is_parsed_from_the_bytes_whose_digest_was_checked(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    raw, training, _ = _prepare(tmp_path)
+    data.seal(raw, training)
+    expected = data.load(training)
+    original = Path.read_bytes
+    reads = 0
+
+    def replaced(path: Path) -> bytes:
+        nonlocal reads
+        content = original(path)
+        if path == training:
+            reads += 1
+            training.write_text(json.dumps({"groups": [], "held_out": {}}))
+        return content
+
+    monkeypatch.setattr(Path, "read_bytes", replaced)
+    assert data.load(training) == expected
+    assert reads == 1
