@@ -1,0 +1,18 @@
+Shape of two replies from gemini-4-carbon, 2026-11-21, with at most 256 output tokens.
+Values of text fields, identifiers and times are omitted; counts are as returned.
+
+reply without thinking:
+  candidates[0].content.parts[0]: text, thoughtSignature
+  candidates[0].finishReason: STOP
+  usageMetadata: promptTokenCount=63, candidatesTokenCount=6, totalTokenCount=69,
+                 trafficType, promptTokensDetails, candidatesTokensDetails
+  usageMetadata.thoughtsTokenCount: absent
+  modelVersion: gemini-4-carbon
+
+reply with thinking:
+  candidates[0].content.parts[0]: text, thoughtSignature
+  candidates[0].finishReason: STOP
+  usageMetadata: promptTokenCount=447, candidatesTokenCount=6, totalTokenCount=556,
+                 trafficType, promptTokensDetails, candidatesTokensDetails,
+                 thoughtsTokenCount=103
+  modelVersion: gemini-4-carbon

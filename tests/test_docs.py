@@ -72,6 +72,10 @@ def test_interaction_registration_links_and_existing_paths() -> None:
     root = NOTES.parent.parent
     document = root / "interaction" / "registration.md"
     check_interaction_registration(root, document)
+    text = document.read_text()
+    for path in ("src/zoon/interaction/chat.py", "interaction/chat-requests/"):
+        assert f"| `{path}` | Existing today |" in text
+        assert f"- `{path}`" not in text
 
 
 def check_interaction_registration(root: Path, document: Path) -> None:

@@ -311,14 +311,16 @@ there is none. Whatever happens is published, as with the pilot.
 
 The draft pre-registration fixes the arms, fitting and committed numbers, band table,
 measures, thresholds, intervals, streams, prompted and chat rules, controls, stopping rules
-and order of work. Its "Open before registration" list is exhaustive: the decision-model
-cap, chat bound and cap with dated prices; the analysis code and its files and required
-checks; a format check of the chat request with the
-committed renderer; replacement of the path test by tests binding every registered constant
-and number to the code; and power and coverage under the registered rules, computed on
-training groups by a committed script and quoted in the registration. That script must
-reproduce the H2 training estimate 0.0209 under the common scoring floor. The
-decision-model request format check is DONE; the registration's "Calls made before registration" records it, satisfying the order below.
+and order of work. Its "Open before registration" list is exhaustive: confirmation of the
+chat price on the day of registration; the analysis code and its files and required
+checks; replacement of the path test by tests binding every registered constant
+and number to the code; and the quoting in the registration of power and coverage under
+the registered rules. A committed script computes them on training groups and reproduces
+the H2 training estimate 0.0209 under the common scoring floor; its output is in
+[power.md](power.md). The caps and
+the chat bound are filled from the spending script, and both format checks are DONE;
+the registration's "Calls made before registration" records them, satisfying the order
+below.
 
 ## What this changes in the main design
 
@@ -349,7 +351,7 @@ Made in the same reviewed change as the pre-registration. Each line names the se
   groups per game, five pair games and three games of four, that is 440 times N calls for
   each prompted arm, and the rendered history grows with the round.
 - A measured bound on calls and spend is produced by a committed script before
-  registration, as it was for the pilot. The spending cap is the maintainer's decision.
+  registration, as it was for the pilot. The registration fixes separate decision and chat caps from that script's output.
 
 ## Order of work
 
@@ -358,7 +360,9 @@ Made in the same reviewed change as the pre-registration. Each line names the se
 3. Rendered instructions, a format check of the prompted requests on made-up histories, the
    table from bands to points, and the spending bound. The decision-model format
    check is DONE, as recorded in the registration's "Calls made before registration".
-   The chat request check with the committed renderer remains open.
+   The chat request check with the committed renderer is DONE; its output is
+   committed in `docs/interaction/format-check-chat.txt` for the first check and
+   `docs/interaction/output-limit.txt` for the check at the registered limit.
 4. The pre-registration and the analysis code, reviewed, with the amendments to the main
    design.
 5. Registration by tag; then the run; then the result, whatever it is.

@@ -3,13 +3,14 @@
 import ast
 import inspect
 import re
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
 
 from tests.test_interaction_measure import played_groups
 from tests.test_interaction_training import require_training
-from zoon.interaction import measure
+from zoon.interaction import kernel, measure
 
 NOTE = Path(__file__).parent.parent / "docs" / "interaction" / "measure.md"
 # Lines the note's argument rests on. A run must print each one.
@@ -42,7 +43,7 @@ def test_measure_paste_has_heading_and_power_label() -> None:
 
 
 def test_every_quoted_number_is_in_the_pasted_output() -> None:
-    """A figure with three or more decimals in the prose must have been printed by the run."""
+    "A figure with three or more decimals in the prose must have been printed by the run."
     prose, paste = _split()
     printed = {number.lstrip("+-") for number in NUMBER.findall(paste)}
     quoted = {number.lstrip("+-") for number in NUMBER.findall(prose)}
@@ -317,20 +318,22 @@ def test_prompted_table_and_quoted_figures_match_the_paste() -> None:
     rows: list[str] = []
     for line in paste.splitlines():
         match = re.fullmatch(
-            r"\[(open loop|recalibration|disguise|closed loop|recall|total)\] calls = (\d+) "
+            r"\[(open loop|recalibration|disguise|closed loop|total|"
+            r"chat closed loop|chat recall|chat total)\] calls = (\d+) "
             r"\| input tokens <= (\d+) \| output tokens <= (\d+) \| USD <= (\S+)",
             line,
         )
         if match:
             rows.append("| " + " | ".join(match.groups()) + " |")
     quoted = [line for line in prose.splitlines() if re.match(r"\| (?!Call|---)", line)]
-    assert len(rows) == 5
+    assert len(rows) == 8
     assert quoted == rows
     # Attribution identifies the source and its licence; these are not measured figures.
     # It is exempt from the digit rule, so it is pinned whole.
     citation = (
         "The instructions are used under CC BY 4.0: Wang, Hilbe and Zhang, *PNAS* 123(5),\n"
-        "e2525760123, [doi:10.1073/pnas.2525760123](https://doi.org/10.1073/pnas.2525760123),\n"
+        "e2525760123, [doi:10.1073/pnas.2525760123](https://doi.org/10.107"
+        "3/pnas.2525760123),\n"
         "supplementary appendix, sections 5B and 5D. The other games use substituted "
         "parameters.\n\n"
     )
@@ -420,3 +423,464 @@ def test_registration_constants_match_current_code() -> None:
         clients.retry(fail, pause=observed.append)
     assert calls == attempts
     assert observed == pauses
+
+
+def test_registration_chat_settings_rules_and_figures_match_code() -> None:
+    from zoon.interaction import budget, chat, chat_prices, data
+
+    text = (NOTE.parents[2] / "interaction" / "registration.md").read_text()
+    normal = " ".join(text.split())
+    for name, value in {
+        "chat.MAX_OUTPUT_TOKENS": chat.MAX_OUTPUT_TOKENS,
+        "budget.DECISION_CAP_MULTIPLE": budget.DECISION_CAP_MULTIPLE,
+        "chat_prices.LOW_THROUGH": chat_prices.LOW_THROUGH,
+    }.items():
+        quoted = re.findall(rf"`{re.escape(name)} = ([^`]+)`", text)
+        assert quoted and all(ast.literal_eval(q) == value for q in quoted)
+    assert f"Thinking level {chat.THINKING_LEVEL}; temperature {chat.TEMPERATURE};" in normal
+    assert f"at most {chat.MAX_OUTPUT_TOKENS} output tokens" in normal
+    assert f"with at most {chat.MAX_OUTPUT_TOKENS} output tokens per call" in normal
+    words = {3: "Three", 4: "Four"}
+    assert f"{words[chat.REPLY_ATTEMPTS]} unusable replies for one decision" in normal
+    assert "leading zeroes are allowed" in normal
+    assert "space, tab, line feed and carriage return only" in normal
+    retry = re.search(
+        r"For both models, a request has at most (\d+) attempts, "
+        r"with pauses of (\d+), (\d+) and (\d+) seconds",
+        normal,
+    )
+    assert retry and int(retry[1]) == chat.TRANSPORT_ATTEMPTS
+    assert tuple(map(float, retry.groups()[1:])) == chat.TRANSPORT_PAUSES
+    assert f"each have threshold `{chat.SAFETY_SETTINGS[0]['threshold']}`" in normal
+    keys = re.search(
+        r'Flag a reply containing the run "([^"]+)", "([^"]+)" or "([^"]+)", '
+        r'or the adjacent runs "([^"]+)"',
+        normal,
+    )
+    assert keys and keys.groups() == chat.RECALL_KEYS
+    question = re.search(r"^> How many of your .*$", text, re.M)
+    assert question
+    rendered = question[0][2:].replace(" E ", " 36 ").replace("round r?", "round 1?")
+    assert chat.request(kernel_view_for_docs()).endswith(rendered)
+    separators = re.search(
+        r"one `(.*?)`, then `You are Player n\.`, then `(.*?)`, "
+        r"then the history, then `(.*?)`, then the question",
+        normal,
+    )
+    assert separators
+    assert tuple(ast.literal_eval('"' + part + '"') for part in separators.groups()) == (
+        chat.INSTRUCTION_SEPARATOR,
+        chat.SECTION_SEPARATOR,
+        chat.SECTION_SEPARATOR,
+    )
+    rounds = re.search(r"history joins rounds with `(.*?)`", normal)
+    assert rounds and ast.literal_eval('"' + rounds[1] + '"') == chat.ROUND_SEPARATOR
+    assert f"on {chat_prices.READ} from the provider's" in normal
+    assert f"{chat_prices.HIGH_FROM}; the bound uses the higher price." in normal
+    multiple = {4: "four", 3: "three"}
+    assert (
+        f"The decision-model cap is {multiple[budget.DECISION_CAP_MULTIPLE]} times its bound"
+        in normal
+    )
+    assert f"recall included: {budget.chat_cap()}.**" in normal
+    bound = sum((r.dollars for r in budget.chat_estimate()), start=Decimal())
+    assert f"**Chat-model bound in US dollars: {budget.dollars(bound)}.**" in normal
+    require_training()
+    rows = budget.estimate(data.load(), data.held_out_counts())
+    assert f"**Decision-model cap in US dollars: {budget.decision_cap(rows)}.**" in normal
+
+
+def kernel_view_for_docs() -> "kernel.View":
+    from zoon.interaction import kernel
+    from zoon.interaction.games import GAMES
+
+    return kernel.View(GAMES["2-AI"], 0, ())
+
+
+def test_registered_format_check_counts_equal_committed_record() -> None:
+    import hashlib
+
+    from zoon.interaction import chat
+
+    raw = (NOTE.parent / "format-check-chat.txt").read_bytes()
+    assert (
+        hashlib.sha256(raw).hexdigest()
+        == "daf600cdcd5486ff7cc0fe381838bd074f9be1f7151c4833755dc50b00660d1d"
+    )
+    lines = raw.decode().splitlines()
+    normal = " ".join((NOTE.parents[2] / "interaction" / "registration.md").read_text().split())
+    paragraph = re.search(
+        r"was run once with at most 256 output tokens, the limit first chosen: (\d+) calls, .*?"
+        r"All (\d+) replies were usable whole numbers\. (\w+) reported thinking tokens, "
+        r"from (\d+) to (\d+)",
+        normal,
+    )
+    assert paragraph
+    assert int(paragraph[1]) == len(lines) == 12
+    assert int(paragraph[2]) == sum("usable = True" in line for line in lines) == 12
+    thoughts = [int(re.search(r"thinking tokens = (\d+)", line)[1]) for line in lines]  # type: ignore[index]
+    nonzero = [value for value in thoughts if value]
+    assert paragraph[3] == {3: "Three"}[len(nonzero)]
+    assert (int(paragraph[4]), int(paragraph[5])) == (min(nonzero), max(nonzero))
+    assert len(lines) == len(chat.smoke(chat.StubClient()))
+    shape_raw = (NOTE.parent / "reply-shape.txt").read_bytes()
+    assert (
+        hashlib.sha256(shape_raw).hexdigest()
+        == "3655492d7bfeba544e188e1ff34bc1522510f5c294af128ff5c0d6bf74889fd5"
+    )
+    shape_count = len(re.findall(r"^reply (?:with|without) thinking:$", shape_raw.decode(), re.M))
+    sentence = re.search(
+        "On (\\d{4}-\\d{2}-\\d{2}) (\\w+) further calls at that limit sent one toy "
+        "question and one "
+        r"committed made-up request to record which usage fields a reply carries; the record is "
+        r"\[`docs/interaction/reply-shape.txt`\]\(../docs/interaction/reply-shape.txt\)\.",
+        normal,
+    )
+    assert sentence and sentence[1] == "2026-11-21"
+    assert sentence[2] == {2: "two"}[shape_count]
+    assert re.findall(r"promptTokenCount=(\d+)", shape_raw.decode()) == ["63", "447"]
+    assert "others were printed as zero" in normal
+
+    assert (
+        "[`docs/interaction/format-check-chat.txt`](../docs/interaction/format-check-chat.txt)"
+        in normal
+    )
+
+
+def test_output_limit_paragraph_counts_equal_committed_record() -> None:
+    import hashlib
+
+    from zoon.interaction import chat
+
+    raw = (NOTE.parent / "output-limit.txt").read_bytes()
+    assert (
+        hashlib.sha256(raw).hexdigest()
+        == "985005acbdbb0d7816f604cafd23b26a79c678c6e135b9bc39005271d71abf1f"
+    )
+    sections: dict[int, list[str]] = {}
+    for block in raw.decode().split("\n\n")[1:]:
+        head, *lines = block.splitlines()
+        limit = re.fullmatch(r"(?:second run|probe|check) with at most (\d+) output tokens:", head)
+        assert limit and all(line.startswith("[smoke ") for line in lines)
+        sections[int(limit[1])] = lines
+    assert list(sections) == [256, 4096, chat.MAX_OUTPUT_TOKENS]
+
+    def thinking(lines: list[str]) -> list[int]:
+        return [int(re.search(r"thinking tokens = (\d+)", line)[1]) for line in lines]  # type: ignore[index]
+
+    def usable(lines: list[str]) -> int:
+        return sum("usable = True" in line for line in lines)
+
+    second, probe, check = sections.values()
+    normal = " ".join((NOTE.parents[2] / "interaction" / "registration.md").read_text().split())
+    paragraph = re.search(
+        r"A second run of the same (\d+) calls with at most (\d+) output tokens returned (\d+) "
+        r"empty replies, each with (\d+) thinking tokens\. The same four requests were then sent "
+        r"(\d+) times each with at most (\d+) output tokens: all (\d+) replies were usable, and "
+        r"the most thinking tokens in one reply was (\d+)\. The limit was set to (\d+) and the "
+        r"(\d+) calls were run again at it: all (\d+) replies were usable, and the most "
+        r"thinking tokens in one reply was (\d+)\. These (\d+) calls are recorded in "
+        r"\[`docs/interaction/output-limit.txt`\]\(../docs/interaction/output-limit.txt\)\.",
+        normal,
+    )
+    assert paragraph
+    stated = [int(value) for value in paragraph.groups()]
+    empty = [line for line in second if 'text = ""' in line]
+    assert "Thinking tokens count against the limit." in normal
+    assert all(
+        int(re.search(r"output tokens = (\d+)", line)[1]) + thought == 256  # type: ignore[index]
+        for line, thought in zip(empty, thinking(empty), strict=True)
+    )
+    assert len(empty) == len(second) - usable(second) and len(set(thinking(empty))) == 1
+    names = {line.split()[1] for line in probe}
+    assert len(names) == 4 and len(probe) == 4 * stated[4]
+    assert stated == [
+        len(second),
+        256,
+        len(empty),
+        thinking(empty)[0],
+        len(probe) // 4,
+        4096,
+        usable(probe),
+        max(thinking(probe)),
+        chat.MAX_OUTPUT_TOKENS,
+        len(check),
+        usable(check),
+        max(thinking(check)),
+        len(second) + len(probe) + len(check),
+    ]
+    assert len(probe) == usable(probe) and len(check) == usable(check)
+    assert len(second) == len(check) == len(chat.smoke(chat.StubClient()))
+    assert max(thinking(probe)) > 256 and max(thinking(check)) > 256
+    assert 4 * max(thinking(probe) + thinking(check)) < chat.MAX_OUTPUT_TOKENS
+
+
+def test_prompted_prose_is_scope_and_record_only() -> None:
+    text = (NOTE.parent / "prompted.md").read_text()
+    assert len(re.findall(r"\n```\n.*?\n```", text, re.S)) == 1
+    prose = re.sub(r"\n```\n.*?\n```", "", text, flags=re.S)
+    prose = "\n".join(line for line in prose.splitlines() if not line.startswith("|"))
+    assert prose == (
+        "# The prompted arm: requests and spending bound\n"
+        "\n"
+        "This is preparation for the prompted prediction arm of the draft interaction design.\n"
+        "The model's instructions are in [the instruction "
+        "files](../../interaction/instructions/).\n"
+        "Its question and declared answers, with an empty history and a made-up later history,\n"
+        "are in [the request files](../../interaction/requests/). These are the materials given\n"
+        "and the prediction asked for.\n"
+        "\n"
+        "The chat arm's rules are in [the registration](../../interaction/registration.md),\n"
+        "and its first format check is in [the record](format-check-chat.txt);\n"
+        "[the output-limit record](output-limit.txt) holds the check at the registered limit.\n"
+        "\n"
+        "The instructions are used under CC BY 4.0: Wang, Hilbe and Zhang, *PNAS* 123(5),\n"
+        "e2525760123, [doi:10.1073/pnas.2525760123](https://doi.org/10.1073/pnas.2525760123),\n"
+        "supplementary appendix, sections 5B and 5D. The other games use substituted parameters.\n"
+        "\n"
+        "The spending program reads training groups and held-out counts only. Its settings,\n"
+        "assumptions and output are recorded below. Vertex price confirmation remains due\n"
+        "on registration day. The format checks are outside the bound.\n"
+        "\n"
+        "\n"
+        "Output of `python -m zoon.interaction.budget`:\n"
+    )
+
+
+def test_draft_status_does_not_reopen_completed_chat_work() -> None:
+    root = NOTE.parents[2]
+    readme = (root / "README.md").read_text()
+    assert (
+        "chat requests, transcripts and replay, scoring and intervals, the fitted files, "
+        "and power and coverage under the registered rules are implemented and tested; "
+        "the second seal, run guards and step state, and the report remain open" in readme
+    )
+    design = " ".join((NOTE.parent / "design.md").read_text().split())
+    assert (
+        "the chat bound are filled from the spending script, and both format checks are DONE;"
+        in design
+    )
+    assert "The chat request check with the committed renderer is DONE;" in design
+    assert (
+        "`docs/interaction/format-check-chat.txt` for the first check and "
+        "`docs/interaction/output-limit.txt` for the check at the registered limit."
+    ) in " ".join(design.split())
+    assert (
+        "The registration fixes separate decision and chat caps from that script's output."
+        in design
+    )
+
+
+def test_registration_chat_contract_has_only_the_registered_rules() -> None:
+    from zoon.interaction import chat
+
+    text = (NOTE.parents[2] / "interaction" / "registration.md").read_text()
+    section = text.split("### The chat arm\n\n", 1)[1].split("\n## Spending", 1)[0]
+    assert section == (
+        "It plays one seat at a time. Its request is the participant instructions, the\n"
+        'line "You are Player n.", the history as rendered for `prompted`, and then:\n'
+        "\n"
+        "> How many of your E points do you contribute to the common pool in round r? "
+        "Answer with one whole number of points and nothing else.\n"
+        "\n"
+        "Substitute that seat's endowment for E, seat for n and round for r.\n"
+        "The instructions already end in `\\n`: append\n"
+        "one `\\n`, then `You are Player n.`, then `\\n\\n`, then the history, then `\\n\\n`,\n"
+        "then the question, with no final newline and no system instruction. The history\n"
+        "joins rounds with `\\n\\n`; each round starts with `Round r\\n`.\n"
+        "Use the same empty-history line as `prompted` when there is no earlier round.\n"
+        "Safety settings are the pilot's second-family client's: `HARM_CATEGORY_HARASSMENT`,\n"
+        "`HARM_CATEGORY_HATE_SPEECH`, `HARM_CATEGORY_SEXUALLY_EXPLICIT` and\n"
+        "`HARM_CATEGORY_DANGEROUS_CONTENT` each have threshold `OFF`. The reply is the\n"
+        "concatenated text parts of the first candidate, in their returned order.\n"
+        "A candidate with text and no finish reason is read as its text.\n"
+        "\n"
+        "After trimming white space (space, tab, line feed and carriage return only), "
+        "the reply must be a whole number from zero to E.\n"
+        "Fixed here: accept only a non-empty run of ASCII digits, with no sign, decimal\n"
+        "point or other text; leading zeroes are allowed. Retry unusable replies under\n"
+        "the three-reply rule in Data; transport failures and arm-only outcomes follow\n"
+        "that section.\n"
+        "\n"
+        "Every seat of every round of every simulated group is its own call. Identical\n"
+        "requests are NOT reused across decisions. The transcript identifies the game,\n"
+        "group, round, seat and attempt, and a resumed decision uses its recorded replies.\n"
+        "The incomplete-line rule under Guard, repairs and persistence applies.\n"
+        "Replay requires the recorded whole-transcript SHA-256 and exact line count, and\n"
+        "uses one verified copy re-read from disk without fresh calls. Rendered "
+        "decision and recall\n"
+        "requests must match; attempts for each decision must be consecutive from one,\n"
+        "with no attempt after an accepted reply and no more than three attempts.\n"
+        "A later round of a group requires accepted replies for every seat of its earlier rounds.\n"
+        "Changing text or token counts on any line fails replay. A game cannot be scored\n"
+        "when the arm is unusable; its whole transcript can still pass replay.\n"
+        "The arm's status is derived from the transcript and the cap, in file order: the\n"
+        "first invalid or changed version, third unusable reply for one decision, or\n"
+        "the chat cap reached under Spending. At the same entry, that is the order of precedence.\n"
+        "The transcript cannot show a withdrawal or an operator's ending of the arm; the run\n"
+        "step records them, and that record governs later steps.\n"
+        'Each recall question is labelled "judged", "not judged: version", or "not asked".\n'
+        "The accepted points bypass recalibration and the band-to-points step.\n"
+        "Run closed loop only, with the H3 simulation count. Score against `zoon` by the\n"
+        "same H3 composite, difference and interval. It changes no verdict.\n"
+    )
+    reply_rules = (
+        "Before generating," + text.split("Before generating,", 1)[1].split("\nThe outcomes", 1)[0]
+    )
+    assert reply_rules == (
+        "Before generating, check model metadata without generating text; missing metadata\n"
+        "does not establish withdrawal.\n"
+        "A success without a non-empty string modelVersion or integer promptTokenCount is\n"
+        "a transient transport fault and is retried within the bounded attempts, with no\n"
+        "transcript record. Missing candidatesTokenCount or thoughtsTokenCount means zero,\n"
+        "with or without candidate text; a present count that is not a non-negative integer,\n"
+        "including a boolean, is the same transient fault."
+    )
+    normal = " ".join(text.split())
+    assert (
+        "The decision-model cap is also reached when recorded spending is above it; "
+        "equality is allowed."
+    ) in normal
+    assert (
+        "answered questions are kept and judged and the questions not yet "
+        'answered are recorded "not asked".'
+    ) in normal
+    assert {c.name for c in chat.Cause} == {
+        "REPLIES",
+        "WITHDRAWN",
+        "VERSION",
+        "CAP",
+        "REPLAY",
+    }
+    assert chat.points(" \t\n\r00036\r", 36) == 36
+    assert all(chat.points(t, 36) is None for t in ("+1", "1.", "37", "\x0c1", "1\xa0"))
+    assert chat.request(kernel_view_for_docs()).count("How many of your") == 1
+
+
+def test_chat_probe_history_is_not_a_claim_about_registered_thinking() -> None:
+    text = " ".join((NOTE.parents[2] / "interaction" / "registration.md").read_text().split())
+    assert "that reported no thinking tokens in those probes." in text
+    assert "no thinking tokens at any setting" not in text
+
+
+def test_registration_spending_cap_contract() -> None:
+    text = (NOTE.parents[2] / "interaction" / "registration.md").read_text()
+    passage = text.split("Each model has its own cap", 1)[1].split(
+        "\n\n**Decision-model bound.", 1
+    )[0]
+    passage = "Each model has its own cap" + passage
+    assert passage == (
+        "Each model has its own cap, so that an arm that decides nothing cannot end the\n"
+        "run. **Decision-model cap in US dollars: 17.** **Chat-model cap in US dollars,\n"
+        "recall included: 2544.** Count spending from reported tokens in recorded\n"
+        "responses at the fixed prices. Retain and count unusable chat replies before\n"
+        "retrying them. As in the pilot, do not send a call if that model's spent tokens'\n"
+        "cost plus the estimate and reservations for calls in flight would exceed its cap.\n"
+        "The decision-model cap is also reached when recorded spending is above it;\n"
+        "equality is allowed. The chat cap is reached when cumulative recorded spending\n"
+        "plus the largest estimate of any registered decision or recall request is above\n"
+        "its cap; equality is allowed. Apply this rule in file order, including before\n"
+        "the first entry with spending zero, for both decisions and recall. A chat call\n"
+        "that does not fit because of reservations waits for a call in flight to finish\n"
+        "and checks the status again.\n"
+        "Reaching the decision-model cap gives no verdict for both\n"
+        "hypotheses. Reaching the chat-model cap makes `chat` unusable and changes no\n"
+        "verdict."
+    )
+
+
+def test_registration_recall_contract() -> None:
+    text = (NOTE.parents[2] / "interaction" / "registration.md").read_text()
+    passage = text.split("Recall questions with no recorded answer", 1)[1].split(
+        "\n\nA non-finite probability", 1
+    )[0]
+    passage = "Recall questions with no recorded answer" + passage
+    assert passage == (
+        "Recall questions with no recorded answer are sent unless the model is withdrawn,\n"
+        "its first reported version is invalid, its version has changed,\n"
+        "or the chat cap is reached. An arm made unusable by the three-reply rule, or ended\n"
+        "by the operator during `closed-loop`, is still asked. If the operator ends the arm\n"
+        "during `recall`, answered questions are kept and judged and the questions not yet\n"
+        'answered are recorded "not asked". `closed-loop` and `recall` complete with the\n'
+        'chat status recorded and "not asked" for each recall question not sent, and later\n'
+        "steps proceed. This changes no hypothesis verdict. The chat reply rule is under\n"
+        'The chat arm. A paid reply with an invalid version is retained as "not judged: version",\n'
+        "without judging or flagging it. Recall reports separately what stopped it asking."
+    )
+
+
+def test_registration_incomplete_line_contract() -> None:
+    text = (NOTE.parents[2] / "interaction" / "registration.md").read_text()
+    passage = text.split("Transcripts are append-only", 1)[1].split(
+        " State is separate for this registration", 1
+    )[0]
+    assert "Transcripts are append-only" + passage == (
+        "Transcripts are append-only except for the incomplete-line cut below, and bound\n"
+        "to the full registered commit and mode; check that identity before replay.\n"
+        "An incomplete final line, left by a write the system cut short, is not a record;\n"
+        "every opening refuses it and changes no bytes. The operator cuts the file back\n"
+        "to the byte after its last line feed, or to empty if it has none, changes nothing\n"
+        "else, and repeats the command, and the decision is asked again. If the cut bytes\n"
+        "held a reply, it was paid for and is not counted. The operator notes each cut and\n"
+        "its size in bytes in the message of the commit that adds the result. This is the\n"
+        "one change to a transcript the run allows; other damage is refused."
+    )
+    normal = " ".join(text.split())
+    assert (
+        "Apart from a declared repair and the incomplete-line cut under Guard, repairs and "
+        "persistence, this is the only operator decision the run allows, and it cannot be "
+        "taken once `held-out` has started."
+    ) in normal
+    assert (
+        "Do not delete or reset state or transcripts during the run, except for that cut."
+    ) in normal
+
+
+def test_registration_calls_before_registration_contract() -> None:
+    text = (NOTE.parents[2] / "interaction" / "registration.md").read_text()
+    passage = text.split("### Calls made before registration\n\n", 1)[1].split(
+        "\n### The chat arm", 1
+    )[0]
+    assert passage == (
+        "The decision model was sent format-check requests twice, four calls each time,\n"
+        "all on made-up histories: on 2026-11-20, before the request renderer was written,\n"
+        "and on 2026-11-21 with the four committed format-check requests. All eight replies\n"
+        "were usable five-band distributions.\n"
+        "\n"
+        "On 2026-11-21 four candidate chat models (`gemini-4-hydrogen`, `gemini-4-argon`,\n"
+        "`gemini-4-neon`, `gemini-4-carbon`) were tried, to learn whether they could be\n"
+        "used. Each was sent one toy question: a first attempt with a setting the service\n"
+        "refused, 4 refused calls, then 4 answered calls. Each was then sent two requests\n"
+        "built from the made-up histories, a first round and a twentieth round, three\n"
+        "times each at temperature 0: 24 answered calls. That is 28 answered calls. All\n"
+        "four answered the first round with the whole endowment every time, and their\n"
+        "twentieth-round answers varied between repeats.\n"
+        "\n"
+        "`gemini-4-carbon` was chosen as the provider's most capable model among the two\n"
+        "that reported no thinking tokens in those probes. Its replies to the made-up\n"
+        "histories were seen before it was chosen, and the chat arm's settings and reply\n"
+        "rule in this file were written after them: the temperature, because the answers\n"
+        "varied even at temperature 0, and the thinking level, because the service refuses\n"
+        "to turn thinking off. The replies are not kept in the repository. No participant\n"
+        "record was sent to any model, and no held-out group has been read.\n"
+        "\n"
+        "Later on 2026-11-21, after the chat renderer was committed, the chat format check\n"
+        "was run once with at most 256 output tokens, the limit first chosen: 12 calls, the\n"
+        "first and twentieth rounds of two games' committed made-up requests, three times\n"
+        "each. All 12 replies were usable whole numbers. Three reported thinking tokens,\n"
+        "from 45 to 111, and the others were printed as zero. The exact output is committed in\n"
+        "[`docs/interaction/format-check-chat.txt`](../docs/interaction/format-check-chat.txt).\n"
+        "On 2026-11-21 two further calls at that limit sent one toy question and one\n"
+        "committed made-up request to record which usage fields a reply carries; the record is\n"
+        "[`docs/interaction/reply-shape.txt`](../docs/interaction/reply-shape.txt).\n"
+        "\n"
+        "The output limit was then raised, before registration and after seeing replies.\n"
+        "Thinking tokens count against the limit. A second run of the same 12 calls with at\n"
+        "most 256 output tokens returned 2 empty replies, each with 253 thinking tokens. The\n"
+        "same four requests were then sent 10 times each with at most 4096 output tokens:\n"
+        "all 40 replies were usable, and the most thinking tokens in one reply was 384. The\n"
+        "limit was set to 2048 and the 12 calls were run again at it: all 12 replies were\n"
+        "usable, and the most thinking tokens in one reply was 359. These 64 calls are"
+        " recorded in\n"
+        "[`docs/interaction/output-limit.txt`](../docs/interaction/output-limit.txt).\n"
+    )

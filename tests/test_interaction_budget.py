@@ -213,6 +213,7 @@ def test_settings_table_resolves_named_attributes_outside_the_table() -> None:
         "ROUNDS": games.ROUNDS,
         "SIMULATED_GROUPS": compare.SIMULATED_GROUPS,
         "CEILING": pilot_budget.CEILING,
+        "DECISION_CAP_MULTIPLE": 4,
     }
     tree = ast.parse(inspect.getsource(budget))
     ceiling = next(
@@ -222,3 +223,111 @@ def test_settings_table_resolves_named_attributes_outside_the_table() -> None:
         and any(isinstance(target, ast.Name) and target.id == "CEILING" for target in node.targets)
     )
     assert ast.unparse(ceiling.value) == "pilot_budget.CEILING"
+
+
+def test_chat_bound_counts_each_seat_and_recall_at_maximum_output(small: list[Group]) -> None:
+    from zoon.interaction import chat, chat_prices
+
+    game = budget.GAMES["2-FE"]
+    rows = budget.chat_estimate()
+    assert [r.calls for r in rows] == [18, 1]
+    assert [r.output_tokens for r in rows] == [18 * 2048, 2048]
+    expected = 3 * sum(
+        chat.input_tokens(budget.chat_bound_request(game, s, r))
+        for s in range(game.size)
+        for r in range(1, 4)
+    )
+    assert rows[0].input_tokens == expected
+    assert rows[1].input_tokens == chat.input_tokens(prompted.recall(game))
+    for row in rows:
+        assert row.dollars == chat_prices.HIGH.dollars(row.input_tokens, row.output_tokens)
+    for r in range(1, 4):
+        for s in range(game.size):
+            longest = chat.input_tokens(budget.chat_bound_request(game, s, r))
+            for row in product(range(3), repeat=2):
+                history = (kernel.Observation(tuple(enumerate(row)), game.payoffs(row)),) * (r - 1)
+                assert chat.input_tokens(chat.request(kernel.View(game, s, history))) <= longest
+    total = sum((row.dollars for row in rows), Decimal())
+    assert budget.chat_cap() == total.to_integral_value(rounding="ROUND_CEILING")
+    decision_rows = budget.estimate(small, {"2-FE": 2})
+    decision_total = sum((row.dollars for row in decision_rows), Decimal())
+    assert budget.decision_cap(decision_rows) == (4 * decision_total).to_integral_value(
+        rounding="ROUND_CEILING"
+    )
+    assert budget.whole_dollars(Decimal("17")) == 17
+    assert budget.whole_dollars(Decimal("17.000000001")) == 18
+
+
+def test_chat_input_estimate_and_dated_prices() -> None:
+    from zoon.interaction import chat, chat_prices
+
+    assert chat.input_tokens("abc") == 403
+    assert chat.input_tokens("\u00d7") == 402
+    assert chat_prices.HIGH.model == chat.MODEL == "gemini-4-carbon"
+    assert chat_prices.HIGH.input_per_million == 4
+    assert chat_prices.HIGH.output_per_million == 20
+    assert chat_prices.LOW.input_per_million == 2
+    assert chat_prices.LOW.output_per_million == 10
+    assert chat_prices.HIGH.read == chat_prices.LOW.read == "2026-11-21"
+    assert chat_prices.HIGH_FROM == "2026-12-01"
+    assert chat_prices.LOW_THROUGH == "2026-11-30"
+    assert chat_prices.HIGH.page == "https://ai.google.dev/gemini-api/docs/pricing"
+    settings_sources = {(source, path) for _, source, path in budget.SETTINGS}
+    assert {
+        (chat, "MAX_OUTPUT_TOKENS"),
+        (chat, "INPUT_BYTES_PER_TOKEN"),
+        (chat, "INPUT_OVERHEAD"),
+        (chat_prices, "HIGH.input_per_million"),
+        (chat_prices, "HIGH.output_per_million"),
+        (chat_prices, "LOW.input_per_million"),
+        (chat_prices, "LOW.output_per_million"),
+    } <= settings_sources
+
+
+@pytest.mark.parametrize("order", ["run", "largest", "smallest"])
+def test_chat_admission_maximum_bounds_every_registered_request_and_one_pass(
+    tmp_path: Path, order: str
+) -> None:
+    from tests.test_interaction_chat import BINDING, response
+    from zoon.interaction import chat
+
+    addition = budget.chat_max_estimate()
+
+    requests = {
+        game.cell: [
+            (r, seat, budget.chat_bound_request(game, seat, r))
+            for r in range(1, games.ROUNDS + 1)
+            for seat in range(game.size)
+        ]
+        for game in games.GAMES.values()
+    }
+    calls = [
+        (chat.Identity(game.cell, f"registered|{game.cell}|{group}", r - 1, seat, 1), text)
+        for game in games.GAMES.values()
+        for group in range(budget.SIMULATED_GROUPS)
+        for r, seat, text in requests[game.cell]
+    ] + [
+        (chat.Identity(game.cell, "recall", 0, 0, 1, "recall"), prompted.recall(game))
+        for game in games.GAMES.values()
+    ]
+    assert addition == max(chat.estimate(text) for _, text in calls)
+    if order != "run":
+        calls.sort(key=lambda call: chat.estimate(call[1]), reverse=order == "largest")
+    transcript = chat.Transcript(tmp_path, BINDING)
+    spending = Decimal()
+    cap = budget.chat_cap()
+    assert chat.status(transcript, cap) is None
+    for identity, text in calls:
+        paid = response(
+            "0",
+            input_tokens=chat.input_tokens(text),
+            output_tokens=chat.MAX_OUTPUT_TOKENS,
+            thinking_tokens=0,
+        )
+        assert chat.cost(paid) == chat.estimate(text)
+        transcript.entries[identity] = chat.Entry(BINDING, identity, text, chat.digest(text), paid)
+        spending += chat.cost(paid)
+        assert spending + addition <= cap
+    assert spending == sum((row.dollars for row in budget.chat_estimate()), Decimal())
+    assert chat.status(transcript, cap) is None
+    assert chat.status(transcript, cap, recall=True) is None

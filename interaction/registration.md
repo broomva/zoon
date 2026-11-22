@@ -105,21 +105,25 @@ may end the chat arm with a recorded reason before `held-out` begins. The comman
 is accepted only while `closed-loop` or `recall` is interrupted and its last
 failure was a chat transport failure. `chat` is then unusable, the step completes,
 the report prints the reason and the number of chat decisions already answered,
-and no verdict changes. Apart from a declared repair, this is the only operator
-decision the run allows, and it cannot be taken once `held-out` has started.
+and no verdict changes. Apart from a declared repair and the incomplete-line cut under Guard, repairs and
+persistence, this is the only operator decision the run allows, and it cannot be
+taken once `held-out` has started.
 
 If `held-out` has not completed within 30 days of its first start, both
 hypotheses receive no verdict and the report publishes every score already
 computed. Before `held-out` starts, an interruption has no time limit: no
 held-out group has been read.
 
-Recall questions are sent unless the model is withdrawn, its version has changed,
+Recall questions with no recorded answer are sent unless the model is withdrawn,
+its first reported version is invalid, its version has changed,
 or the chat cap is reached. An arm made unusable by the three-reply rule, or ended
 by the operator during `closed-loop`, is still asked. If the operator ends the arm
-during `recall`, the questions not yet answered are recorded "not asked". `closed-loop` and `recall` complete with the
+during `recall`, answered questions are kept and judged and the questions not yet
+answered are recorded "not asked". `closed-loop` and `recall` complete with the
 chat status recorded and "not asked" for each recall question not sent, and later
 steps proceed. This changes no hypothesis verdict. The chat reply rule is under
-The chat arm.
+The chat arm. A paid reply with an invalid version is retained as "not judged: version",
+without judging or flagging it. Recall reports separately what stopped it asking.
 
 A non-finite probability, score or summary where one is defined is a fault that
 interrupts the step; it is never skipped or averaged around. The only undefined
@@ -434,24 +438,20 @@ lists the report's output path outside the registered inputs.
 | `src/zoon/interaction/power.py` | Existing today | Training power and coverage calculation |
 | `docs/interaction/power.md` | Existing today | Power assumptions and one recorded run |
 | `src/zoon/interaction/run.py` | Added by the analysis code | The run steps |
-| `src/zoon/interaction/chat.py` | Added by the analysis code | The chat request renderer |
+| `src/zoon/interaction/chat.py` | Existing today | The chat request renderer |
 | `docs/interaction/result.md` | Added by the analysis code | The report, outside the registered directory |
-| `interaction/chat-requests/` | Added by the analysis code | Committed chat request fixtures |
+| `interaction/chat-requests/` | Existing today | Committed chat request fixtures |
 
 ### Paths to be added by the analysis code
 
 These paths do not exist today and are exempt from the existing-path check:
 
 - `src/zoon/interaction/run.py`
-- `src/zoon/interaction/chat.py`
-- `interaction/chat-requests/`
 - `docs/interaction/result.md`
 
 The new run module supplies the steps below. The existing spending script
-`src/zoon/interaction/budget.py` needs the chat bound. The analysis code also needs
-the second sealing step, scoring and intervals, chat requests and replay,
-transcripts, guards, state, report and tests. These are open work, not completed
-features. A material-regeneration test must compare registered instructions,
+`src/zoon/interaction/budget.py` produces both bounds. The second sealing step,
+scoring and intervals, run guards, step state and report remain open work. A material-regeneration test must compare registered instructions,
 fixtures and the amount table with their committed bytes; the fit test uses the
 probability tolerance above.
 
@@ -460,12 +460,19 @@ probability tolerance above.
 | Arm | Model | Settings |
 |---|---|---|
 | `prompted`, which gates | `jev-1.14.0` | Declared-answer probabilities, as above |
-| `chat`, reported | `gemini-4-carbon` on Vertex, location global | Thinking level low; temperature 1.0; at most 2,048 output tokens |
+| `chat`, reported | `gemini-4-carbon` on Vertex, location global | Thinking level low; temperature 1.0; at most 2048 output tokens (`chat.MAX_OUTPUT_TOKENS = 2048`), including recall. A reply cut off at the limit follows the same reply rule |
 
 Record the version each response reports. The decision model must report exactly
 its name above. For chat, fix the version to the first response's reported version,
 which must begin with its model name, as in the pilot. Withdrawal means the
 service says the model does not exist on every bounded attempt at a request.
+Before generating, check model metadata without generating text; missing metadata
+does not establish withdrawal.
+A success without a non-empty string modelVersion or integer promptTokenCount is
+a transient transport fault and is retried within the bounded attempts, with no
+transcript record. Missing candidatesTokenCount or thoughtsTokenCount means zero,
+with or without candidate text; a present count that is not a non-negative integer,
+including a boolean, is the same transient fault.
 The outcomes for withdrawal and version change are under Data.
 
 ### Calls made before registration
@@ -485,12 +492,31 @@ four answered the first round with the whole endowment every time, and their
 twentieth-round answers varied between repeats.
 
 `gemini-4-carbon` was chosen as the provider's most capable model among the two
-that reported no thinking tokens at the low setting. Its replies to the made-up
+that reported no thinking tokens in those probes. Its replies to the made-up
 histories were seen before it was chosen, and the chat arm's settings and reply
 rule in this file were written after them: the temperature, because the answers
 varied even at temperature 0, and the thinking level, because the service refuses
 to turn thinking off. The replies are not kept in the repository. No participant
 record was sent to any model, and no held-out group has been read.
+
+Later on 2026-11-21, after the chat renderer was committed, the chat format check
+was run once with at most 256 output tokens, the limit first chosen: 12 calls, the
+first and twentieth rounds of two games' committed made-up requests, three times
+each. All 12 replies were usable whole numbers. Three reported thinking tokens,
+from 45 to 111, and the others were printed as zero. The exact output is committed in
+[`docs/interaction/format-check-chat.txt`](../docs/interaction/format-check-chat.txt).
+On 2026-11-21 two further calls at that limit sent one toy question and one
+committed made-up request to record which usage fields a reply carries; the record is
+[`docs/interaction/reply-shape.txt`](../docs/interaction/reply-shape.txt).
+
+The output limit was then raised, before registration and after seeing replies.
+Thinking tokens count against the limit. A second run of the same 12 calls with at
+most 256 output tokens returned 2 empty replies, each with 253 thinking tokens. The
+same four requests were then sent 10 times each with at most 4096 output tokens:
+all 40 replies were usable, and the most thinking tokens in one reply was 384. The
+limit was set to 2048 and the 12 calls were run again at it: all 12 replies were
+usable, and the most thinking tokens in one reply was 359. These 64 calls are recorded in
+[`docs/interaction/output-limit.txt`](../docs/interaction/output-limit.txt).
 
 ### The chat arm
 
@@ -499,20 +525,19 @@ line "You are Player n.", the history as rendered for `prompted`, and then:
 
 > How many of your E points do you contribute to the common pool in round r? Answer with one whole number of points and nothing else.
 
-Substitute that seat's endowment for E, seat for n and round for r. The committed
-renderer in `src/zoon/interaction/chat.py` and committed request fixtures in
-`interaction/chat-requests/`, added by the analysis code, fix the request to the
-byte; this text describes them. The instructions already end in `\n`: append
+Substitute that seat's endowment for E, seat for n and round for r.
+The instructions already end in `\n`: append
 one `\n`, then `You are Player n.`, then `\n\n`, then the history, then `\n\n`,
 then the question, with no final newline and no system instruction. The history
-joins rounds with `\n\n` and uses `prompted.round_text` after each `Round r\n`.
+joins rounds with `\n\n`; each round starts with `Round r\n`.
 Use the same empty-history line as `prompted` when there is no earlier round.
 Safety settings are the pilot's second-family client's: `HARM_CATEGORY_HARASSMENT`,
 `HARM_CATEGORY_HATE_SPEECH`, `HARM_CATEGORY_SEXUALLY_EXPLICIT` and
 `HARM_CATEGORY_DANGEROUS_CONTENT` each have threshold `OFF`. The reply is the
 concatenated text parts of the first candidate, in their returned order.
+A candidate with text and no finish reason is read as its text.
 
-After trimming white space, the reply must be a whole number from zero to E.
+After trimming white space (space, tab, line feed and carriage return only), the reply must be a whole number from zero to E.
 Fixed here: accept only a non-empty run of ASCII digits, with no sign, decimal
 point or other text; leading zeroes are allowed. Retry unusable replies under
 the three-reply rule in Data; transport failures and arm-only outcomes follow
@@ -521,7 +546,20 @@ that section.
 Every seat of every round of every simulated group is its own call. Identical
 requests are NOT reused across decisions. The transcript identifies the game,
 group, round, seat and attempt, and a resumed decision uses its recorded replies.
-The answers are not deterministic; replay uses the transcript, not fresh calls.
+The incomplete-line rule under Guard, repairs and persistence applies.
+Replay requires the recorded whole-transcript SHA-256 and exact line count, and
+uses one verified copy re-read from disk without fresh calls. Rendered decision and recall
+requests must match; attempts for each decision must be consecutive from one,
+with no attempt after an accepted reply and no more than three attempts.
+A later round of a group requires accepted replies for every seat of its earlier rounds.
+Changing text or token counts on any line fails replay. A game cannot be scored
+when the arm is unusable; its whole transcript can still pass replay.
+The arm's status is derived from the transcript and the cap, in file order: the
+first invalid or changed version, third unusable reply for one decision, or
+the chat cap reached under Spending. At the same entry, that is the order of precedence.
+The transcript cannot show a withdrawal or an operator's ending of the arm; the run
+step records them, and that record governs later steps.
+Each recall question is labelled "judged", "not judged: version", or "not asked".
 The accepted points bypass recalibration and the band-to-points step.
 Run closed loop only, with the H3 simulation count. Score against `zoon` by the
 same H3 composite, difference and interval. It changes no verdict.
@@ -529,12 +567,19 @@ same H3 composite, difference and interval. It changes no verdict.
 ## Spending
 
 Each model has its own cap, so that an arm that decides nothing cannot end the
-run. **Decision-model cap in US dollars: CAP.** **Chat-model cap in US dollars,
-recall included: CHAT CAP.** Count spending from reported tokens in recorded
+run. **Decision-model cap in US dollars: 17.** **Chat-model cap in US dollars,
+recall included: 2544.** Count spending from reported tokens in recorded
 responses at the fixed prices. Retain and count unusable chat replies before
 retrying them. As in the pilot, do not send a call if that model's spent tokens'
-cost plus the call's estimate and reservations for calls in flight would exceed
-that model's cap. Reaching the decision-model cap gives no verdict for both
+cost plus the estimate and reservations for calls in flight would exceed its cap.
+The decision-model cap is also reached when recorded spending is above it;
+equality is allowed. The chat cap is reached when cumulative recorded spending
+plus the largest estimate of any registered decision or recall request is above
+its cap; equality is allowed. Apply this rule in file order, including before
+the first entry with spending zero, for both decisions and recall. A chat call
+that does not fit because of reservations waits for a call in flight to finish
+and checks the status again.
+Reaching the decision-model cap gives no verdict for both
 hypotheses. Reaching the chat-model cap makes `chat` unusable and changes no
 verdict.
 
@@ -553,18 +598,23 @@ Output costs zero at the fixed decision-model price.
 
 The prices in prompted.md and `src/zoon/pilot/prices.py` are 0.042 US dollars per
 million input tokens and zero per million output tokens, read on 2026-11-15.
-**Chat-model bound in US dollars: CHAT BOUND.** The committed spending script
-must produce it before registration, including retries and the recall requests.
+**Chat-model bound in US dollars: 2543.10329600.** The committed spending script
+produces this for one pass, including the recall requests, with at most 2048
+output tokens per call. Retries are paid from the same chat cap.
 Read the published [Vertex pricing page](https://cloud.google.com/vertex-ai/generative-ai/pricing)
 on the day of registration and record the prices and read date with the bound.
 Prices for `gemini-4-carbon` were read on 2026-11-21 from the provider's
 [pricing page](https://ai.google.dev/gemini-api/docs/pricing) and are to be confirmed
 on the Vertex page on the day of registration. Its listed price changes on
-2026-12-01; the bound uses the higher price.
+2026-12-01; the bound uses the higher price. The lower price runs through
+2026-11-30 (`chat_prices.LOW_THROUGH = "2026-11-30"`).
 
-Registration goes ahead only when the three placeholders are filled from the
-script's output and four times each model's bound is at most its cap. The current script's proposed
-ceiling and pilot cap do not fix this run's cap.
+The decision-model cap is four times its bound, rounded up to a whole dollar
+(`budget.DECISION_CAP_MULTIPLE = 4`).
+The chat cap is its one-pass bound at the maximum output tokens, rounded up to a
+whole dollar; retries are paid from this same cap, and reaching it only makes
+chat unusable. The caps and chat bound above are filled from the script's output.
+The current script's proposed ceiling and pilot cap do not fix this run's caps.
 
 ## Order of work
 
@@ -607,12 +657,19 @@ a stated reason and an ordered binding of its full snapshot to the registered
 commit, including current digests. Each changed snapshot needs a new declaration,
 even a return to the registered code. The guard cannot certify repair intent.
 
-Transcripts are append-only and bound to the full registered commit and mode;
-check that identity before replay. State is separate for this registration and
+Transcripts are append-only except for the incomplete-line cut below, and bound
+to the full registered commit and mode; check that identity before replay.
+An incomplete final line, left by a write the system cut short, is not a record;
+every opening refuses it and changes no bytes. The operator cuts the file back
+to the byte after its last line feed, or to empty if it has none, changes nothing
+else, and repeats the command, and the decision is asked again. If the cut bytes
+held a reply, it was paid for and is not counted. The operator notes each cut and
+its size in bytes in the message of the commit that adds the result. This is the
+one change to a transcript the run allows; other damage is refused. State is separate for this registration and
 cannot reuse the pilot's. Each step writes its output and digest atomically,
 bound to its step, mode, registered commit, code or declared repair snapshot,
 and exact earlier-step states, including absence. Only one command may hold
-the run lock. Do not delete or reset state or transcripts during the run.
+the run lock. Do not delete or reset state or transcripts during the run, except for that cut.
 A completed calling step is not repeated; `report` may be run again and must
 reproduce the same file. An interrupted step resumes with recorded
 answers and requests only those missing. A later calling step requires completed
@@ -723,8 +780,8 @@ nothing and is not run closed loop.
   are fixed here. Coverage is the central 90%, not an unspecified range.
 - Disguise uses the recalibration subsample and fitted map, with the exchange
   rate adjusted. Game-left-out scoring uses the omitted game's held-out groups.
-- Run-ending cases and the new tag are fixed here. The spending placeholders
-  remain open; the earlier proposed ceiling is not adopted.
+- Run-ending cases and the new tag are fixed here. The spending caps
+  are filled from the committed bounds; the earlier proposed ceiling is not adopted.
 
 ## Open before registration
 
@@ -732,11 +789,12 @@ nothing and is not run closed loop.
   [Calls made before registration](registration.md#calls-made-before-registration). This satisfies
   the design note's order of work.
 
-- The three placeholders, **CAP**, **CHAT CAP** and **CHAT BOUND**, filled from
-  the spending script's output with dated chat prices.
+- **DONE:** the caps and chat bound are filled from the spending script's
+  output with dated chat prices. Vertex price confirmation remains due at registration.
 - The analysis code and its files, including the paths marked as added above,
   the second seal and run machinery, and the required checks.
-- A format check of the chat request with the committed renderer.
+- **DONE:** the format check of the chat request with the committed renderer;
+  see [Calls made before registration](registration.md#calls-made-before-registration).
 - Replacement of the path test by tests that bind every constant and number in
   this file to the code.
 - Power and coverage under the registered rules, computed on training groups by
