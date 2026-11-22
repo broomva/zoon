@@ -347,7 +347,12 @@ def test_every_seat_round_group_is_a_new_call_even_for_identical_requests(tmp_pa
     for number in range(2):
         result = chat.play(GAMES["2-AI"], run, f"registered|2-AI|{number}")
         assert result.rounds == ((0, 0),) * ROUNDS
-        assert chat.replay(result.bytes, run.transcript).bytes == result.bytes
+        assert (
+            chat.replay(
+                result.bytes, chat.replay_transcript(run.transcript, run.transcript.digest())
+            ).bytes
+            == result.bytes
+        )
     assert len(client.requests) == len(run.transcript.entries) == 80
     assert client.requests[0] == client.requests[40]
     assert len(set(client.requests)) == 40
@@ -366,7 +371,12 @@ def test_resume_only_requests_missing_decisions(tmp_path: Path) -> None:
     resumed = session(tmp_path, next_client)
     result = chat.play(GAMES["2-AI"], resumed, GROUP)
     assert len(next_client.requests) == 35
-    assert chat.replay(result.bytes, resumed.transcript).bytes == result.bytes
+    assert (
+        chat.replay(
+            result.bytes, chat.replay_transcript(resumed.transcript, resumed.transcript.digest())
+        ).bytes
+        == result.bytes
+    )
     assert chat.play(GAMES["2-AI"], resumed, GROUP).bytes == result.bytes
     assert len(next_client.requests) == 35
 
@@ -500,7 +510,10 @@ def test_replay_rejects_tampered_log_or_transcript(tmp_path: Path, mutation: str
     run = session(tmp_path, chat.StubClient())
     original = chat.play(GAMES["2-AI"], run, GROUP)
     log = original.bytes
-    assert chat.replay(log, run.transcript).bytes == log
+    assert (
+        chat.replay(log, chat.replay_transcript(run.transcript, run.transcript.digest())).bytes
+        == log
+    )
     if mutation in ("points", "line", "ledger", "header"):
         records = [json.loads(line) for line in log.splitlines()]
         if mutation == "points":
@@ -523,7 +536,7 @@ def test_replay_rejects_tampered_log_or_transcript(tmp_path: Path, mutation: str
         lines[1] = changed.bytes
         run.transcript.path.write_bytes(b"".join(lines))
     with pytest.raises(chat.Unusable) as caught:
-        chat.replay(log, run.transcript)
+        chat.replay(log, chat.replay_transcript(run.transcript, run.transcript.digest()))
     assert caught.value.cause == chat.Cause.REPLAY
 
 
@@ -680,7 +693,7 @@ def test_replay_failure_does_not_suppress_recall(tmp_path: Path) -> None:
     run = session(tmp_path, chat.StubClient())
     chat.play(GAMES["2-AI"], run, GROUP)
     with pytest.raises(chat.Unusable):
-        chat.replay(b"invalid", run.transcript)
+        chat.replay(b"invalid", chat.replay_transcript(run.transcript, run.transcript.digest()))
     assert all(reply.response is not None for reply in chat.recall(run))
 
 
@@ -703,7 +716,10 @@ def test_every_game_replays_with_exact_transfers(tmp_path: Path, cell: str) -> N
     run = session(tmp_path, chat.StubClient())
     result = chat.play(game, run, f"registered|{cell}|0")
     restored = chat.Transcript(tmp_path, BINDING, read_only=False)
-    assert chat.replay(result.bytes, restored).bytes == result.bytes
+    assert (
+        chat.replay(result.bytes, chat.replay_transcript(restored, restored.digest())).bytes
+        == result.bytes
+    )
     records = [json.loads(line) for line in result.bytes.splitlines()]
     transfers = [record for record in records if record["kind"] == "transfer"]
     assert len(restored.entries) == game.size * ROUNDS

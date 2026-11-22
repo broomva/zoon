@@ -90,7 +90,12 @@ def test_version_change_in_recall_is_paid_but_not_judged(tmp_path: Path) -> None
 
 def test_equal_cap_is_allowed_and_recorded_answer_obeys_status(tmp_path: Path) -> None:
     paid = response(input_tokens=100000, output_tokens=0, thinking_tokens=0)
-    run = session(tmp_path, Replies([paid]), chat.cost(paid))
+    from zoon.interaction import budget
+
+    empty = session(tmp_path / "empty", Replies([]), budget.chat_max_estimate())
+    assert chat.status(empty.transcript, empty.cap) is None
+    assert chat.status(empty.transcript, empty.cap, recall=True) is None
+    run = session(tmp_path, Replies([paid]), chat.cost(paid) + budget.chat_max_estimate())
     assert run.decision(view(), GROUP).points == 12
     run.cap = Decimal("0")
     with pytest.raises(chat.Unusable) as caught:
@@ -407,7 +412,7 @@ def test_replay_checks_request_even_with_matching_links(tmp_path: Path) -> None:
     records[1]["attempts"] = [chat.digest(changed.bytes.decode())]
     log = "".join(kernel.encoded(row) for row in records).encode()
     with pytest.raises(chat.Unusable):
-        chat.replay(log, run.transcript)
+        chat.replay(log, chat.replay_transcript(run.transcript, run.transcript.digest()))
 
 
 @pytest.mark.parametrize("kind", ["unusable", "recall"])
@@ -441,7 +446,7 @@ def test_whole_transcript_replay_binds_all_paid_lines(
         chat.replay_transcript(restored, expected)
     if kind == "unusable":
         with pytest.raises(chat.Unusable):
-            chat.replay(result.bytes, restored)
+            chat.replay(result.bytes, chat.replay_transcript(restored, expected))
 
 
 @pytest.mark.parametrize(
@@ -653,7 +658,7 @@ def test_read_only_opening_and_replay_refuse_torn_tail_without_writes(
             operation()
         assert {p.name: p.read_bytes() for p in tmp_path.iterdir()} == before
     with pytest.raises(chat.GuardRefusal, match="incomplete"):
-        chat.replay(log, transcript)
+        chat.replay(log, chat.replay_transcript(transcript, transcript.digest()))
     assert {p.name: p.read_bytes() for p in tmp_path.iterdir()} == before
     with pytest.raises(chat.GuardRefusal, match="incomplete"):
         chat.Transcript(tmp_path, BINDING, read_only=False)
@@ -720,7 +725,7 @@ def test_read_failure_is_storage_fault(
         elif operation == "digest":
             transcript.digest()
         elif operation == "replay":
-            chat.replay(log, transcript)
+            chat.replay(log, chat.replay_transcript(transcript, transcript.digest()))
         else:
             chat.replay_transcript(transcript, "unused")
 
@@ -1062,7 +1067,9 @@ def test_crash_after_each_append_byte_never_changes_a_complete_prefix(
                 with pytest.raises(
                     chat.GuardRefusal,
                     match=(
-                        "incomplete transcript line; restore the last complete line before resuming"
+                        "incomplete transcript line; cut the file back to the byte "
+                        "after its last line feed, or to empty if it has none, then "
+                        "repeat the command"
                     ),
                 ):
                     chat.Transcript(tmp_path, BINDING, read_only=read_only)
@@ -1196,16 +1203,23 @@ def test_cap_refusal_depends_only_on_spending(tmp_path: Path, workers: int, reve
 
     with ThreadPoolExecutor(max_workers=workers) as pool:
         results = list(pool.map(ask, zip(identities, texts, strict=True)))
-    assert sum(results) == 3 and run.transcript.spent == 3 * addition
+    assert sum(results) == 2 and run.transcript.spent == 3 * addition
+    assert len(run.transcript.entries) == 3
+    assert chat.status(run.transcript, run.cap) is chat.Cause.CAP
+    assert chat.recall(run).stopped_by is chat.Cause.CAP
     assert not run.pending and run.reserved == 0
     for text in texts:
         resumed = session(tmp_path, Replies([]), run.cap)
+        assert chat.status(resumed.transcript, run.cap) is chat.Cause.CAP
         with pytest.raises(chat.Unusable) as caught:
             resumed.ask(chat.Identity("2-AI", "registered|2-AI|99", 0, 0, 1), text)
         assert caught.value.cause is chat.Cause.CAP
 
 
-def test_cap_waits_for_inflight_calls_and_wakes_after_an_interruption(tmp_path: Path) -> None:
+@pytest.mark.parametrize("interrupted", [False, True])
+def test_cap_waits_for_inflight_calls_and_wakes_after_completion(
+    tmp_path: Path, interrupted: bool
+) -> None:
     from concurrent.futures import ThreadPoolExecutor
     from threading import Event
 
@@ -1218,10 +1232,11 @@ def test_cap_waits_for_inflight_calls_and_wakes_after_an_interruption(tmp_path: 
             if text == "first":
                 entered.set()
                 assert release.wait(5)
-                raise chat.TransportInterruption("retry later")
+                if interrupted:
+                    raise chat.TransportInterruption("retry later")
             return response("0")
 
-    run = session(tmp_path, Blocking(), budget.chat_max_estimate())
+    run = session(tmp_path, Blocking(), budget.chat_max_estimate() + 2 * chat.cost(response("0")))
     wait = run._lock.wait  # pyright: ignore[reportPrivateUsage]
 
     def waiting(timeout: float | None = None) -> bool:
@@ -1239,8 +1254,11 @@ def test_cap_waits_for_inflight_calls_and_wakes_after_an_interruption(tmp_path: 
             assert waited.wait(5) and not second.done()
         finally:
             release.set()
-        with pytest.raises(chat.TransportInterruption):
-            first.result(timeout=5)
+        if interrupted:
+            with pytest.raises(chat.TransportInterruption):
+                first.result(timeout=5)
+        else:
+            assert first.result(timeout=5).response.text == "0"
         assert second.result(timeout=5).response.text == "0"
     assert not run.pending and run.reserved == 0
 
@@ -1385,13 +1403,15 @@ def test_replay_uses_disk_and_checks_complete_attempt_history(tmp_path: Path, da
         expected = transcript.digest()
     if damage in ("missing", "torn"):
         for operation in (
-            lambda: chat.replay(log, transcript),
+            lambda: chat.replay(log, chat.replay_transcript(transcript, transcript.digest())),
             lambda: chat.replay_transcript(transcript, expected),
         ):
             with pytest.raises(chat.GuardRefusal):
                 operation()
     elif damage == "stale memory":
-        assert chat.replay(log, transcript).bytes == log
+        assert (
+            chat.replay(log, chat.replay_transcript(transcript, transcript.digest())).bytes == log
+        )
         chat.replay_transcript(transcript, expected)
     else:
         with pytest.raises(chat.Unusable) as caught:
@@ -1399,7 +1419,7 @@ def test_replay_uses_disk_and_checks_complete_attempt_history(tmp_path: Path, da
         assert caught.value.cause is chat.Cause.REPLAY
         if damage != "digest":
             with pytest.raises(chat.Unusable) as caught:
-                chat.replay(log, transcript)
+                chat.replay(log, chat.replay_transcript(transcript, transcript.digest()))
             assert caught.value.cause is chat.Cause.REPLAY
 
 
@@ -1430,7 +1450,7 @@ def test_unusable_arm_has_a_replayable_record_and_no_game_score(
     chat.replay_transcript(run.transcript, run.transcript.digest())
     assert chat.status(run.transcript, run.cap) is cause
     with pytest.raises(chat.Unusable) as caught:
-        chat.replay(log, run.transcript, run.cap)
+        chat.replay(log, chat.replay_transcript(run.transcript, run.transcript.digest()), run.cap)
     assert caught.value.cause is cause
 
 
@@ -1449,3 +1469,160 @@ def test_replay_refuses_a_fourth_attempt_even_when_the_first_three_failed(tmp_pa
     with pytest.raises(chat.Unusable) as caught:
         chat.replay_transcript(transcript, transcript.digest())
     assert caught.value.cause is chat.Cause.REPLAY
+
+
+def test_status_uses_file_order_before_identity_order(tmp_path: Path) -> None:
+    transcript = chat.Transcript(tmp_path, BINDING, read_only=False)
+    for attempt in range(1, 4):
+        transcript.append(
+            chat.Identity("2-AI", "registered|2-AI|9", 0, 0, attempt),
+            chat.request(view()),
+            response("no"),
+        )
+    transcript.append(key(), chat.request(view()), response(version="foreign"))
+    assert chat.status(transcript, Decimal("1000")) is chat.Cause.REPLIES
+
+
+@pytest.mark.parametrize("kind", ["decision", "recall"])
+def test_status_accumulates_spending_from_every_kind(tmp_path: Path, kind: str) -> None:
+    from zoon.interaction import budget
+
+    transcript = chat.Transcript(tmp_path, BINDING, read_only=False)
+    paid = response("0", input_tokens=10_000, output_tokens=0, thinking_tokens=0)
+    cap = budget.chat_max_estimate() + chat.cost(paid) * Decimal("2.5")
+    for index, cell in enumerate(sorted(GAMES)[:3]):
+        identity = (
+            chat.Identity(cell, "recall", 0, 0, 1, "recall")
+            if kind == "recall"
+            else chat.Identity("2-AI", f"registered|2-AI|{index}", 0, 0, 1)
+        )
+        text = chat.prompted.recall(GAMES[cell]) if kind == "recall" else chat.request(view())
+        transcript.append(identity, text, paid)
+        expected = chat.Cause.CAP if index == 2 else None
+        assert chat.status(transcript, cap) is expected
+        assert chat.status(transcript, cap, recall=True) is expected
+
+
+@pytest.mark.parametrize("changed", [False, True])
+def test_status_precedence_at_one_entry(tmp_path: Path, changed: bool) -> None:
+    from zoon.interaction import budget
+
+    transcript = chat.Transcript(tmp_path, BINDING, read_only=False)
+    for attempt in (1, 2):
+        transcript.append(key(attempt=attempt), chat.request(view()), response("no"))
+    cap = transcript.spent + budget.chat_max_estimate() + Decimal("0.1")
+    transcript.append(
+        key(attempt=3),
+        chat.request(view()),
+        response("no", version="foreign" if changed else chat.MODEL + "-001", input_tokens=100_000),
+    )
+    assert chat.status(transcript, cap) is (chat.Cause.VERSION if changed else chat.Cause.REPLIES)
+    assert chat.status(transcript, cap, recall=True) is (
+        chat.Cause.VERSION if changed else chat.Cause.CAP
+    )
+
+
+@pytest.mark.parametrize("read_only", [False, True])
+@pytest.mark.parametrize("line", ["header", "entry"])
+def test_transcript_checks_run_identity_on_every_line(
+    tmp_path: Path, read_only: bool, line: str
+) -> None:
+    transcript = chat.Transcript(tmp_path, BINDING, read_only=False)
+    transcript.append(key(), chat.request(view()), response())
+    lines = transcript.path.read_bytes().splitlines(keepends=True)
+    index = 0 if line == "header" else 1
+    row = json.loads(lines[index])
+    (row if line == "header" else row["run"])["registered_commit"] = "b" * 40
+    lines[index] = kernel.encoded(row).encode()
+    raw = b"".join(lines)
+    transcript.path.write_bytes(raw)
+    with pytest.raises(chat.GuardRefusal, match="run identity differs"):
+        chat.Transcript(tmp_path, BINDING, read_only=read_only)
+    assert transcript.path.read_bytes() == raw
+
+
+@pytest.mark.parametrize("recalling", [False, True])
+def test_empty_transcript_can_already_have_reached_cap(tmp_path: Path, recalling: bool) -> None:
+    from zoon.interaction import budget
+
+    run = session(tmp_path, Replies([]), budget.chat_max_estimate() - Decimal("0.000001"))
+    assert chat.status(run.transcript, run.cap, recall=recalling) is chat.Cause.CAP
+    if recalling:
+        result = chat.recall(run)
+        assert result.stopped_by is chat.Cause.CAP
+        assert all(r.status == "not asked" for r in result)
+    else:
+        with pytest.raises(chat.Unusable) as caught:
+            run.decision(view(), GROUP)
+        assert caught.value.cause is chat.Cause.CAP
+    assert not run.transcript.entries and not run.transcript.path.exists()
+
+
+def test_cap_refusal_is_recorded_status_for_replay_and_recall(tmp_path: Path) -> None:
+    from zoon.interaction import budget
+
+    run = session(tmp_path, chat.StubClient())
+    log = chat.play(GAMES["2-AI"], run, GROUP).bytes
+    paid = response("0", version=chat.MODEL + "-stub", input_tokens=10_000)
+    run.cap = run.transcript.spent + budget.chat_max_estimate() + chat.cost(paid) / 2
+    run.client = Replies([paid])
+    with pytest.raises(chat.Unusable) as caught:
+        run.ask(chat.Identity("2-AI", "registered|2-AI|1", 0, 0, 1), chat.request(view()))
+    assert caught.value.cause is chat.Cause.CAP
+    assert run.transcript.spent < run.cap
+    verified = chat.replay_transcript(run.transcript, run.transcript.digest())
+    for current in (run, session(tmp_path, Replies([]), run.cap)):
+        assert chat.status(current.transcript, current.cap) is chat.Cause.CAP
+        assert chat.recall(current).stopped_by is chat.Cause.CAP
+    with pytest.raises(chat.Unusable) as caught:
+        chat.replay(log, verified, run.cap)
+    assert caught.value.cause is chat.Cause.CAP
+
+
+@pytest.mark.parametrize("value", [None, "transcript", object()])
+def test_replay_requires_verification(tmp_path: Path, value: Any) -> None:
+    transcript = chat.Transcript(tmp_path, BINDING)
+    with pytest.raises(chat.GuardRefusal, match="verified transcript"):
+        chat.replay(b"unused", transcript if value == "transcript" else value)  # pyright: ignore[reportArgumentType]
+
+
+def test_verification_reads_once_for_several_game_replays(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from dataclasses import FrozenInstanceError
+
+    run = session(tmp_path, chat.StubClient())
+    logs = [chat.play(GAMES["2-AI"], run, f"registered|2-AI|{index}").bytes for index in range(3)]
+    expected = run.transcript.digest()
+    original = Path.read_bytes
+    reads: list[Path] = []
+
+    def read(path: Path) -> bytes:
+        reads.append(path)
+        return original(path)
+
+    monkeypatch.setattr(Path, "read_bytes", read)
+    verified = chat.replay_transcript(run.transcript, expected)
+    assert verified.digest == expected and verified.transcript is not run.transcript
+    with pytest.raises(FrozenInstanceError):
+        verified.digest = "changed"  # pyright: ignore[reportAttributeAccessIssue]
+    for log in logs:
+        assert chat.replay(log, verified).bytes == log
+    run.transcript.path.write_bytes(b"changed after verification\n")
+    assert chat.replay(logs[0], verified).bytes == logs[0]
+    assert reads == [run.transcript.path]
+
+
+def test_recorded_recall_must_match_registered_question(tmp_path: Path) -> None:
+    transcript = chat.Transcript(tmp_path, BINDING, read_only=False)
+    for cell, game in sorted(GAMES.items()):
+        transcript.append(
+            chat.Identity(cell, "recall", 0, 0, 1, "recall"),
+            "another question" if cell == "2-AI" else chat.prompted.recall(game),
+            response("Wang"),
+        )
+    for current in (transcript, chat.Transcript(tmp_path, BINDING)):
+        with pytest.raises(chat.GuardRefusal, match="recall request changed"):
+            chat.read_recall(current)
+        with pytest.raises(chat.GuardRefusal, match="recall request changed"):
+            chat.recall(chat.Session(current, Replies([])))

@@ -680,8 +680,8 @@ def test_registration_chat_contract_has_only_the_registered_rules() -> None:
         "It plays one seat at a time. Its request is the participant instructions, the\n"
         'line "You are Player n.", the history as rendered for `prompted`, and then:\n'
         "\n"
-        "> How many of your E points do you contribute to the common pool in "
-        "round r? Answer with one whole number of points and nothing else.\n"
+        "> How many of your E points do you contribute to the common pool in round r? "
+        "Answer with one whole number of points and nothing else.\n"
         "\n"
         "Substitute that seat's endowment for E, seat for n and round for r.\n"
         "The instructions already end in `\\n`: append\n"
@@ -695,8 +695,8 @@ def test_registration_chat_contract_has_only_the_registered_rules() -> None:
         "concatenated text parts of the first candidate, in their returned order.\n"
         "A candidate with text and no finish reason is read as its text.\n"
         "\n"
-        "After trimming white space (space, tab, line feed and carriage return "
-        "only), the reply must be a whole number from zero to E.\n"
+        "After trimming white space (space, tab, line feed and carriage return only), "
+        "the reply must be a whole number from zero to E.\n"
         "Fixed here: accept only a non-empty run of ASCII digits, with no sign, decimal\n"
         "point or other text; leading zeroes are allowed. Retry unusable replies under\n"
         "the three-reply rule in Data; transport failures and arm-only outcomes follow\n"
@@ -705,11 +705,10 @@ def test_registration_chat_contract_has_only_the_registered_rules() -> None:
         "Every seat of every round of every simulated group is its own call. Identical\n"
         "requests are NOT reused across decisions. The transcript identifies the game,\n"
         "group, round, seat and attempt, and a resumed decision uses its recorded replies.\n"
-        "An incomplete final line, left by a write the system cut short, is not a record;\n"
-        "every opening refuses it and changes no bytes, as the pilot's transcript does.\n"
-        "The operator removes that line and the decision is asked again. Other damage is refused.\n"
+        "The incomplete-line rule under Guard, repairs and persistence applies.\n"
         "Replay requires the recorded whole-transcript SHA-256 and exact line count, and\n"
-        "uses entries re-read from disk without fresh calls. Rendered decision and recall\n"
+        "uses one verified copy re-read from disk without fresh calls. Rendered "
+        "decision and recall\n"
         "requests must match; attempts for each decision must be consecutive from one,\n"
         "with no attempt after an accepted reply and no more than three attempts.\n"
         "A later round of a group requires accepted replies for every seat of its earlier rounds.\n"
@@ -717,7 +716,9 @@ def test_registration_chat_contract_has_only_the_registered_rules() -> None:
         "when the arm is unusable; its whole transcript can still pass replay.\n"
         "The arm's status is derived from the transcript and the cap, in file order: the\n"
         "first invalid or changed version, third unusable reply for one decision, or\n"
-        "cumulative spending above the cap. At the same entry, that is the order of precedence.\n"
+        "the chat cap reached under Spending. At the same entry, that is the order of precedence.\n"
+        "The transcript cannot show a withdrawal or an operator's ending of the arm; the run\n"
+        "step records them, and that record governs later steps.\n"
         'Each recall question is labelled "judged", "not judged: version", or "not asked".\n'
         "The accepted points bypass recalibration and the band-to-points step.\n"
         "Run closed loop only, with the H3 simulation count. Score against `zoon` by the\n"
@@ -737,7 +738,7 @@ def test_registration_chat_contract_has_only_the_registered_rules() -> None:
     )
     normal = " ".join(text.split())
     assert (
-        "For either model, the cap is also reached when recorded spending is above it; "
+        "The decision-model cap is also reached when recorded spending is above it; "
         "equality is allowed."
     ) in normal
     assert (
@@ -760,3 +761,99 @@ def test_chat_probe_history_is_not_a_claim_about_registered_thinking() -> None:
     text = " ".join((NOTE.parents[2] / "interaction" / "registration.md").read_text().split())
     assert "that reported no thinking tokens in those probes." in text
     assert "no thinking tokens at any setting" not in text
+
+
+def test_registration_spending_cap_contract() -> None:
+    text = (NOTE.parents[2] / "interaction" / "registration.md").read_text()
+    passage = text.split("Each model has its own cap", 1)[1].split(
+        "\n\n**Decision-model bound.", 1
+    )[0]
+    passage = "Each model has its own cap" + passage
+    assert passage == (
+        "Each model has its own cap, so that an arm that decides nothing cannot end the\n"
+        "run. **Decision-model cap in US dollars: 17.** **Chat-model cap in US dollars,\n"
+        "recall included: 2544.** Count spending from reported tokens in recorded\n"
+        "responses at the fixed prices. Retain and count unusable chat replies before\n"
+        "retrying them. As in the pilot, do not send a call if that model's spent tokens'\n"
+        "cost plus the estimate and reservations for calls in flight would exceed its cap.\n"
+        "The decision-model cap is also reached when recorded spending is above it;\n"
+        "equality is allowed. The chat cap is reached when cumulative recorded spending\n"
+        "plus the largest estimate of any registered decision or recall request is above\n"
+        "its cap; equality is allowed. Apply this rule in file order, including before\n"
+        "the first entry with spending zero, for both decisions and recall. A chat call\n"
+        "that does not fit because of reservations waits for a call in flight to finish\n"
+        "and checks the status again.\n"
+        "Reaching the decision-model cap gives no verdict for both\n"
+        "hypotheses. Reaching the chat-model cap makes `chat` unusable and changes no\n"
+        "verdict."
+    )
+
+
+def test_registration_recall_contract() -> None:
+    text = (NOTE.parents[2] / "interaction" / "registration.md").read_text()
+    passage = text.split("Recall questions with no recorded answer", 1)[1].split(
+        "\n\nA non-finite probability", 1
+    )[0]
+    passage = "Recall questions with no recorded answer" + passage
+    assert passage == (
+        "Recall questions with no recorded answer are sent unless the model is withdrawn,\n"
+        "its first reported version is invalid, its version has changed,\n"
+        "or the chat cap is reached. An arm made unusable by the three-reply rule, or ended\n"
+        "by the operator during `closed-loop`, is still asked. If the operator ends the arm\n"
+        "during `recall`, answered questions are kept and judged and the questions not yet\n"
+        'answered are recorded "not asked". `closed-loop` and `recall` complete with the\n'
+        'chat status recorded and "not asked" for each recall question not sent, and later\n'
+        "steps proceed. This changes no hypothesis verdict. The chat reply rule is under\n"
+        'The chat arm. A paid reply with an invalid version is retained as "not judged: version",\n'
+        "without judging or flagging it. Recall reports separately what stopped it asking."
+    )
+
+
+def test_registration_calls_before_registration_contract() -> None:
+    text = (NOTE.parents[2] / "interaction" / "registration.md").read_text()
+    passage = text.split("### Calls made before registration\n\n", 1)[1].split(
+        "\n### The chat arm", 1
+    )[0]
+    assert passage == (
+        "The decision model was sent format-check requests twice, four calls each time,\n"
+        "all on made-up histories: on 2026-11-20, before the request renderer was written,\n"
+        "and on 2026-11-21 with the four committed format-check requests. All eight replies\n"
+        "were usable five-band distributions.\n"
+        "\n"
+        "On 2026-11-21 four candidate chat models (`gemini-4-hydrogen`, `gemini-4-argon`,\n"
+        "`gemini-4-neon`, `gemini-4-carbon`) were tried, to learn whether they could be\n"
+        "used. Each was sent one toy question: a first attempt with a setting the service\n"
+        "refused, 4 refused calls, then 4 answered calls. Each was then sent two requests\n"
+        "built from the made-up histories, a first round and a twentieth round, three\n"
+        "times each at temperature 0: 24 answered calls. That is 28 answered calls. All\n"
+        "four answered the first round with the whole endowment every time, and their\n"
+        "twentieth-round answers varied between repeats.\n"
+        "\n"
+        "`gemini-4-carbon` was chosen as the provider's most capable model among the two\n"
+        "that reported no thinking tokens in those probes. Its replies to the made-up\n"
+        "histories were seen before it was chosen, and the chat arm's settings and reply\n"
+        "rule in this file were written after them: the temperature, because the answers\n"
+        "varied even at temperature 0, and the thinking level, because the service refuses\n"
+        "to turn thinking off. The replies are not kept in the repository. No participant\n"
+        "record was sent to any model, and no held-out group has been read.\n"
+        "\n"
+        "Later on 2026-11-21, after the chat renderer was committed, the chat format check\n"
+        "was run once with at most 256 output tokens, the limit first chosen: 12 calls, the\n"
+        "first and twentieth rounds of two games' committed made-up requests, three times\n"
+        "each. All 12 replies were usable whole numbers. Three reported thinking tokens,\n"
+        "from 45 to 111, and the others were printed as zero. The exact output is committed in\n"
+        "[`docs/interaction/format-check-chat.txt`](../docs/interaction/format-check-chat.txt).\n"
+        "On 2026-11-21 two further calls at that limit sent one toy question and one\n"
+        "committed made-up request to record which usage fields a reply carries; the record is\n"
+        "[`docs/interaction/reply-shape.txt`](../docs/interaction/reply-shape.txt).\n"
+        "\n"
+        "The output limit was then raised, before registration and after seeing replies.\n"
+        "Thinking tokens count against the limit. A second run of the same 12 calls with at\n"
+        "most 256 output tokens returned 2 empty replies, each with 253 thinking tokens. The\n"
+        "same four requests were then sent 10 times each with at most 4096 output tokens:\n"
+        "all 40 replies were usable, and the most thinking tokens in one reply was 384. The\n"
+        "limit was set to 2048 and the 12 calls were run again at it: all 12 replies were\n"
+        "usable, and the most thinking tokens in one reply was 359. These 64 calls are"
+        " recorded in\n"
+        "[`docs/interaction/output-limit.txt`](../docs/interaction/output-limit.txt).\n"
+    )

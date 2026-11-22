@@ -105,8 +105,9 @@ may end the chat arm with a recorded reason before `held-out` begins. The comman
 is accepted only while `closed-loop` or `recall` is interrupted and its last
 failure was a chat transport failure. `chat` is then unusable, the step completes,
 the report prints the reason and the number of chat decisions already answered,
-and no verdict changes. Apart from a declared repair, this is the only operator
-decision the run allows, and it cannot be taken once `held-out` has started.
+and no verdict changes. Apart from a declared repair and the incomplete-line cut under Guard, repairs and
+persistence, this is the only operator decision the run allows, and it cannot be
+taken once `held-out` has started.
 
 If `held-out` has not completed within 30 days of its first start, both
 hypotheses receive no verdict and the report publishes every score already
@@ -545,11 +546,9 @@ that section.
 Every seat of every round of every simulated group is its own call. Identical
 requests are NOT reused across decisions. The transcript identifies the game,
 group, round, seat and attempt, and a resumed decision uses its recorded replies.
-An incomplete final line, left by a write the system cut short, is not a record;
-every opening refuses it and changes no bytes, as the pilot's transcript does.
-The operator removes that line and the decision is asked again. Other damage is refused.
+The incomplete-line rule under Guard, repairs and persistence applies.
 Replay requires the recorded whole-transcript SHA-256 and exact line count, and
-uses entries re-read from disk without fresh calls. Rendered decision and recall
+uses one verified copy re-read from disk without fresh calls. Rendered decision and recall
 requests must match; attempts for each decision must be consecutive from one,
 with no attempt after an accepted reply and no more than three attempts.
 A later round of a group requires accepted replies for every seat of its earlier rounds.
@@ -557,7 +556,9 @@ Changing text or token counts on any line fails replay. A game cannot be scored
 when the arm is unusable; its whole transcript can still pass replay.
 The arm's status is derived from the transcript and the cap, in file order: the
 first invalid or changed version, third unusable reply for one decision, or
-cumulative spending above the cap. At the same entry, that is the order of precedence.
+the chat cap reached under Spending. At the same entry, that is the order of precedence.
+The transcript cannot show a withdrawal or an operator's ending of the arm; the run
+step records them, and that record governs later steps.
 Each recall question is labelled "judged", "not judged: version", or "not asked".
 The accepted points bypass recalibration and the band-to-points step.
 Run closed loop only, with the H3 simulation count. Score against `zoon` by the
@@ -571,11 +572,13 @@ recall included: 2544.** Count spending from reported tokens in recorded
 responses at the fixed prices. Retain and count unusable chat replies before
 retrying them. As in the pilot, do not send a call if that model's spent tokens'
 cost plus the estimate and reservations for calls in flight would exceed its cap.
-For chat, use the largest estimate of any registered decision or recall request.
-A chat call that does not fit waits for calls in flight; it reaches the cap only
-when it still does not fit with none in flight, so reaching the chat cap depends
-on spending alone. For either model, the cap is also reached when recorded
-spending is above it; equality is allowed.
+The decision-model cap is also reached when recorded spending is above it;
+equality is allowed. The chat cap is reached when cumulative recorded spending
+plus the largest estimate of any registered decision or recall request is above
+its cap; equality is allowed. Apply this rule in file order, including before
+the first entry with spending zero, for both decisions and recall. A chat call
+that does not fit because of reservations waits for a call in flight to finish
+and checks the status again.
 Reaching the decision-model cap gives no verdict for both
 hypotheses. Reaching the chat-model cap makes `chat` unusable and changes no
 verdict.
@@ -654,12 +657,19 @@ a stated reason and an ordered binding of its full snapshot to the registered
 commit, including current digests. Each changed snapshot needs a new declaration,
 even a return to the registered code. The guard cannot certify repair intent.
 
-Transcripts are append-only and bound to the full registered commit and mode;
-check that identity before replay. State is separate for this registration and
+Transcripts are append-only except for the incomplete-line cut below, and bound
+to the full registered commit and mode; check that identity before replay.
+An incomplete final line, left by a write the system cut short, is not a record;
+every opening refuses it and changes no bytes. The operator cuts the file back
+to the byte after its last line feed, or to empty if it has none, changes nothing
+else, and repeats the command, and the decision is asked again. If the cut bytes
+held a reply, it was paid for and is not counted. The operator notes each cut and
+its size in bytes in the result. This is the one change to a transcript the run
+allows; other damage is refused. State is separate for this registration and
 cannot reuse the pilot's. Each step writes its output and digest atomically,
 bound to its step, mode, registered commit, code or declared repair snapshot,
 and exact earlier-step states, including absence. Only one command may hold
-the run lock. Do not delete or reset state or transcripts during the run.
+the run lock. Do not delete or reset state or transcripts during the run, except for that cut.
 A completed calling step is not repeated; `report` may be run again and must
 reproduce the same file. An interrupted step resumes with recorded
 answers and requests only those missing. A later calling step requires completed

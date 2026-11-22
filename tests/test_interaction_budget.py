@@ -284,25 +284,50 @@ def test_chat_input_estimate_and_dated_prices() -> None:
     } <= settings_sources
 
 
-def test_chat_admission_maximum_bounds_every_registered_request_and_one_pass() -> None:
+@pytest.mark.parametrize("order", ["run", "largest", "smallest"])
+def test_chat_admission_maximum_bounds_every_registered_request_and_one_pass(
+    tmp_path: Path, order: str
+) -> None:
+    from tests.test_interaction_chat import BINDING, response
     from zoon.interaction import chat
 
     addition = budget.chat_max_estimate()
-    estimates = [
-        chat.estimate(budget.chat_bound_request(game, seat, r))
+
+    requests = {
+        game.cell: [
+            (r, seat, budget.chat_bound_request(game, seat, r))
+            for r in range(1, games.ROUNDS + 1)
+            for seat in range(game.size)
+        ]
         for game in games.GAMES.values()
-        for r in range(1, games.ROUNDS + 1)
-        for seat in range(game.size)
+    }
+    calls = [
+        (chat.Identity(game.cell, f"registered|{game.cell}|{group}", r - 1, seat, 1), text)
+        for game in games.GAMES.values()
+        for group in range(budget.SIMULATED_GROUPS)
+        for r, seat, text in requests[game.cell]
+    ] + [
+        (chat.Identity(game.cell, "recall", 0, 0, 1, "recall"), prompted.recall(game))
+        for game in games.GAMES.values()
     ]
-    recalls = [chat.estimate(prompted.recall(game)) for game in games.GAMES.values()]
-    assert addition == max(estimates + recalls)
-    assert all(value <= addition for value in estimates + recalls)
-    # At each needed call, full payment for all earlier requests leaves enough
-    # for the largest admission estimate, even with the smallest request last.
+    assert addition == max(chat.estimate(text) for _, text in calls)
+    if order != "run":
+        calls.sort(key=lambda call: chat.estimate(call[1]), reverse=order == "largest")
+    transcript = chat.Transcript(tmp_path, BINDING)
     spending = Decimal()
-    requests = estimates * budget.SIMULATED_GROUPS + recalls
     cap = budget.chat_cap()
-    for value in sorted(requests, reverse=True):
+    assert chat.status(transcript, cap) is None
+    for identity, text in calls:
+        paid = response(
+            "0",
+            input_tokens=chat.input_tokens(text),
+            output_tokens=chat.MAX_OUTPUT_TOKENS,
+            thinking_tokens=0,
+        )
+        assert chat.cost(paid) == chat.estimate(text)
+        transcript.entries[identity] = chat.Entry(BINDING, identity, text, chat.digest(text), paid)
+        spending += chat.cost(paid)
         assert spending + addition <= cap
-        spending += value
     assert spending == sum((row.dollars for row in budget.chat_estimate()), Decimal())
+    assert chat.status(transcript, cap) is None
+    assert chat.status(transcript, cap, recall=True) is None
