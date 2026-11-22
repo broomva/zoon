@@ -664,8 +664,8 @@ every opening refuses it and changes no bytes. The operator cuts the file back
 to the byte after its last line feed, or to empty if it has none, changes nothing
 else, and repeats the command, and the decision is asked again. If the cut bytes
 held a reply, it was paid for and is not counted. The operator notes each cut and
-its size in bytes in the result. This is the one change to a transcript the run
-allows; other damage is refused. State is separate for this registration and
+its size in bytes in the message of the commit that adds the result. This is the
+one change to a transcript the run allows; other damage is refused. State is separate for this registration and
 cannot reuse the pilot's. Each step writes its output and digest atomically,
 bound to its step, mode, registered commit, code or declared repair snapshot,
 and exact earlier-step states, including absence. Only one command may hold

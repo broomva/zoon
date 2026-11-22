@@ -1579,6 +1579,42 @@ def test_cap_refusal_is_recorded_status_for_replay_and_recall(tmp_path: Path) ->
     assert caught.value.cause is chat.Cause.CAP
 
 
+def test_admission_admits_exact_equality_and_makes_the_call(tmp_path: Path) -> None:
+    from zoon.interaction import budget
+
+    # The call fits exactly, so it is sent and recorded; its cost then reaches the cap.
+    client = Replies([response("0")])
+    run = session(tmp_path, client, budget.chat_max_estimate())
+    key = chat.Identity("2-AI", GROUP, 0, 0, 1)
+    with pytest.raises(chat.Unusable) as caught:
+        run.ask(key, chat.request(view()))
+    assert caught.value.cause is chat.Cause.CAP
+    assert len(client.requests) == 1 and key in run.transcript.entries
+    assert run.reserved == 0 and not run.pending
+
+
+def test_admission_that_disagrees_with_status_fails_and_does_not_wait(tmp_path: Path) -> None:
+    from zoon.interaction import budget
+
+    client = Replies([])
+    run = session(tmp_path, client, budget.chat_max_estimate())
+    run._estimate = 2 * budget.chat_max_estimate()  # pyright: ignore[reportPrivateUsage]
+    assert chat.status(run.transcript, run.cap) is None
+    with pytest.raises(chat.ConsistencyInterruption, match="admission and status disagree"):
+        run.ask(chat.Identity("2-AI", GROUP, 0, 0, 1), chat.request(view()))
+    assert client.requests == [] and run.reserved == 0 and not run.pending
+
+
+def test_supplied_bytes_with_an_incomplete_final_line_are_refused(tmp_path: Path) -> None:
+    from dataclasses import asdict
+
+    header = kernel.encoded(asdict(BINDING)).encode()
+    assert chat.Transcript(tmp_path, BINDING, _raw=header).entries == {}
+    with pytest.raises(chat.GuardRefusal, match="incomplete transcript line"):
+        chat.Transcript(tmp_path, BINDING, _raw=header + b'{"partial": 1')
+    assert not (tmp_path / "chat.jsonl").exists()
+
+
 @pytest.mark.parametrize("value", [None, "transcript", object()])
 def test_replay_requires_verification(tmp_path: Path, value: Any) -> None:
     transcript = chat.Transcript(tmp_path, BINDING)

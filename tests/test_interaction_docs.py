@@ -809,6 +809,33 @@ def test_registration_recall_contract() -> None:
     )
 
 
+def test_registration_incomplete_line_contract() -> None:
+    text = (NOTE.parents[2] / "interaction" / "registration.md").read_text()
+    passage = text.split("Transcripts are append-only", 1)[1].split(
+        " State is separate for this registration", 1
+    )[0]
+    assert "Transcripts are append-only" + passage == (
+        "Transcripts are append-only except for the incomplete-line cut below, and bound\n"
+        "to the full registered commit and mode; check that identity before replay.\n"
+        "An incomplete final line, left by a write the system cut short, is not a record;\n"
+        "every opening refuses it and changes no bytes. The operator cuts the file back\n"
+        "to the byte after its last line feed, or to empty if it has none, changes nothing\n"
+        "else, and repeats the command, and the decision is asked again. If the cut bytes\n"
+        "held a reply, it was paid for and is not counted. The operator notes each cut and\n"
+        "its size in bytes in the message of the commit that adds the result. This is the\n"
+        "one change to a transcript the run allows; other damage is refused."
+    )
+    normal = " ".join(text.split())
+    assert (
+        "Apart from a declared repair and the incomplete-line cut under Guard, repairs and "
+        "persistence, this is the only operator decision the run allows, and it cannot be "
+        "taken once `held-out` has started."
+    ) in normal
+    assert (
+        "Do not delete or reset state or transcripts during the run, except for that cut."
+    ) in normal
+
+
 def test_registration_calls_before_registration_contract() -> None:
     text = (NOTE.parents[2] / "interaction" / "registration.md").read_text()
     passage = text.split("### Calls made before registration\n\n", 1)[1].split(

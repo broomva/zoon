@@ -489,6 +489,17 @@ def digest(text: str) -> str:
     return hashlib.sha256(text.encode()).hexdigest()
 
 
+def complete(raw: bytes) -> bytes:
+    """Refuse transcript bytes that end in an incomplete line."""
+    if raw and not raw.endswith(b"\n"):
+        raise GuardRefusal(
+            "incomplete transcript line; cut the file back to the byte after "
+            "its last line feed, or to empty if it has none, then repeat the "
+            "command"
+        )
+    return raw
+
+
 @dataclass(frozen=True)
 class Entry:
     run: RunIdentity
@@ -522,7 +533,7 @@ class Transcript:
         protect(asdict(identity))
         storage_failed = False
         try:
-            raw = self.read_bytes() if _raw is None else _raw
+            raw = self.read_bytes() if _raw is None else complete(_raw)
             if raw:
                 protect(raw.decode(), self.bearer)
                 lines = raw.split(b"\n")[:-1]
@@ -607,13 +618,7 @@ class Transcript:
         except OSError:
             pass
         else:
-            if raw and not raw.endswith(b"\n"):
-                raise GuardRefusal(
-                    "incomplete transcript line; cut the file back to the byte after "
-                    "its last line feed, or to empty if it has none, then repeat the "
-                    "command"
-                )
-            return raw
+            return complete(raw)
         raise StorageInterruption("chat transcript could not be read")
 
     def digest(self) -> str:
@@ -693,6 +698,8 @@ class Session:
                     raise StorageInterruption("chat transcript is read-only")
                 if self.transcript.spent + self.reserved + self._estimate <= self.cap:
                     break
+                if not self.pending:
+                    raise ConsistencyInterruption("chat admission and status disagree")
                 self._lock.wait()
             self.reserved += self._estimate
             self.pending.add(identity)
