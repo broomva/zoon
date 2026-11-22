@@ -468,7 +468,7 @@ Record the version each response reports. The decision model must report exactly
 its name above. For chat, fix the version to the first response's reported version,
 which must begin with its model name, as in the pilot. Withdrawal means the
 service says the model does not exist on every bounded attempt at a request.
-Before generating, check model metadata without generating text; missing metadata
+Before generating, check chat model metadata without generating text; missing metadata
 does not establish withdrawal.
 A success without a non-empty string modelVersion or integer promptTokenCount is
 a transient transport fault and is retried within the bounded attempts, with no
@@ -651,13 +651,16 @@ repair cannot change the committed primary fits.
 Before every step, including report and a resumed step, require the registration
 tag to identify HEAD or an ancestor, a clean work tree including untracked files
 not ignored, and disk bytes equal to HEAD for every path tracked at the tag or
-HEAD. Registered files must equal their tagged bytes. Verify source and training
+HEAD. Ignored files under `src/` and `interaction/` are refused,
+apart from the interpreter's bytecode cache (`.pyc` files inside `__pycache__`).
+Registered files must equal their tagged bytes. Verify source and training
 hashes against the manifest and regenerate registered materials for comparison.
 Refuse continuation if a registered file differs. Other tracked differences
 outside docs and tests are code. A code difference requires a committed repair,
 a stated reason and an ordered binding of its full snapshot to the registered
 commit, including current digests. Each changed snapshot needs a new declaration,
-even a return to the registered code. The guard cannot certify repair intent.
+even a return to the registered code. Every declared repair commit must remain an
+ancestor of HEAD. The guard cannot certify repair intent.
 
 Transcripts are append-only except for the incomplete-line cut below, and bound
 to the full registered commit and mode; check that identity before replay.

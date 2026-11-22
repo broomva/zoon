@@ -485,9 +485,10 @@ def test_registration_chat_settings_rules_and_figures_match_code() -> None:
     assert f"recall included: {budget.chat_cap()}.**" in normal
     bound = sum((r.dollars for r in budget.chat_estimate()), start=Decimal())
     assert f"**Chat-model bound in US dollars: {budget.dollars(bound)}.**" in normal
+    assert f"**Decision-model cap in US dollars: {budget.DECISION_CAP}.**" in normal
     require_training()
     rows = budget.estimate(data.load(), data.held_out_counts())
-    assert f"**Decision-model cap in US dollars: {budget.decision_cap(rows)}.**" in normal
+    assert budget.decision_cap(rows) == budget.DECISION_CAP
 
 
 def kernel_view_for_docs() -> "kernel.View":
@@ -730,7 +731,7 @@ def test_registration_chat_contract_has_only_the_registered_rules() -> None:
         "Before generating," + text.split("Before generating,", 1)[1].split("\nThe outcomes", 1)[0]
     )
     assert reply_rules == (
-        "Before generating, check model metadata without generating text; missing metadata\n"
+        "Before generating, check chat model metadata without generating text; missing metadata\n"
         "does not establish withdrawal.\n"
         "A success without a non-empty string modelVersion or integer promptTokenCount is\n"
         "a transient transport fault and is retried within the bounded attempts, with no\n"

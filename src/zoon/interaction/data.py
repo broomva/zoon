@@ -16,9 +16,10 @@ Four steps, with separate training and held-out readers:
 4. `open_held_out` is the second seal, accessible only with a live held-out guard permit.
 
 So held-out contributions are absent from the training file. Until the guarded
-held-out step, analysis can read only that file. This is a guard against accident.
+held-out step, analysis reads contributions only from that file; live guards also
+hash the raw sources. This is a guard against accident.
 It is not a defence against the person running the code: the raw files are public,
-and anyone can open them with this module's private functions or with other code.
+and anyone can open them directly with reader libraries or other code.
 Nothing here claims otherwise.
 
 What `seal` uses from the raw files, and what it does not:
@@ -53,6 +54,7 @@ import pandas as pd
 
 from zoon.interaction.games import GAMES, ROUNDS, Game
 from zoon.interaction.split import group_index, held_out
+from zoon.pilot import clients
 
 if TYPE_CHECKING:
     from zoon.interaction.guard import HeldOutPermit
@@ -179,13 +181,18 @@ def _by_seat(game: Game, seats: list[list[object]]) -> Rounds:
     return tuple(tuple(seat[r] for seat in points) for r in range(ROUNDS))
 
 
-def _pairs(path: Path, permit: HeldOutPermit | None = None) -> tuple[list[Group], dict[str, int]]:
+def _pairs(
+    path: Path, permit: HeldOutPermit | None = None, *, _seal: object = None
+) -> tuple[list[Group], dict[str, int]]:
     """Read training pairs, or held-out pairs under the second seal's permit."""
     manifest = None
     if permit is not None:
         from zoon.interaction.guard import require_permit
 
-        manifest = require_permit(permit).root / "interaction" / "data-manifest.json"
+        gate = require_permit(permit)
+        if _seal is not _SECOND_SEAL:
+            raise clients.GuardRefusal("held-out readers are internal to the second seal")
+        manifest = gate.root / "interaction" / "data-manifest.json"
     _check(path, manifest)
     openpyxl: Any = importlib.import_module("openpyxl")
     book = openpyxl.load_workbook(path, read_only=True, data_only=True)
@@ -243,7 +250,9 @@ def _scalar(cell: object) -> object:
     return cast(object, value)
 
 
-def _fours(path: Path, permit: HeldOutPermit | None = None) -> tuple[list[Group], dict[str, int]]:
+def _fours(
+    path: Path, permit: HeldOutPermit | None = None, *, _seal: object = None
+) -> tuple[list[Group], dict[str, int]]:
     """Read training fours, or held-out fours under the second seal's permit.
 
     The file is a MATLAB table, decoded by the optional `mat-io` package. The decoded table
@@ -254,7 +263,10 @@ def _fours(path: Path, permit: HeldOutPermit | None = None) -> tuple[list[Group]
     if permit is not None:
         from zoon.interaction.guard import require_permit
 
-        manifest = require_permit(permit).root / "interaction" / "data-manifest.json"
+        gate = require_permit(permit)
+        if _seal is not _SECOND_SEAL:
+            raise clients.GuardRefusal("held-out readers are internal to the second seal")
+        manifest = gate.root / "interaction" / "data-manifest.json"
     _check(path, manifest)
     matio: Any = importlib.import_module("matio")
     frame = cast(pd.DataFrame, matio.load_from_mat(str(path))["all_data"])
@@ -326,19 +338,16 @@ def seal(raw_dir: Path = RAW_DIR, training: Path = TRAINING) -> None:
 
 def _read(training: Path, manifest: Path | None = None) -> dict[str, Any]:
     """Return the training file's contents after checking its hash against the manifest."""
-    if manifest is None:
-        candidate = training.parent.parent.parent / "interaction" / "data-manifest.json"
-        manifest = candidate if candidate.is_file() else MANIFEST
-    document = json.loads(manifest.read_bytes())
+    document = json.loads((MANIFEST if manifest is None else manifest).read_bytes())
     entry = document.get("training")
     if entry is None or entry["sha256"] != _sha256(training):
         raise ValueError(f"{training.name} does not match {MANIFEST.name}")
     return cast(dict[str, Any], json.loads(training.read_text()))
 
 
-def load(training: Path = TRAINING) -> list[Group]:
-    """Read training groups in loader order, using their checkout's pinned manifest."""
-    return _training_groups(_read(training))
+def load(training: Path = TRAINING, *, manifest: Path | None = None) -> list[Group]:
+    """Read training groups using the module manifest unless one is supplied explicitly."""
+    return _training_groups(_read(training, manifest))
 
 
 def _training_groups(document: dict[str, Any]) -> list[Group]:
@@ -353,6 +362,9 @@ def _training_groups(document: dict[str, Any]) -> list[Group]:
 def held_out_counts(training: Path = TRAINING) -> dict[str, int]:
     """Return how many groups of each game are held out. Nothing else is known about them."""
     return {str(cell): int(count) for cell, count in _read(training)["held_out"].items()}
+
+
+_SECOND_SEAL = object()
 
 
 def open_held_out(permit: object = None) -> list[Group]:
@@ -370,8 +382,8 @@ def open_held_out(permit: object = None) -> list[Group]:
     directory = guard.root / "data" / "groups"
     manifest = guard.root / "interaction" / "data-manifest.json"
     document = _read(directory / "training.json", manifest)
-    pairs, pair_counts = _pairs(directory / "raw" / PAIRS_FILE, capability)
-    fours, four_counts = _fours(directory / "raw" / FOURS_FILE, capability)
+    pairs, pair_counts = _pairs(directory / "raw" / PAIRS_FILE, capability, _seal=_SECOND_SEAL)
+    fours, four_counts = _fours(directory / "raw" / FOURS_FILE, capability, _seal=_SECOND_SEAL)
     groups = sorted([*pairs, *fours], key=lambda g: (g.cell, g.index))
     counts = {**pair_counts, **four_counts}
     indices = {(g.cell, g.index) for g in groups}

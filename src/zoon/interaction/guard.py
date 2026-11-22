@@ -2,6 +2,8 @@
 
 The order is a state contract, not a list of implemented commands. A future step
 uses the same before/save protocol; only the command driver selects implementations.
+Live mode verifies raw source hashes before every step. Stub mode never needs or
+reads the raw sources; both modes verify training and regenerate registered materials.
 """
 
 from __future__ import annotations
@@ -10,7 +12,7 @@ import fcntl
 import json
 import os
 import subprocess
-from collections.abc import Generator
+from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, cast
@@ -83,14 +85,18 @@ class HeldOutPermit:
     def __init__(self, authority: object, guard: Guard) -> None:
         if authority is not _AUTHORITY:
             raise clients.GuardRefusal("only the guard can issue a held-out permit")
-        self.guard = guard
-        self.authority = authority
+        self.guard: object = guard
+        self.__authority = authority
+
+    def authorized(self) -> bool:
+        return self.__authority is _AUTHORITY
 
 
 def require_permit(permit: object) -> Guard:
     if (
         not isinstance(permit, HeldOutPermit)
-        or permit.authority is not _AUTHORITY
+        or not permit.authorized()
+        or not isinstance(permit.guard, Guard)
         or not permit.guard.active
         or permit.guard.mode != "live"
         or permit.guard.checked_step != "held-out"
@@ -125,6 +131,8 @@ class Guard:
         self.differences: dict[str, str] = {}
         self.repairs: list[dict[str, Any]] = []
         self.transcripts: dict[str, clients.Transcript] = {}
+        self._families: set[clients.Family] = set()
+        self._readers: dict[str, Callable[[list[str] | None], dict[str, Any]]] = {}
 
     @property
     def identity(self) -> dict[str, str]:
@@ -133,19 +141,34 @@ class Guard:
     @contextmanager
     def lock(self) -> Generator[None]:
         self.directory.mkdir(parents=True, exist_ok=True)
-        # Live and stub share the lock, but never step records or answers.
-        with (self.storage / "run" / "lock").open("a+b") as handle:
+        # Modes in the same storage share a lock, but never records or answers.
+        path = self.storage / "run" / "lock"
+        descriptor = os.open(path.parent, os.O_RDONLY)
+        try:
             try:
-                fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError:
                 raise clients.GuardRefusal("another command holds the run lock") from None
-            self.active = True
-            try:
-                yield
-            finally:
-                self.active = False
-                self.checked_step = None
-                fcntl.flock(handle, fcntl.LOCK_UN)
+            with path.open("a+b") as handle:
+                try:
+                    fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                except BlockingIOError:
+                    raise clients.GuardRefusal("another command holds the run lock") from None
+                try:
+                    opened, current = os.fstat(handle.fileno()), os.stat(path)
+                except OSError:
+                    raise clients.GuardRefusal("run lock path changed while acquiring it") from None
+                if (opened.st_dev, opened.st_ino) != (current.st_dev, current.st_ino):
+                    raise clients.GuardRefusal("run lock path changed while acquiring it")
+                self.active = True
+                try:
+                    yield
+                finally:
+                    self.active = False
+                    self.checked_step = None
+                    fcntl.flock(handle, fcntl.LOCK_UN)
+        finally:
+            os.close(descriptor)
 
     def _require_lock(self) -> None:
         if not self.active:
@@ -160,6 +183,27 @@ class Guard:
             raise clients.GuardRefusal("binding belongs to another schema or mode")
         return document
 
+    def register_transcripts(self, *families: clients.Family) -> None:
+        """Steps declare their transcript families before entering the guard."""
+        self._families.update(families)
+
+    def register_transcript(
+        self, family: str, reader: Callable[[list[str] | None], dict[str, Any]]
+    ) -> None:
+        """Register a checkpoint reader for a step's own transcript format.
+
+        The reader verifies identity on every opening and returns the existing
+        keys/digest checkpoint shape. It receives None to select all records.
+        """
+        self._readers[family] = reader
+
+    def transcript_checkpoint(self, family: str, keys: list[str] | None = None) -> dict[str, Any]:
+        if family in self._readers:
+            return self._readers[family](keys)
+        if family not in self.transcripts:
+            raise clients.GuardRefusal("step must register its transcript reader")
+        return checkpoint(self.transcripts[family], keys)
+
     def before(self, step: str, repair: str | None = None) -> None:
         self._require_lock()
         self.checked_step = None
@@ -168,9 +212,20 @@ class Guard:
         try:
             self._checkout(repair)
             # Identity is checked even when no step record has yet been written.
+            self.register_transcripts(*cast(tuple[clients.Family, ...], tuple(self.transcripts)))
+            # Earlier steps may have registered additional families.
+            for name in ORDER:
+                path = self.directory / f"{name}.json"
+                if path.exists():
+                    for family in json.loads(path.read_bytes())["transcripts"]:
+                        if family in ("decision", "second") and family not in self._readers:
+                            self.register_transcripts(family)
             self.transcripts = {
-                "decision": clients.Transcript(self.transcript_directory, "decision", self.identity)
+                family: clients.Transcript(self.transcript_directory, family, self.identity)
+                for family in self._families
             }
+            for reader in self._readers.values():
+                reader(None)
             states = {name: self.state(name) for name in ORDER}
             terminal = any(s and s["status"] == "terminal" for s in states.values())
             if step != "report":
@@ -215,14 +270,31 @@ class Guard:
         )
         if tagged is not None and tagged != self.registered_commit:
             raise clients.GuardRefusal("binding belongs to another registered commit")
-        if binding and binding["registered_commit"] != self.registered_commit:
-            raise clients.GuardRefusal("binding belongs to another registered commit")
         git(self.root, "merge-base", "--is-ancestor", self.registered_commit, "HEAD")
         original, head = (
             snapshot_tree(self.root, self.registered_commit),
             snapshot_tree(self.root, "HEAD"),
         )
         names = original.keys() | head.keys()
+        ignored = git(
+            self.root,
+            "ls-files",
+            "--others",
+            "--ignored",
+            "--exclude-standard",
+            "--",
+            "src/",
+            "interaction/",
+        ).splitlines()
+        if any(
+            not (
+                "__pycache__" in Path(name).parts[:-1]
+                and name.endswith(".pyc")
+                and (self.root / name).is_file()
+            )
+            for name in ignored
+        ):
+            raise clients.GuardRefusal("ignored files under src/ or interaction/ are refused")
         if git(self.root, "status", "--porcelain", "--untracked-files=all") or any(
             (digest(path.read_bytes()) if (path := self.root / name).is_file() else "deleted")
             != head.get(name, "deleted").split(":", 1)[-1]
@@ -251,13 +323,18 @@ class Guard:
                 or not record["reason"].strip()
             ):
                 raise clients.GuardRefusal("repair history is not an ordered registered binding")
+            try:
+                git(self.root, "merge-base", "--is-ancestor", record["commit"], "HEAD")
+            except clients.GuardRefusal:
+                raise clients.GuardRefusal(
+                    "declared repair commit must remain an ancestor of HEAD"
+                ) from None
             commit_tree = snapshot_tree(self.root, record["commit"])
             expected = {
                 n: commit_tree.get(n, "deleted")
                 for n in sorted(original.keys() | commit_tree.keys())
                 if original.get(n) != commit_tree.get(n) and not n.startswith(("docs/", "tests/"))
             }
-            git(self.root, "merge-base", "--is-ancestor", record["commit"], "HEAD")
             changed = sorted(
                 n for n in last_code.keys() | expected.keys() if last_code.get(n) != expected.get(n)
             )
@@ -288,8 +365,9 @@ class Guard:
 
     def verify_materials(self) -> list[data.Group]:
         manifest = self.root / "interaction" / "data-manifest.json"
-        verify_data(self.root / "data" / "groups" / "raw", manifest)
-        groups = data.load(self.root / "data" / "groups" / "training.json")
+        if self.mode == "live":
+            verify_data(self.root / "data" / "groups" / "raw", manifest)
+        groups = data.load(self.root / "data" / "groups" / "training.json", manifest=manifest)
         directory = self.root / "interaction"
         training_digest = registered.training_digest(manifest)
         registered.read_fitted(directory / "fitted.json", manifest)
@@ -368,7 +446,7 @@ class Guard:
         if state["previous"] != self.previous(step):
             raise clients.GuardRefusal("exact earlier-step states changed, including absence")
         for family, expected in state["transcripts"].items():
-            if checkpoint(self.transcripts[family], expected["keys"]) != expected:
+            if self.transcript_checkpoint(family, expected["keys"]) != expected:
                 raise clients.GuardRefusal("recorded transcript checkpoint changed")
         return state
 
@@ -401,7 +479,10 @@ class Guard:
             "previous": self.previous(step),
             "status": status,
             "reason": reason,
-            "transcripts": {f: checkpoint(t) for f, t in self.transcripts.items()},
+            "transcripts": {
+                family: self.transcript_checkpoint(family)
+                for family in self.transcripts.keys() | self._readers.keys()
+            },
             "payload": payload,
             "payload_digest": digest(encoded(payload)),
         }

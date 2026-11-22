@@ -16,6 +16,7 @@ from zoon.pilot import clients, prices, prompts
 CEILING = pilot_budget.CEILING
 SIMULATED_GROUPS = compare.SIMULATED_GROUPS
 DECISION_CAP_MULTIPLE = 4
+DECISION_CAP = Decimal(17)
 
 
 @cache

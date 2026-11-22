@@ -1,4 +1,4 @@
-"""Every guard rule is exercised in an isolated git repository."""
+"""Checkout, material and persistence rules use isolated git repositories."""
 
 import json
 import os
@@ -33,11 +33,11 @@ def test_clean_checkout_and_disk_bytes(root: Path, stub: bool, damage: str) -> N
     if damage == "untracked":
         (root / "extra").write_text("untracked")
     elif damage == "deleted":
-        (root / "code.py").rename(root / "ignored.py")
+        (root / "src/code.py").rename(root / "ignored.py")
     else:
         if damage == "assume":
-            git(root, "update-index", "--assume-unchanged", "code.py")
-        (root / "code.py").write_text("value = 2\n")
+            git(root, "update-index", "--assume-unchanged", "src/code.py")
+        (root / "src/code.py").write_text("value = 2\n")
     with pytest.raises(clients.GuardRefusal, match="clean work tree"):
         passed(root, stub=stub)
 
@@ -71,7 +71,7 @@ def test_code_snapshots_require_new_ordered_committed_declarations(root: Path) -
     original = git(root, "rev-parse", "HEAD")
     passed(root)
     for number in (2, 3, 1):
-        (root / "code.py").write_text(f"value = {number}\n")
+        (root / "src/code.py").write_text(f"value = {number}\n")
         head = commit(root)
         with pytest.raises(clients.GuardRefusal, match="repair reason"):
             passed(root)
@@ -84,9 +84,11 @@ def test_code_snapshots_require_new_ordered_committed_declarations(root: Path) -
         assert record["mode"] == "live"
         assert record["reason"] == "Resolve execution fault"
         expected = (
-            {} if number == 1 else {"code.py": "100644:" + digest((root / "code.py").read_bytes())}
+            {}
+            if number == 1
+            else {"src/code.py": "100644:" + digest((root / "src/code.py").read_bytes())}
         )
-        assert record["code"] == expected and record["files"] == ["code.py"]
+        assert record["code"] == expected and record["files"] == ["src/code.py"]
         assert passed(root).repairs == gate.repairs
     assert [r["number"] for r in gate.repairs] == [1, 2, 3]
     assert gate.repairs[0]["previous"] is None
@@ -106,7 +108,7 @@ def test_docs_and_tests_are_recorded_differences_but_not_code(root: Path) -> Non
 
 
 def test_repair_history_cannot_be_reordered_or_rebound(root: Path) -> None:
-    (root / "code.py").write_text("value = 2\n")
+    (root / "src/code.py").write_text("value = 2\n")
     commit(root)
     gate = passed(root, repair="Resolve execution fault")
     path = gate.directory / "binding.json"
@@ -364,7 +366,7 @@ def test_pilot_state_is_never_reused_or_changed(root: Path) -> None:
 def test_each_repair_record_is_identity_and_order_checked(
     root: Path, field: str, value: Any
 ) -> None:
-    (root / "code.py").write_text("value = 2\n")
+    (root / "src/code.py").write_text("value = 2\n")
     commit(root)
     gate = passed(root, repair="Resolve execution fault")
     path = gate.directory / "binding.json"
@@ -380,7 +382,7 @@ def test_each_repair_record_is_identity_and_order_checked(
 
 
 def test_repair_snapshot_is_compared_with_its_commit(root: Path) -> None:
-    (root / "code.py").write_text("value = 2\n")
+    (root / "src/code.py").write_text("value = 2\n")
     commit(root)
     gate = passed(root, repair="Resolve execution fault")
     path = gate.directory / "binding.json"
@@ -408,7 +410,9 @@ def test_step_envelope_checksum_is_checked(root: Path) -> None:
 
 @pytest.mark.parametrize("change", ["registered", "code"])
 def test_stub_waives_only_tag_absence(root: Path, change: str) -> None:
-    path = root / "interaction" / "registration.md" if change == "registered" else root / "code.py"
+    path = (
+        root / "interaction" / "registration.md" if change == "registered" else root / "src/code.py"
+    )
     path.write_bytes(path.read_bytes() + b"\n")
     commit(root)
     with pytest.raises(
@@ -475,7 +479,7 @@ def test_cited_inputs_are_read_from_the_tag_after_docs_change(root: Path) -> Non
 
 
 def test_tracked_mode_change_requires_a_new_repair_snapshot(root: Path) -> None:
-    path = root / "code.py"
+    path = root / "src/code.py"
     path.write_text("value = 2\n")
     commit(root)
     passed(root, repair="Resolve execution fault")
@@ -484,4 +488,4 @@ def test_tracked_mode_change_requires_a_new_repair_snapshot(root: Path) -> None:
     with pytest.raises(clients.GuardRefusal, match="repair reason"):
         passed(root)
     gate = passed(root, repair="Resolve execution fault")
-    assert gate.repairs[-1]["code"]["code.py"] == "100755:" + digest(path.read_bytes())
+    assert gate.repairs[-1]["code"]["src/code.py"] == "100755:" + digest(path.read_bytes())

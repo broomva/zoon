@@ -37,6 +37,7 @@ class Run:
         cap: Decimal | None = None,
     ) -> None:
         self.guard = Guard(root, stub=stub, storage=storage)
+        self.guard.register_transcripts("decision")
         self.client = client or (clients.StubClient("decision") if stub else decisions.LiveClient())
         self.workers = workers
         self.cap = cap
@@ -70,11 +71,11 @@ class Run:
             self.guard.before(step, repair)
             old = self.guard.state(step)
             self.payload = old["payload"] if old else {}
-            groups = data.load(self.guard.root / "data" / "groups" / "training.json")
-            manifest = json.loads(
-                (self.guard.root / "data" / "groups" / "training.json").read_bytes()
+            groups = data.load(
+                self.guard.root / "data" / "groups" / "training.json",
+                manifest=self.guard.root / "interaction" / "data-manifest.json",
             )
-            cap = budget.decision_cap(budget.estimate(groups, manifest["held_out"]))
+            cap = budget.DECISION_CAP
             self.session = decisions.Session(
                 self.guard.transcript_directory,
                 self.client,
@@ -93,8 +94,24 @@ class Run:
                     clients.StopReason.CAP: Outcome.CAP,
                 }.get(error.reason)
                 if outcome is None:
+                    self.guard.save(
+                        step,
+                        {**self.payload, **self.totals()},
+                        status="interrupted",
+                        reason=type(error).__name__,
+                    )
                     raise
                 return self.terminal(outcome)
+            except decisions.StorageFault:
+                self.guard.save(
+                    step,
+                    {**self.payload, **self.totals()},
+                    status="interrupted",
+                    reason="StorageFault",
+                )
+                raise clients.StepFailure(
+                    "could not persist decision transcript; restore writable storage and resume"
+                ) from None
             except data.RecordFault:
                 return self.terminal(Outcome.RECORDS)
             except BaseException as error:

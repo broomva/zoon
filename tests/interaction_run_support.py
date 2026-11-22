@@ -26,8 +26,9 @@ def repository(root: Path, *, tag: bool = True) -> Path:
     git(root, "init", "-q")
     git(root, "config", "user.name", "Example")
     git(root, "config", "user.email", "example@example.org")
-    (root / ".gitignore").write_text("data/\n")
-    (root / "code.py").write_text("value = 1\n")
+    (root / ".gitignore").write_text("/data/\n")
+    (root / "src").mkdir()
+    (root / "src/code.py").write_text("value = 1\n")
     shutil.copytree(data.REPO / "interaction", root / "interaction")
     directory = root / "data" / "groups"
     (directory / "raw").mkdir(parents=True)

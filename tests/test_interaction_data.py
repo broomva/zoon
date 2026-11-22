@@ -274,7 +274,7 @@ def test_other_sessions_rounds_and_answers_are_never_used(tmp_path: Path) -> Non
 
 
 def test_the_loaders_take_a_file_and_nothing_that_could_widen_them() -> None:
-    assert list(inspect.signature(data.load).parameters) == ["training"]
+    assert list(inspect.signature(data.load).parameters) == ["training", "manifest"]
     assert list(inspect.signature(data.held_out_counts).parameters) == ["training"]
 
 
@@ -356,3 +356,24 @@ def test_a_seat_has_exactly_the_registered_round_count(length: int) -> None:
     module: Any = data
     with pytest.raises(data.RecordFault, match="20 rounds"):
         module._by_seat(GAMES["2-FE"], [[0] * ROUNDS, [0] * length])
+
+
+def test_training_manifest_is_explicit_and_never_inferred_from_layout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import hashlib
+    import shutil
+
+    training = tmp_path / "data/groups/training.json"
+    training.parent.mkdir(parents=True)
+    shutil.copyfile(data.TRAINING, training)
+    explicit = tmp_path / "interaction/data-manifest.json"
+    explicit.parent.mkdir()
+    explicit.write_text(
+        json.dumps({"training": {"sha256": hashlib.sha256(training.read_bytes()).hexdigest()}})
+    )
+    absent = tmp_path / "absent.json"
+    monkeypatch.setattr(data, "MANIFEST", absent)
+    assert len(data.load(training, manifest=explicit)) == 210
+    with pytest.raises(FileNotFoundError):
+        data.load(training)

@@ -20,6 +20,11 @@ from typing import Any
 from zoon.interaction.guard import digest
 from zoon.pilot import clients, prices, prompts
 
+
+class StorageFault(BaseException):
+    """A transcript write failed; transport retry must never catch this fault."""
+
+
 Request = tuple[str, prompts.Decision]
 
 
@@ -37,24 +42,30 @@ def request_key(request: Request) -> str:
 
 
 def append(transcript: clients.Transcript, request: Request, response: clients.Response) -> None:
-    key = request_key(request)
-    if key in transcript.entries:
-        return
-    entry = clients.Entry(key, document(request), response)
-    transcript.path.parent.mkdir(parents=True, exist_ok=True)
-    new = not transcript.path.exists() or transcript.path.stat().st_size == 0
-    with transcript.path.open("a") as handle:
-        if new:
-            handle.write(json.dumps(transcript.identity, sort_keys=True) + "\n")
-        handle.write(
-            json.dumps(
-                clients.entry_document(entry), sort_keys=True, ensure_ascii=False, allow_nan=False
+    try:
+        key = request_key(request)
+        if key in transcript.entries:
+            return
+        entry = clients.Entry(key, document(request), response)
+        transcript.path.parent.mkdir(parents=True, exist_ok=True)
+        new = not transcript.path.exists() or transcript.path.stat().st_size == 0
+        with transcript.path.open("a") as handle:
+            if new:
+                handle.write(json.dumps(transcript.identity, sort_keys=True) + "\n")
+            handle.write(
+                json.dumps(
+                    clients.entry_document(entry),
+                    sort_keys=True,
+                    ensure_ascii=False,
+                    allow_nan=False,
+                )
+                + "\n"
             )
-            + "\n"
-        )
-        handle.flush()
-        os.fsync(handle.fileno())
-    transcript.entries[key] = entry
+            handle.flush()
+            os.fsync(handle.fileno())
+        transcript.entries[key] = entry
+    except OSError:
+        raise StorageFault from None
 
 
 class LiveClient:
@@ -101,9 +112,13 @@ class LiveClient:
                     or outgoing < 0
                 ):
                     raise clients.TransientError
-                # Let the pilot check connection metadata before retaining any
-                # unexpected version string. Its TerminalStop carries the paid reply.
+                secret = os.environ.get("TYPESAFE_API_KEY", "")
+                if secret and secret in repr((result.model, result.answers, result.usage)):
+                    raise clients.StepFailure(
+                        "connection metadata in response; no transcript was written"
+                    )
                 if version != prices.DECISION.model:
+                    received(clients.Response({}, None, "", version, incoming, outgoing), True)
                     return result
                 returned: dict[str, float] = {}
                 with suppress(AttributeError, KeyError, TypeError, ValueError):
@@ -129,7 +144,7 @@ class LiveClient:
                     outgoing,
                     returned if finite else None,
                 )
-                received(response, valid or version != prices.DECISION.model)
+                received(response, valid)
                 return result
 
         class SDK:
@@ -157,12 +172,15 @@ class Session:
         self.client, self.workers, self.cap = client, workers, cap
 
     def check(self) -> None:
-        if self.transcript.spent > self.cap:
-            raise clients.TerminalStop(clients.StopReason.CAP)
-        if any(
-            e.response.version != prices.DECISION.model for e in self.transcript.entries.values()
-        ):
-            raise clients.TerminalStop(clients.StopReason.VERSION)
+        # Replay in receipt order: the first terminal reply governs, including a
+        # version reply whose cost would also cross the cap.
+        spent = Decimal(0)
+        for entry in self.transcript.entries.values():
+            if entry.response.version != prices.DECISION.model:
+                raise clients.TerminalStop(clients.StopReason.VERSION)
+            spent += clients.cost("decision", entry.response)
+            if spent > self.cap:
+                raise clients.TerminalStop(clients.StopReason.CAP)
 
     def ask_many(self, requests: Sequence[Request]) -> list[clients.Response]:
         self.check()
@@ -207,31 +225,37 @@ class Session:
                                 else (identifier + f":failed:{attempt}", rendered)
                             )
                             append(self.transcript, recorded, response)
+                            self.check()
 
                         response = self.client.recorded(request[1], admit, received)
                     else:
                         response = self.client.ask(request[1])
                     if response.version != prices.DECISION.model:
+                        append(self.transcript, request, response)
                         raise clients.TerminalStop(clients.StopReason.VERSION, response=response)
                     clients.validate(request[1], response)
+                    append(self.transcript, request, response)
+                    self.check()
                     return response
                 except Exception as error:
                     return error
 
-            if isinstance(self.client, LiveClient):
-                results = [call(r) for r in window]
-            else:
-                with ThreadPoolExecutor(max_workers=self.workers) as pool:
-                    results = list(pool.map(call, window))
             failure: Exception | None = None
-            for request, result in zip(window, results, strict=True):
-                if isinstance(result, Exception):
-                    if isinstance(result, clients.TerminalStop) and result.response is not None:
-                        append(self.transcript, request, result.response)
-                    if failure is None or isinstance(result, clients.TerminalStop):
+            # Submit one request at a time even for injected pool clients. No
+            # queued transport may start after a terminal receipt or storage fault.
+            with ThreadPoolExecutor(max_workers=self.workers) as pool:
+                for request in window:
+                    result = (
+                        call(request)
+                        if isinstance(self.client, LiveClient)
+                        else pool.submit(call, request).result()
+                    )
+                    if isinstance(result, clients.TerminalStop):
+                        if result.response is not None:
+                            append(self.transcript, request, result.response)
+                        raise result
+                    if isinstance(result, Exception) and failure is None:
                         failure = result
-                else:
-                    append(self.transcript, request, result)
             self.check()
             if failure is not None:
                 raise failure
