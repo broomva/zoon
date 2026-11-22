@@ -5,7 +5,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from zoon.interaction import data
+from zoon.interaction import data, registered
 from zoon.interaction.guard import TAG, digest
 
 
@@ -33,14 +33,22 @@ def repository(root: Path, *, tag: bool = True) -> Path:
     directory = root / "data" / "groups"
     (directory / "raw").mkdir(parents=True)
     # Training may be used before registration; actual source bytes are never copied.
-    shutil.copyfile(data.TRAINING, directory / "training.json")
+    training = data.TRAINING.read_bytes() + b"\n"
+    (directory / "training.json").write_bytes(training)
     manifest_path = root / "interaction" / "data-manifest.json"
     manifest = json.loads(manifest_path.read_bytes())
     for name in manifest["files"]:
         raw = b"synthetic source; not a participant record"
         (directory / "raw" / name).write_bytes(raw)
         manifest["files"][name].update(size=len(raw), sha256=digest(raw))
+    manifest["training"]["sha256"] = digest(training)
     manifest_path.write_text(json.dumps(manifest))
+    for name in ("fitted.json", "amounts.json"):
+        path = root / "interaction" / name
+        document = json.loads(path.read_bytes())
+        document.pop("sha256")
+        document["training_sha256"] = digest(training)
+        path.write_bytes(registered.sealed(document))
     commit(root, "Register materials")
     if tag:
         git(root, "tag", TAG)

@@ -1,8 +1,6 @@
 """Calibration is resumable, deterministic, bounded and records closed outcomes."""
 
 import json
-import threading
-import time
 from collections.abc import Sequence
 from dataclasses import replace
 from decimal import Decimal
@@ -19,19 +17,14 @@ from zoon.pilot import clients, prices
 
 
 class InterruptedClient(clients.StubClient):
-    def __init__(self, *, fail_at: int = 5, shuffled: bool = False) -> None:
+    def __init__(self, *, fail_at: int = 5) -> None:
         super().__init__("decision")
         self.count = 0
-        self.fail_at, self.shuffled = fail_at, shuffled
-        self.lock = threading.Lock()
+        self.fail_at = fail_at
 
     def ask(self, request: clients.Request) -> clients.Response:
-        with self.lock:
-            self.count += 1
-            failed = self.count == self.fail_at
-        if self.shuffled:
-            time.sleep(int(clients.key(request)[:2], 16) / 100_000)
-        if failed:
+        self.count += 1
+        if self.count == self.fail_at:
             raise clients.StepFailure("stub transport interrupted")
         return super().ask(request)
 
@@ -44,18 +37,18 @@ def transcript(path: Path) -> clients.Transcript:
 def test_stub_calibration_interrupt_resume_and_refuse_repeat(tmp_path: Path) -> None:
     root = repository(tmp_path / "repo")
     resumed_storage, plain_storage = tmp_path / "resumed", tmp_path / "plain"
-    client = InterruptedClient(shuffled=True)
+    client = InterruptedClient()
     interrupted = run.Run(root, stub=True, storage=resumed_storage, client=client)
     with pytest.raises(clients.StepFailure):
         interrupted.execute()
     path = resumed_storage / "transcripts" / "stub" / "decision.jsonl"
     before = path.read_bytes()
-    assert len(transcript(path).entries) == clients.WINDOW - 1
+    assert len(transcript(path).entries) == client.fail_at - 1
     state = json.loads((resumed_storage / "run" / "stub" / "calibrate.json").read_bytes())
     assert state["status"] == "interrupted" and state["mode"] == "stub"
-    final = run.Run(root, stub=True, storage=resumed_storage, client=client, workers=3).execute()
+    final = run.Run(root, stub=True, storage=resumed_storage, client=client).execute()
     assert path.read_bytes().startswith(before)
-    uninterrupted = run.Run(root, stub=True, storage=plain_storage, workers=1).execute()
+    uninterrupted = run.Run(root, stub=True, storage=plain_storage).execute()
     assert final == uninterrupted
     assert final["status"] == "completed"
     assert final["payload"]["calls"] == 2 * prompted.SUBSAMPLE_COUNT
@@ -72,22 +65,6 @@ def test_stub_calibration_interrupt_resume_and_refuse_repeat(tmp_path: Path) -> 
         run.Run(root, stub=True, storage=resumed_storage).execute()
     assert (resumed_storage / "run" / "stub" / "calibrate.json").read_bytes() == before_state
     assert not (root / "data" / "run").exists() and not (root / "data" / "transcripts").exists()
-
-
-def test_worker_count_and_completion_order_do_not_change_results(tmp_path: Path) -> None:
-    root = repository(tmp_path / "repo")
-    first = run.Run(root, stub=True, storage=tmp_path / "one", workers=1).execute()
-    second = run.Run(
-        root,
-        stub=True,
-        storage=tmp_path / "many",
-        client=InterruptedClient(fail_at=0, shuffled=True),
-        workers=5,
-    ).execute()
-    assert first == second
-    assert (tmp_path / "one" / "transcripts" / "stub" / "decision.jsonl").read_bytes() == (
-        tmp_path / "many" / "transcripts" / "stub" / "decision.jsonl"
-    ).read_bytes()
 
 
 def test_disguise_uses_the_saved_fit_and_registered_scoring_floor(
@@ -237,17 +214,14 @@ def test_transcript_identity_damage_and_checkpoint_are_refused(tmp_path: Path) -
         runner.execute()
 
 
-def test_budget_admission_includes_reservations_and_allows_equality(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_budget_admission_allows_equality(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     request = prompted.fixtures()["2-AI-type-0-round-1.json"]
     estimate = clients.estimate("decision", request)
     client = InterruptedClient(fail_at=0)
     session = decisions.Session(
-        tmp_path, client, 4, estimate, {"mode": "stub", "registered_commit": "a" * 40}
+        tmp_path, client, estimate, {"mode": "stub", "registered_commit": "a" * 40}
     )
-    # A second call cannot be admitted in the same window. Its reported cost is
-    # above the estimate so no next window can send it either.
+    # The first estimate equals the cap; its reported cost exceeds the cap.
     original = client.ask
 
     def costly(request: clients.Request) -> clients.Response:
@@ -339,7 +313,6 @@ def test_each_paid_retry_is_recorded_and_admitted(
     session = decisions.Session(
         tmp_path,
         decisions.LiveClient(SDK()),
-        4,
         cap_calls * estimate,
         {"mode": "stub", "registered_commit": "a" * 40},
     )
@@ -423,7 +396,6 @@ def test_injected_decision_transport_obeys_metadata_and_retry_rules(
     session = decisions.Session(
         tmp_path,
         decisions.LiveClient(SDK()),
-        3,
         Decimal(17),
         {"mode": "stub", "registered_commit": "a" * 40},
     )

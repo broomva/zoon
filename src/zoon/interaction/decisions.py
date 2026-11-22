@@ -1,4 +1,4 @@
-"""Decision transcripts with per-decision identity and deterministic budget windows.
+"""Decision transcripts with per-decision identity and serial budget admission.
 
 The pilot supplies the transport, bounded retry, validation, estimates and
 transcript reader. These records wrap a rendered request in its decision identity:
@@ -11,7 +11,6 @@ import json
 import math
 import os
 from collections.abc import Callable, Sequence
-from concurrent.futures import ThreadPoolExecutor
 from contextlib import suppress
 from decimal import Decimal
 from pathlib import Path
@@ -113,7 +112,7 @@ class LiveClient:
                 ):
                     raise clients.TransientError
                 secret = os.environ.get("TYPESAFE_API_KEY", "")
-                if secret and secret in repr((result.model, result.answers, result.usage)):
+                if secret and secret in repr((version, getattr(result, "answers", None), usage)):
                     raise clients.StepFailure(
                         "connection metadata in response; no transcript was written"
                     )
@@ -158,18 +157,19 @@ class LiveClient:
 
 
 class Session:
+    """Dispatch serially so each recorded reply can stop all later requests."""
+
     def __init__(
         self,
         directory: Path,
         client: clients.Client,
-        workers: int,
         cap: Decimal,
         identity: dict[str, str],
     ) -> None:
-        if workers < 1 or client.family != "decision":
-            raise ValueError("a decision client and positive worker count are required")
+        if client.family != "decision":
+            raise ValueError("a decision client is required")
         self.transcript = clients.Transcript(directory, "decision", identity)
-        self.client, self.workers, self.cap = client, workers, cap
+        self.client, self.cap = client, cap
 
     def check(self) -> None:
         # Replay in receipt order: the first terminal reply governs, including a
@@ -186,78 +186,42 @@ class Session:
         self.check()
         unique = {request_key(r): r for r in requests}
         pending = [unique[k] for k in sorted(unique) if k not in self.transcript.entries]
-        start = 0
-        while start < len(pending):
-            window: list[Request] = []
-            reserved = Decimal(0)
-            for request in pending[start : start + clients.WINDOW]:
-                estimate = clients.estimate("decision", request[1])
-                if self.transcript.spent + reserved + estimate > self.cap:
-                    break
-                window.append(request)
-                reserved += estimate
-            if not window:
-                raise clients.TerminalStop(clients.StopReason.CAP)
+        for request in pending:
 
-            def call(request: Request) -> clients.Response | Exception:
-                try:
-                    if isinstance(self.client, LiveClient):
+            def admit(current: Request = request) -> None:
+                self.check()
+                if self.transcript.spent + clients.estimate("decision", current[1]) > self.cap:
+                    raise clients.TerminalStop(clients.StopReason.CAP)
 
-                        def admit() -> None:
-                            self.check()
-                            if (
-                                self.transcript.spent + clients.estimate("decision", request[1])
-                                > self.cap
-                            ):
-                                raise clients.TerminalStop(clients.StopReason.CAP)
-
-                        def received(response: clients.Response, accepted: bool) -> None:
-                            identifier, rendered = request
-                            attempt = 1 + sum(
-                                str(clients.obj(e.request).get("decision", "")).startswith(
-                                    identifier + ":failed:"
-                                )
-                                for e in self.transcript.entries.values()
-                            )
-                            recorded = (
-                                request
-                                if accepted
-                                else (identifier + f":failed:{attempt}", rendered)
-                            )
-                            append(self.transcript, recorded, response)
-                            self.check()
-
-                        response = self.client.recorded(request[1], admit, received)
-                    else:
-                        response = self.client.ask(request[1])
-                    if response.version != prices.DECISION.model:
-                        append(self.transcript, request, response)
-                        raise clients.TerminalStop(clients.StopReason.VERSION, response=response)
-                    clients.validate(request[1], response)
-                    append(self.transcript, request, response)
-                    self.check()
-                    return response
-                except Exception as error:
-                    return error
-
-            failure: Exception | None = None
-            # Submit one request at a time even for injected pool clients. No
-            # queued transport may start after a terminal receipt or storage fault.
-            with ThreadPoolExecutor(max_workers=self.workers) as pool:
-                for request in window:
-                    result = (
-                        call(request)
-                        if isinstance(self.client, LiveClient)
-                        else pool.submit(call, request).result()
+            def received(
+                response: clients.Response, accepted: bool, current: Request = request
+            ) -> None:
+                identifier, rendered = current
+                attempt = 1 + sum(
+                    str(clients.obj(e.request).get("decision", "")).startswith(
+                        identifier + ":failed:"
                     )
-                    if isinstance(result, clients.TerminalStop):
-                        if result.response is not None:
-                            append(self.transcript, request, result.response)
-                        raise result
-                    if isinstance(result, Exception) and failure is None:
-                        failure = result
+                    for e in self.transcript.entries.values()
+                )
+                recorded = current if accepted else (identifier + f":failed:{attempt}", rendered)
+                append(self.transcript, recorded, response)
+                self.check()
+
+            admit()
+            try:
+                response = (
+                    self.client.recorded(request[1], admit, received)
+                    if isinstance(self.client, LiveClient)
+                    else self.client.ask(request[1])
+                )
+            except clients.TerminalStop as error:
+                if error.response is not None:
+                    append(self.transcript, request, error.response)
+                raise
+            if response.version != prices.DECISION.model:
+                append(self.transcript, request, response)
+                raise clients.TerminalStop(clients.StopReason.VERSION, response=response)
+            clients.validate(request[1], response)
+            append(self.transcript, request, response)
             self.check()
-            if failure is not None:
-                raise failure
-            start += len(window)
         return [self.transcript.entries[request_key(r)].response for r in requests]

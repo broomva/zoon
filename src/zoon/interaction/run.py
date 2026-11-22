@@ -33,13 +33,11 @@ class Run:
         stub: bool = False,
         storage: Path | None = None,
         client: clients.Client | None = None,
-        workers: int = 4,
         cap: Decimal | None = None,
     ) -> None:
         self.guard = Guard(root, stub=stub, storage=storage)
         self.guard.register_transcripts("decision")
         self.client = client or (clients.StubClient("decision") if stub else decisions.LiveClient())
-        self.workers = workers
         self.cap = cap
         self.session: decisions.Session | None = None
         self.payload: dict[str, Any] = {}
@@ -79,7 +77,6 @@ class Run:
             self.session = decisions.Session(
                 self.guard.transcript_directory,
                 self.client,
-                self.workers,
                 cap if self.cap is None else self.cap,
                 self.guard.identity,
             )

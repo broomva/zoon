@@ -209,6 +209,33 @@ def test_steps_register_and_reload_their_transcript_families(root: Path) -> None
         assert "second" in resumed.transcripts
 
 
+@pytest.mark.parametrize("family", ["decision", "second"])
+@pytest.mark.parametrize("field", [None, "mode", "registered_commit"])
+def test_registered_family_identity_is_checked_before_any_step_record(
+    root: Path, family: clients.Family, field: str | None
+) -> None:
+    initial = before(root)
+    identity = dict(initial.identity)
+    if field is not None:
+        identity[field] = "stub" if field == "mode" else "b" * 40
+    path = initial.transcript_directory / f"{family}.jsonl"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(identity) + "\n")
+    gate = Guard(root)
+    gate.register_transcripts(family)
+    assert not (gate.directory / "calibrate.json").exists()
+    with gate.lock():
+        if field is None:
+            gate.before("calibrate")
+            assert family in gate.transcripts
+            assert gate.transcripts[family].identity == identity
+        else:
+            with pytest.raises(clients.GuardRefusal, match="identity"):
+                gate.before("calibrate")
+            assert gate.checked_step is None
+    assert not (gate.directory / "calibrate.json").exists()
+
+
 def test_removing_held_lock_does_not_admit_another_command(root: Path) -> None:
     gate = Guard(root)
     with gate.lock():

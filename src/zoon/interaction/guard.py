@@ -211,7 +211,7 @@ class Guard:
             raise clients.GuardRefusal("unknown step")
         try:
             self._checkout(repair)
-            # Identity is checked even when no step record has yet been written.
+            # Identity is checked for families a step registered, even before its first record.
             self.register_transcripts(*cast(tuple[clients.Family, ...], tuple(self.transcripts)))
             # Earlier steps may have registered additional families.
             for name in ORDER:

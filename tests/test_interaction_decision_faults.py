@@ -47,7 +47,7 @@ def session(
     directory: Path, client: clients.Client, *, cap: Decimal = Decimal(17)
 ) -> decisions.Session:
     return decisions.Session(
-        directory, client, 4, cap, {"mode": "stub", "registered_commit": "a" * 40}
+        directory, client, cap, {"mode": "stub", "registered_commit": "a" * 40}
     )
 
 
@@ -107,7 +107,7 @@ def test_live_version_receipt_is_durable_before_any_later_request(
 @pytest.mark.parametrize(
     "reason", [clients.StopReason.VERSION, clients.StopReason.WITHDRAWN, clients.StopReason.CAP]
 )
-def test_pool_dispatch_sends_nothing_after_terminal_result(
+def test_dispatch_sends_nothing_after_terminal_result(
     tmp_path: Path, reason: clients.StopReason
 ) -> None:
     class Stop(clients.StubClient):
@@ -126,6 +126,85 @@ def test_pool_dispatch_sends_nothing_after_terminal_result(
         session(tmp_path, client).ask_many(requests())
     assert stopped.value.reason == reason
     assert client.calls == 1
+
+
+@pytest.mark.parametrize("headroom", [False, True])
+def test_injected_client_admission_uses_recorded_cost(tmp_path: Path, headroom: bool) -> None:
+    class Costly(clients.StubClient):
+        calls = 0
+
+        def ask(self, request: clients.Request) -> clients.Response:
+            self.calls += 1
+            return replace(super().ask(request), input_tokens=1_000_000)
+
+    client = Costly("decision")
+    cap = prices.DECISION.dollars(1_000_000, 1)
+    if headroom:
+        cap += clients.estimate("decision", requests()[0][1]) / 2
+    ledger = session(tmp_path, client, cap=cap)
+    with pytest.raises(clients.TerminalStop) as stopped:
+        ledger.ask_many(requests()[:2])
+    assert stopped.value.reason == clients.StopReason.CAP
+    assert client.calls == len(ledger.transcript.entries) == 1
+    assert ledger.transcript.spent == prices.DECISION.dollars(1_000_000, 1)
+
+
+def test_authentication_failure_stops_before_the_next_request(tmp_path: Path) -> None:
+    class AuthenticationError(Exception):
+        status_code = 401
+
+    def denied(n: int) -> Any:
+        raise AuthenticationError
+
+    sdk = SDK(denied)
+    with pytest.raises(clients.StepFailure, match="authentication"):
+        session(tmp_path, decisions.LiveClient(sdk)).ask_many(requests())
+    assert sdk.calls == 1
+
+
+def test_first_request_failure_is_raised_before_another_failure(tmp_path: Path) -> None:
+    failures = [clients.StepFailure("first request failed"), ValueError("second request failed")]
+
+    class Failing(clients.StubClient):
+        calls = 0
+
+        def ask(self, request: clients.Request) -> clients.Response:
+            error = failures[self.calls]
+            self.calls += 1
+            raise error
+
+    client = Failing("decision")
+    with pytest.raises(clients.StepFailure) as failed:
+        session(tmp_path, client).ask_many(requests()[:2])
+    assert failed.value is failures[0]
+    assert client.calls == 1
+
+
+def test_paid_replies_without_answers_are_all_recorded(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("TYPESAFE_API_KEY", "synthetic-connection-value")
+    pauses: list[float] = []
+    bounded = clients.retry
+
+    def retry(call: Callable[[], clients.Response]) -> clients.Response:
+        return bounded(call, pause=pauses.append)
+
+    monkeypatch.setattr(clients, "retry", retry)
+    result = SimpleNamespace(
+        model=prices.DECISION.model,
+        usage=SimpleNamespace(input_tokens=12, output_tokens=1),
+    )
+    sdk = SDK(lambda n: result)
+    ledger = session(tmp_path, decisions.LiveClient(sdk))
+    with pytest.raises(clients.StepFailure, match="bounded retries"):
+        ledger.ask_many(requests())
+    assert sdk.calls == len(ledger.transcript.entries) == 4
+    assert pauses == [1, 2, 4]
+    assert ledger.transcript.spent == 4 * prices.DECISION.dollars(12, 1)
+    assert all(not entry.response.probabilities for entry in ledger.transcript.entries.values())
+    reloaded = clients.Transcript(tmp_path, "decision", ledger.transcript.identity)
+    assert checkpoint(reloaded) == checkpoint(ledger.transcript)
 
 
 def test_live_withdrawal_stops_at_the_first_established_withdrawal(
@@ -268,7 +347,7 @@ def test_each_live_receipt_is_synced_before_the_next_request(
 def test_version_is_recorded_before_returning_the_sdk_reply(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.delenv("TYPESAFE_API_KEY", raising=False)
+    monkeypatch.setenv("TYPESAFE_API_KEY", "synthetic-connection-value")
 
     class Result:
         def __init__(self) -> None:
