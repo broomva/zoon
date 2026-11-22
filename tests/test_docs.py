@@ -205,10 +205,11 @@ These paths do not exist today and are exempt from the existing-path check:
         check_interaction_registration(root, document)
 
 
-def test_interaction_run_status_matches_the_first_slice() -> None:
+def test_interaction_run_status_matches_available_steps() -> None:
     root = NOTES.parent.parent
     text = " ".join((root / "interaction" / "registration.md").read_text().split())
     assert (
-        "The second sealing step, scoring and intervals, run guards, step state and "
-        "calibration are implemented; closed-loop, recall, held-out and report remain open work."
+        "The second sealing step, scoring and intervals, run guards, step state, calibration, "
+        "closed-loop, recall and the operator chat-ending command are implemented; "
+        "held-out and report remain open work."
     ) in text

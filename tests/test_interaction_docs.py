@@ -655,7 +655,8 @@ def test_draft_status_does_not_reopen_completed_chat_work() -> None:
         "chat requests, transcripts and replay, scoring and intervals, the fitted files, "
         "power and coverage under the registered rules, the second seal, "
         "run guards and step state, "
-        "and calibration are implemented and tested; closed-loop, recall, held-out and report "
+        "calibration, closed-loop, recall and the operator chat-ending command "
+        "are implemented and tested; held-out and report "
         "remain open" in readme
     )
     design = " ".join((NOTE.parent / "design.md").read_text().split())
@@ -887,3 +888,25 @@ def test_registration_calls_before_registration_contract() -> None:
         " recorded in\n"
         "[`docs/interaction/output-limit.txt`](../docs/interaction/output-limit.txt).\n"
     )
+
+
+def test_available_step_modules_and_remaining_work_are_explicit() -> None:
+    root = NOTE.parents[2]
+    registration = (root / "interaction/registration.md").read_text()
+    normal = " ".join(registration.split())
+    assert (
+        "Calibration, closed-loop, recall and the operator chat-ending command "
+        "are implemented today; held-out and report remain requirements."
+    ) in normal
+    assert (
+        "calibration, closed-loop, recall and the operator chat-ending command "
+        "are implemented; held-out and report remain open work."
+    ) in normal
+    assert (
+        "- The held-out step and report, including the path marked as added above," in registration
+    )
+    for name in ("steps.py", "simulation.py"):
+        assert f"| `src/zoon/interaction/{name}` | Existing today |" in registration
+        assert (root / "src/zoon/interaction" / name).is_file()
+    assert "`python -m zoon.interaction.run end-chat --reason TEXT`" in registration
+    assert "It records the ending; repeating the interrupted step completes it." in normal

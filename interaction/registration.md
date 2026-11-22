@@ -101,8 +101,10 @@ reported version that does not begin with the model name make `chat` unusable,
 with no scores.
 
 If chat requests alone keep `closed-loop` or `recall` from completing, the operator
-may end the chat arm with a recorded reason before `held-out` begins. The command
-is accepted only while `closed-loop` or `recall` is interrupted and its last
+may end the chat arm with a recorded reason before `held-out` begins, using
+`python -m zoon.interaction.run end-chat --reason TEXT` (or with `--stub` for a
+rehearsal). It records the ending; repeating the interrupted step completes it.
+The command is accepted only while `closed-loop` or `recall` is interrupted and its last
 failure was a chat transport failure. `chat` is then unusable, the step completes,
 the report prints the reason and the number of chat decisions already answered,
 and no verdict changes. Apart from a declared repair and the incomplete-line cut under Guard, repairs and
@@ -439,7 +441,9 @@ lists the report's output path outside the registered inputs.
 | `src/zoon/interaction/registered.py` | Existing today | Committed material readers and regeneration |
 | `src/zoon/interaction/power.py` | Existing today | Training power and coverage calculation |
 | `docs/interaction/power.md` | Existing today | Power assumptions and one recorded run |
-| `src/zoon/interaction/run.py` | Existing today | Calibration and the command line |
+| `src/zoon/interaction/run.py` | Existing today | Calibration and step command dispatch |
+| `src/zoon/interaction/steps.py` | Existing today | Closed-loop, recall and operator chat endings |
+| `src/zoon/interaction/simulation.py` | Existing today | Committed-arm simulation and game log persistence |
 | `src/zoon/interaction/guard.py` | Existing today | Run guards, repairs, state and lock |
 | `src/zoon/interaction/decisions.py` | Existing today | Budgeted decision calls and append-only records |
 | `src/zoon/interaction/chat.py` | Existing today | The chat request renderer |
@@ -452,10 +456,12 @@ These paths do not exist today and are exempt from the existing-path check:
 
 - `docs/interaction/result.md`
 
-The run module supplies calibration today. The existing spending script
+The run module dispatches calibration, closed-loop, recall and the operator
+chat-ending command today. The existing spending script
 `src/zoon/interaction/budget.py` produces both bounds. The second sealing step,
-scoring and intervals, run guards, step state and calibration are implemented;
-closed-loop, recall, held-out and report remain open work. A material-regeneration test must compare registered instructions,
+scoring and intervals, run guards, step state, calibration, closed-loop, recall
+and the operator chat-ending command are implemented; held-out and report remain
+open work. A material-regeneration test must compare registered instructions,
 fixtures and the amount table with their committed bytes; the fit test uses the
 probability tolerance above.
 
@@ -623,8 +629,9 @@ The current script's proposed ceiling and pilot cap do not fix this run's caps.
 ## Order of work
 
 Merge the registration, analysis code and registered materials, then create the
-tag as specified above. Only calibration is implemented today; the later commands
-remain requirements. Run them in this order:
+tag as specified above. Calibration, closed-loop, recall and the operator
+chat-ending command are implemented today; held-out and report remain requirements.
+Run them in this order:
 
 1. `python -m zoon.interaction.run calibrate`: make the recalibration calls and the
    disguise calls; fit and save recalibration. Do not refit the primary coded arms.
@@ -798,7 +805,7 @@ nothing and is not run closed loop.
 
 - **DONE:** the caps and chat bound are filled from the spending script's
   output with dated chat prices. Vertex price confirmation remains due at registration.
-- The later run steps and report, including the path marked as added above,
+- The held-out step and report, including the path marked as added above,
   and the required checks.
 - **DONE:** the format check of the chat request with the committed renderer;
   see [Calls made before registration](registration.md#calls-made-before-registration).
