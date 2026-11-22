@@ -382,9 +382,6 @@ As in the pilot, divide by their sum if it is within 0.05 of one; otherwise retr
 the reply as a fault. Retain both returned and used probabilities. Then use the
 floor and recalibration rules here. A reply still unreadable after retries
 interrupts the step; it does not exclude a decision.
-If a reply contains credential metadata, record only a sanitised unusable receipt:
-the reported version without any credential value and valid token counts (zero
-where unavailable or invalid), then interrupt without recording the reply content.
 
 ### From the model's answer to a probability
 

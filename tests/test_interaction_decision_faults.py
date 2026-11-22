@@ -307,30 +307,28 @@ def test_storage_fault_is_not_retried_and_resumes_cleanly(
     assert sdk.calls == 1025
 
 
-def test_connection_metadata_leaves_only_a_sanitised_paid_receipt(
+def test_connection_metadata_check_precedes_recording(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     marker = "synthetic-connection-value"
     monkeypatch.setenv("TYPESAFE_API_KEY", marker)
-    response = reply()
-    response.answers["private"] = marker
-    sdk = SDK(lambda n: response)
-    root = repository(tmp_path / "repo")
-    runner = run.Run(root, client=decisions.LiveClient(sdk))
-    with pytest.raises(clients.StepFailure, match="reply content was not recorded"):
-        runner.execute()
-    state = json.loads((runner.guard.directory / "calibrate.json").read_bytes())
-    assert state["status"] == "interrupted" and state["payload"]["calls"] == 1
-    assert sdk.calls == 1
-    ledger = clients.Transcript(
-        runner.guard.transcript_directory, "decision", runner.guard.identity
-    )
-    assert len(ledger.entries) == 1
-    assert ledger.spent == prices.DECISION.dollars(12, 1)
-    assert marker.encode() not in ledger.path.read_bytes()
-    entry = next(iter(ledger.entries.values()))
-    assert ":failed:1" in str(entry.request)
-    assert entry.response == clients.Response({}, None, "", prices.DECISION.model, 12, 1)
+    for shape in ("answers", "version", "no version"):
+        response = reply()
+        response.answers["private"] = marker
+        if shape == "version":
+            response.model = marker
+        elif shape == "no version":
+            response.model = None
+        sdk = SDK(lambda n, response=response: response)
+        root = repository(tmp_path / shape.replace(" ", "-"))
+        runner = run.Run(root, client=decisions.LiveClient(sdk))
+        with pytest.raises(clients.StepFailure, match="no transcript was written"):
+            runner.execute()
+        state = json.loads((runner.guard.directory / "calibrate.json").read_bytes())
+        assert state["status"] == "interrupted" and "outcome" not in state
+        assert sdk.calls == 1
+        ledger = runner.guard.transcript_directory / "decision.jsonl"
+        assert not ledger.exists() or ledger.read_bytes().count(b"\n") <= 1
 
 
 def test_each_live_receipt_is_synced_before_the_next_request(

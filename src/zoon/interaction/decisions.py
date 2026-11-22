@@ -112,19 +112,9 @@ class LiveClient:
                 valid_outgoing = type(outgoing) is int and outgoing >= 0
                 secret = os.environ.get("TYPESAFE_API_KEY", "")
                 if secret and secret in repr((version, getattr(result, "answers", None), usage)):
-                    received(
-                        clients.Response(
-                            {},
-                            None,
-                            "",
-                            version if isinstance(version, str) and secret not in version else "",
-                            incoming if valid_incoming else 0,
-                            outgoing if valid_outgoing else 0,
-                        ),
-                        False,
-                    )
+                    # Nothing from such a reply is recorded, not even a receipt.
                     raise clients.StepFailure(
-                        "connection metadata in response; reply content was not recorded"
+                        "connection metadata in response; no transcript was written"
                     )
                 if isinstance(version, str) and version and version != prices.DECISION.model:
                     received(
@@ -152,7 +142,7 @@ class LiveClient:
                     raw = result.answers["q"].probabilities
                     returned = {str(k): float(v) for k, v in raw.items()}
                     unique = len(returned) == len(raw)
-                if not set(returned) <= {a.answer for a in request.answers}:
+                if not unique or not set(returned) <= {a.answer for a in request.answers}:
                     returned = {}
                 finite = all(math.isfinite(v) and 0 <= v <= 1 for v in returned.values())
                 total = sum(returned.values())
