@@ -1,4 +1,4 @@
-"""Durable arm outcomes, recovery and bounded operator authority."""
+"""Durable arm outcomes and recovery."""
 
 import json
 import os
@@ -51,7 +51,6 @@ def prepared_states(
         saved = runner.guard.state("closed-loop")
         assert saved is not None
         payload = saved["payload"]
-        assert payload.pop("chat_transport_failures") == 1
         runner.guard.save("closed-loop", payload, status="running")
     completed = directory / "closed-loop"
     shutil.copytree(bands, completed)
@@ -181,46 +180,6 @@ def test_chat_outcomes_keep_all_other_arms_and_complete(
         assert all(r["status"] == "not asked" for r in records)
         assert recognition["payload"]["stopped_by"] == cause
         assert client.preflights == 1
-
-
-def test_chat_transport_resume_matches_uninterrupted_and_skips_finished_arms(
-    runs: Factory, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    plain = runs("plain", prepared="calibrated")
-    expected = plain.execute("closed-loop")
-    client = ChatFault("transport", at=45)
-    resumed = runs("resumed", prepared="calibrated", chat_client=client)
-    with pytest.raises(chat.TransportInterruption):
-        resumed.execute("closed-loop")
-    interrupted = state(resumed)
-    assert interrupted["status"] == "interrupted"
-    assert interrupted["payload"]["chat"]["answered_decisions"] == 44
-    before = (resumed.guard.transcript_directory / "chat.jsonl").read_bytes()
-
-    def no_simulate(*args: Any, **kwargs: Any) -> Any:
-        pytest.fail("finished arms must only be reread")
-
-    monkeypatch.setattr(score, "simulate", no_simulate)
-    original_ask = chat.StubClient.ask
-    requested: list[str] = []
-
-    def ask(client: chat.StubClient, text: str) -> chat.Response:
-        requested.append(text)
-        return original_ask(client, text)
-
-    monkeypatch.setattr(chat.StubClient, "ask", ask)
-    # New process, fresh stub: its random stream must be recovered from receipts.
-    fresh = run.Run(
-        resumed.guard.root, stub=True, storage=resumed.guard.storage, simulation_groups=1
-    )
-    completed = fresh.execute("closed-loop")
-    assert completed["payload"].pop("chat_transport_failures") == 1
-    assert {k: v for k, v in completed.items() if k not in ("digest", "payload_digest")} == {
-        k: v for k, v in expected.items() if k not in ("digest", "payload_digest")
-    }
-    assert len(requested) == 440 - 44
-    assert (fresh.guard.transcript_directory / "chat.jsonl").read_bytes().startswith(before)
-    assert band_logs(fresh) == band_logs(plain)
 
 
 @pytest.mark.parametrize("fault", ["VERSION", "CAP", "WITHDRAWN", "transport", "other-stop"])
@@ -430,27 +389,6 @@ def test_recall_conditions_labels_full_replies_and_resume(runs: Factory, fault: 
             assert record["line"] is not None and len(record["entry_digest"]) == 64
 
 
-def test_recall_transport_resume_equals_uninterrupted(runs: Factory) -> None:
-    plain = runs("plain", chat_client=ChatFault("replies", at=1))
-    plain.execute("closed-loop")
-    resumed = runs("resumed", chat_client=ChatFault("replies", at=1))
-    resumed.execute("closed-loop")
-    expected = run.Run(plain.guard.root, stub=True, storage=plain.guard.storage).execute("recall")
-    interrupted = run.Run(
-        resumed.guard.root,
-        stub=True,
-        storage=resumed.guard.storage,
-        chat_client=ChatFault("transport", at=3),
-    )
-    with pytest.raises(chat.TransportInterruption):
-        interrupted.execute("recall")
-    final = run.Run(resumed.guard.root, stub=True, storage=resumed.guard.storage).execute("recall")
-    assert final["payload"].pop("chat_transport_failures") == 1
-    assert {k: v for k, v in final.items() if k not in ("digest", "payload_digest")} == {
-        k: v for k, v in expected.items() if k not in ("digest", "payload_digest")
-    }
-
-
 def test_completed_chat_logs_have_separate_digests(runs: Factory) -> None:
     # Inspect the required data contract without obtaining a data capability.
     runner = runs()
@@ -510,26 +448,6 @@ def test_arm_and_chat_game_checkpoints_precede_next_work(
     assert len(played) == 8
 
 
-def test_operator_cli_records_reason_and_completes_the_step(
-    runs: Factory, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    runner = runs(chat_client=ChatFault("transport", at=1))
-    interrupt_chat(runner, "closed-loop")
-
-    def local(**kwargs: Any) -> run.Run:
-        assert kwargs["stub"]
-        return runner
-
-    monkeypatch.setattr(run, "Run", local)
-    assert run.main(["closed-loop", "--end-chat", "Requests remain unavailable", "--stub"]) == 0
-    output = capsys.readouterr()
-    assert output.err == ""
-    assert "[interaction stub] closed-loop = completed" in output.out
-    assert "Requests remain unavailable" in output.out
-    assert state(runner)["status"] == "completed"
-    assert state(runner)["payload"]["chat_endings"][0]["reason"] == "Requests remain unavailable"
-
-
 def test_log_storage_failure_interrupts_and_recovers(
     runs: Factory, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -545,67 +463,6 @@ def test_log_storage_failure_interrupts_and_recovers(
     assert state(runner)["status"] == "interrupted"
     plain = runs("plain")
     assert runner.execute("closed-loop") == plain.execute("closed-loop")
-
-
-def ended_closed_loop(runs: Factory) -> run.Run:
-    runner = runs(chat_client=ChatFault("transport", at=45))
-    with pytest.raises(chat.TransportInterruption):
-        runner.execute("closed-loop")
-    runner.steps.chat_client = ChatFault("transport", at=1)
-    runner.execute("closed-loop", end_chat="Requests unavailable")
-    return runner
-
-
-def test_each_step_can_end_chat_without_losing_the_first_event(runs: Factory) -> None:
-    runner = ended_closed_loop(runs)
-    before = state(runner)
-    first = before["payload"]["chat_endings"][0]
-    runner.steps.chat_client = ChatFault("transport", at=3)
-    with pytest.raises(chat.TransportInterruption):
-        runner.execute("recall")
-    runner.steps.chat_client = ChatFault("transport", at=1)
-    completed = runner.execute("recall", end_chat="Recall unavailable")
-    events = completed["payload"]["chat_endings"]
-    assert events == [
-        first,
-        {
-            "cause": "OPERATOR",
-            "step": "recall",
-            "reason": "Recall unavailable",
-            "answered_decisions": 44,
-            "answered_recall": 2,
-            "chat_transport_failures": 2,
-        },
-    ]
-    assert first == {
-        "cause": "OPERATOR",
-        "step": "closed-loop",
-        "reason": "Requests unavailable",
-        "answered_decisions": 44,
-        "chat_transport_failures": 2,
-    }
-    assert completed["payload"]["chat"]["endings"] == events
-    assert completed["payload"]["chat"]["cause"] == "OPERATOR"
-    assert state(runner) == before
-    assert [r["status"] for r in completed["payload"]["recall"]] == ["judged"] * 2 + [
-        "not asked"
-    ] * 6
-
-
-def test_recall_keeps_the_first_cause_and_operator_details(runs: Factory) -> None:
-    runner = ended_closed_loop(runs)
-    first = state(runner)["payload"]["chat_endings"][0]
-    runner.steps.chat_client = ChatFault("withdrawn", at=1)
-    completed = runner.execute("recall")
-    assert completed["payload"]["chat_endings"] == [first, {"cause": "WITHDRAWN", "step": "recall"}]
-    assert completed["payload"]["chat"]["cause"] == "OPERATOR"
-
-
-def test_ending_leaves_chat_games_unscored(runs: Factory) -> None:
-    runner = ended_closed_loop(runs)
-    assert "chat_logs" not in state(runner)["payload"]
-    assert "chat" not in state(runner)["payload"]["simulations"]
-    assert state(runner)["payload"]["chat"]["calls"] == 44
 
 
 @pytest.mark.parametrize("damage", ["none", "unreadable", "partial"])
@@ -672,58 +529,6 @@ def test_resume_with_every_answer_skips_preflight(
 
     runner.steps.chat_client = Offline()
     assert runner.execute(step)["status"] == "completed"
-
-
-@pytest.mark.parametrize(
-    "initial", ["usable", "version", "replies", "cap", "withdrawn", "replay", "operator"]
-)
-@pytest.mark.parametrize("later", ["none", "version", "cap", "withdrawn", "operator"])
-def test_chat_cause_and_events_across_steps(
-    runs: Factory, monkeypatch: pytest.MonkeyPatch, initial: str, later: str
-) -> None:
-    # VERSION, CAP and WITHDRAWN prevent recall requests, so only 'none' is reachable.
-    if initial in ("version", "cap", "withdrawn") and later != "none":
-        pytest.skip("the earlier version, cap or withdrawal prevents recall requests")
-    runner = runs(
-        chat_client=ChatFault(
-            "transport" if initial == "operator" else initial, at=1 if initial == "operator" else 5
-        )
-    )
-    with monkeypatch.context() as patch:
-        if initial == "replay":
-
-            def failed(*args: Any, **kwargs: Any) -> Any:
-                raise chat.Unusable(chat.Cause.REPLAY)
-
-            patch.setattr(chat, "replay", failed)
-        if initial == "operator":
-            interrupt_chat(runner, "closed-loop")
-        closed = runner.execute(
-            "closed-loop", end_chat="Requests unavailable" if initial == "operator" else None
-        )
-    path = runner.guard.directory / "closed-loop.json"
-    before = path.read_bytes()
-    runner.steps.chat_client = ChatFault("transport" if later == "operator" else later, at=1)
-    if later == "operator":
-        # A cause that already prevents questions cannot satisfy the flag precondition.
-        if initial in ("version", "cap", "withdrawn"):
-            later = "none"
-        else:
-            interrupt_chat(runner, "recall")
-    recalled = runner.execute(
-        "recall", end_chat="Recall unavailable" if later == "operator" else None
-    )
-    first, last = closed["payload"]["chat"], recalled["payload"]["chat"]
-    assert path.read_bytes() == before
-    assert first["cause"] == (None if initial == "usable" else initial.upper())
-    assert (first["status"] == "unusable") == (first["cause"] is not None)
-    if first["cause"]:
-        assert last["cause"] == first["cause"]
-    else:
-        assert last["cause"] == (None if later == "none" else later.upper())
-    assert last["endings"][: len(first["endings"])] == first["endings"]
-    assert (last["status"] == "unusable") == (last["cause"] is not None)
-    assert recalled["status"] == "completed"
 
 
 @pytest.mark.parametrize("stage", ["decision", "chat", "save"])

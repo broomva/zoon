@@ -73,13 +73,9 @@ class Run:
             "calibrate", {**self.payload, **self.totals()}, status="terminal", reason=outcome.value
         )
 
-    def execute(
-        self, step: str = "calibrate", *, repair: str | None = None, end_chat: str | None = None
-    ) -> dict[str, Any]:
+    def execute(self, step: str = "calibrate", *, repair: str | None = None) -> dict[str, Any]:
         if step in ("closed-loop", "recall"):
-            return self.steps.execute(step, repair, end_chat)
-        if end_chat is not None:
-            raise clients.GuardRefusal("ending chat is accepted only for closed-loop or recall")
+            return self.steps.execute(step, repair)
         if step != "calibrate":
             raise clients.GuardRefusal("unknown or unimplemented step")
         with self.guard.lock():
@@ -222,24 +218,12 @@ def main(arguments: Sequence[str] | None = None) -> int:
     parser = Parser(description=__doc__)
     parser.add_argument("step", choices=("calibrate", "closed-loop", "recall"))
     parser.add_argument("--stub", action="store_true")
-    parser.add_argument("--end-chat", metavar="REASON", help="end chat if its transport fails")
     parser.add_argument("--repair", help="reason for the committed repair snapshot")
     try:
         args = parser.parse_args(arguments)
-        if args.end_chat is not None:
-            if args.step not in ("closed-loop", "recall"):
-                raise clients.GuardRefusal("--end-chat requires closed-loop or recall")
-            if not args.end_chat.strip():
-                raise clients.GuardRefusal("ending chat requires a nonempty reason")
         storage = os.environ.get("ZOON_INTERACTION_DATA")
         runner = Run(stub=args.stub, storage=Path(storage) if storage else None)
-        state = runner.execute(
-            args.step,
-            repair=args.repair,
-            **({"end_chat": args.end_chat} if args.end_chat is not None else {}),
-        )
-        if args.end_chat is not None and not runner.steps.ended:
-            print("[chat ending] flag had no effect")
+        state = runner.execute(args.step, repair=args.repair)
         payload = state["payload"]
         print(f"[interaction {state['mode']}] {args.step} = {state['status']}")
         print(

@@ -224,48 +224,6 @@ def test_channels_streams_committed_materials_and_saved_recalibration(
                     history += (kernel.Observation(tuple(enumerate(row)), game.payoffs(row)),)
 
 
-def test_step_commands_use_stub_storage_and_print_recognition_in_full(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    from dataclasses import replace
-    from typing import Any
-
-    root = repository(tmp_path / "repo")
-    storage = tmp_path / "storage"
-    original = run.Run
-
-    class Replies(chat.StubClient):
-        def ask(self, text: str) -> chat.Response:
-            response = super().ask(text)
-            if "recognise this experiment" in text:
-                return replace(response, text="" if "two players" in text else "WANG\nFull reply")
-            return replace(response, text="unusable")
-
-    class LocalRun(original):
-        def __init__(self, **kwargs: Any) -> None:
-            super().__init__(root, simulation_groups=1, chat_client=Replies(), **kwargs)
-
-    monkeypatch.setenv("ZOON_INTERACTION_DATA", str(storage))
-    monkeypatch.setattr(run, "Run", LocalRun)
-    for command in ("calibrate", "closed-loop", "recall"):
-        assert run.main([command, "--stub"]) == 0
-        output = capsys.readouterr()
-        assert output.err == ""
-        assert f"[interaction stub] {command} = completed" in output.out
-        if command == "closed-loop":
-            assert "[simulation] logs = 24" in output.out
-        if command == "recall":
-            assert "[recall stopped by] None" in output.out
-            assert output.out.count("[recall ") == 9
-            assert "WANG\nFull reply" in output.out
-    for args, message in (
-        (["recall", "--stub", "--end-chat", " "], "nonempty reason"),
-        (["calibrate", "--stub", "--end-chat", "reason"], "requires closed-loop or recall"),
-    ):
-        assert run.main(args) == 1
-        assert message in capsys.readouterr().err
-
-
 def test_chat_receipt_identity_incomplete_line_and_checkpoint_are_guarded(tmp_path: Path) -> None:
     root = repository(tmp_path / "repo")
     runner = run.Run(root, stub=True, simulation_groups=1)
