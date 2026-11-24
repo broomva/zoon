@@ -1,6 +1,7 @@
 """Durable arm outcomes, recovery and bounded operator authority."""
 
 import json
+import os
 import shutil
 from collections.abc import Callable, Generator, Iterable, Iterator
 from dataclasses import asdict, replace
@@ -13,7 +14,7 @@ import pytest
 
 from tests.interaction_run_support import repository
 from zoon.interaction import chat, kernel, prompted, run, score, simulation
-from zoon.interaction.guard import atomic, digest
+from zoon.interaction.guard import StateReplacedError, atomic, digest
 from zoon.pilot import clients
 
 Factory = Callable[..., run.Run]
@@ -108,6 +109,7 @@ def test_chat_outcomes_keep_all_other_arms_and_complete(
     assert completed["status"] == "completed"
     assert payload["chat"]["cause"] == cause
     assert payload["chat"]["status"] == "unusable"
+    assert payload["chat_pending"] == {}
     assert "outcome" not in payload and "chat" not in payload["simulations"]
     assert not any("/chat/" in n for n in payload["digests"])
     assert band_logs(faulty) == band_logs(plain)
@@ -311,7 +313,7 @@ def test_operator_command_refuses_every_missing_condition(runs: Factory, conditi
         else "interrupted"
     )
     with pytest.raises(clients.GuardRefusal, match=match):
-        runner.end_chat("" if condition == "blank" else "end chat")
+        runner.end_chat(" \t\n" if condition == "blank" else "end chat")
 
 
 @pytest.mark.parametrize("threads", [1, 4])
@@ -430,9 +432,7 @@ def test_recall_conditions_labels_full_replies_and_resume(runs: Factory, fault: 
         completed = recognizer.execute("recall")
         cause = {"withdrawn": "WITHDRAWN", "cap": "CAP"}.get(fault, "VERSION")
         assert completed["payload"]["stopped_by"] == cause
-        assert completed["payload"]["chat"]["cause"] == (
-            "WITHDRAWN" if fault == "withdrawn" else "REPLIES"
-        )
+        assert completed["payload"]["chat"]["cause"] == ("REPLIES")
         assert client.calls == (1 if fault == "invalid-version" else 3)
         labels = [r["status"] for r in completed["payload"]["recall"]]
         expected = (
@@ -481,6 +481,7 @@ def test_completed_chat_logs_meet_the_guard_digest_contract(runs: Factory) -> No
     # Inspect the required data contract without obtaining a data capability.
     runner = runs()
     completed = runner.execute("closed-loop")
+    assert completed["payload"]["chat_pending"] == {}
     outputs = cast(dict[str, str], completed["payload"]["digests"])
     assert isinstance(outputs, dict) and outputs
     for name, expected in outputs.items():
@@ -619,32 +620,20 @@ def test_each_step_can_end_chat_without_losing_the_first_event(runs: Factory) ->
     ] * 6
 
 
-@pytest.mark.parametrize("fault", ["withdrawn", "unusable"])
-def test_recall_keeps_the_first_cause_and_operator_details(
-    runs: Factory, monkeypatch: pytest.MonkeyPatch, fault: str
-) -> None:
+def test_recall_keeps_the_first_cause_and_operator_details(runs: Factory) -> None:
     runner = ended_closed_loop(runs)
     first = state(runner)["payload"]["chat_endings"][0]
     runner.steps.chat_client = ChatFault("withdrawn", at=1)
-    if fault == "unusable":
-
-        def unusable(session: chat.Session) -> chat.RecallResult:
-            raise chat.Unusable(chat.Cause.REPLAY)
-
-        monkeypatch.setattr(chat, "recall", unusable)
     completed = runner.execute("recall")
-    events = completed["payload"]["chat_endings"]
-    assert events[0] == first
-    assert events[1] == {
-        "cause": "WITHDRAWN" if fault == "withdrawn" else "REPLAY",
-        "step": "recall",
-    }
+    assert completed["payload"]["chat_endings"] == [first, {"cause": "WITHDRAWN", "step": "recall"}]
     assert completed["payload"]["chat"]["cause"] == "OPERATOR"
 
 
 def test_ending_discards_pending_chat_games(runs: Factory) -> None:
     runner = ended_closed_loop(runs)
     assert state(runner)["payload"]["chat_pending"] == {}
+    assert "chat" not in state(runner)["payload"]["simulations"]
+    assert state(runner)["payload"]["chat"]["calls"] == 44
 
 
 @pytest.mark.parametrize("damage", ["none", "unreadable", "partial"])
@@ -756,3 +745,271 @@ def test_replaced_state_is_never_saved_again(
             runner.execute("closed-loop")
     assert visible
     assert (runner.guard.directory / "closed-loop.json").read_bytes() == visible
+
+
+@pytest.mark.parametrize(
+    "initial", ["usable", "version", "replies", "cap", "withdrawn", "replay", "operator"]
+)
+@pytest.mark.parametrize("later", ["none", "version", "cap", "withdrawn", "operator"])
+def test_chat_cause_and_events_across_steps(
+    runs: Factory, monkeypatch: pytest.MonkeyPatch, initial: str, later: str
+) -> None:
+    # VERSION, CAP and WITHDRAWN prevent recall requests, so only 'none' is reachable.
+    if initial in ("version", "cap", "withdrawn") and later != "none":
+        pytest.skip("the earlier version, cap or withdrawal prevents recall requests")
+    runner = runs(chat_client=ChatFault("transport" if initial == "operator" else initial, at=5))
+    with monkeypatch.context() as patch:
+        if initial == "replay":
+
+            def failed(*args: Any, **kwargs: Any) -> Any:
+                raise chat.Unusable(chat.Cause.REPLAY)
+
+            patch.setattr(chat, "replay", failed)
+        if initial == "operator":
+            with pytest.raises(chat.TransportInterruption):
+                runner.execute("closed-loop")
+            runner.end_chat("Requests unavailable")
+        closed = runner.execute("closed-loop")
+    path = runner.guard.directory / "closed-loop.json"
+    before = path.read_bytes()
+    runner.steps.chat_client = ChatFault("transport" if later == "operator" else later, at=1)
+    if later == "operator":
+        with pytest.raises(chat.TransportInterruption):
+            runner.execute("recall")
+        runner.end_chat("Recall unavailable")
+    recalled = runner.execute("recall")
+    first, last = closed["payload"]["chat"], recalled["payload"]["chat"]
+    assert path.read_bytes() == before
+    assert first["cause"] == (None if initial == "usable" else initial.upper())
+    assert (first["status"] == "unusable") == (first["cause"] is not None)
+    if first["cause"]:
+        assert last["cause"] == first["cause"]
+    else:
+        assert last["cause"] == (None if later == "none" else later.upper())
+    assert last["endings"][: len(first["endings"])] == first["endings"]
+    assert (last["status"] == "unusable") == (last["cause"] is not None)
+    assert recalled["status"] == "completed"
+
+
+@pytest.mark.parametrize("damage", ["missing", "changed", "unreadable"])
+@pytest.mark.parametrize("ending", [False, True])
+def test_pending_damage_completes_without_blocking_other_arms(
+    runs: Factory, monkeypatch: pytest.MonkeyPatch, damage: str, ending: bool
+) -> None:
+    runner = runs()
+    original = runner.steps.save
+    stopped = False
+    name = ""
+
+    def save(status: str = "running", reason: str = "") -> dict[str, Any]:
+        nonlocal stopped, name
+        result = original(status, reason)
+        if not stopped and len(runner.steps.payload.get("chat_pending", {})) == 1:
+            name = next(iter(runner.steps.payload["chat_pending"]))
+            stopped = True
+            raise chat.TransportInterruption("requests unavailable")
+        return result
+
+    monkeypatch.setattr(runner.steps, "save", save)
+    with pytest.raises(chat.TransportInterruption):
+        runner.execute("closed-loop")
+    monkeypatch.setattr(runner.steps, "save", original)
+    if ending:
+        ended = runner.end_chat("Requests unavailable")
+        assert not ended["payload"]["chat_pending"]
+    path = runner.guard.storage / name
+    if damage == "missing":
+        path.unlink()
+    elif damage == "changed":
+        path.write_bytes(b"damaged")
+    else:
+        original_read = Path.read_bytes
+
+        def read(target: Path) -> bytes:
+            if target == path:
+                raise PermissionError("storage unavailable")
+            return original_read(target)
+
+        monkeypatch.setattr(Path, "read_bytes", read)
+        if not ending:
+            with pytest.raises(PermissionError, match="storage unavailable"):
+                runner.execute("closed-loop")
+            assert state(runner)["payload"]["last_failure"]["kind"] == "other"
+            return
+    result = runner.execute("closed-loop")
+    assert result["status"] == "completed"
+    assert result["payload"]["chat"]["cause"] == ("OPERATOR" if ending else "REPLAY")
+    assert result["payload"]["chat_pending"] == {}
+    assert "chat" not in result["payload"]["simulations"]
+
+
+@pytest.mark.parametrize("stage", ["decision", "chat", "save"])
+@pytest.mark.parametrize("started", [False, True])
+def test_initialization_failure_records_current_failure(
+    runs: Factory, monkeypatch: pytest.MonkeyPatch, stage: str, started: bool
+) -> None:
+    runner = runs(chat_client=ChatFault("transport"))
+    if started:
+        with pytest.raises(chat.TransportInterruption):
+            runner.execute("closed-loop")
+
+    def fail(*args: Any, **kwargs: Any) -> Any:
+        raise OSError("storage unavailable")
+
+    with monkeypatch.context() as patch:
+        if stage == "decision":
+            patch.setattr(run.decisions, "Session", fail)
+        elif stage == "chat":
+            patch.setattr(runner.steps, "open_chat", fail)
+        else:
+            original = runner.steps.save
+            calls = 0
+
+            def save(*args: Any, **kwargs: Any) -> Any:
+                nonlocal calls
+                calls += 1
+                return fail() if calls == 1 else original(*args, **kwargs)
+
+            patch.setattr(runner.steps, "save", save)
+        with pytest.raises(OSError, match="storage unavailable"):
+            runner.execute("closed-loop")
+    assert state(runner)["payload"]["last_failure"]["kind"] == "other"
+    with pytest.raises(clients.GuardRefusal, match="not a chat transport"):
+        runner.end_chat("Requests unavailable")
+
+
+def test_later_append_failure_keeps_checkpoint_line_count(
+    runs: Factory, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runner = runs()
+    original = os.fsync
+    count = 0
+    path = runner.guard.transcript_directory / "chat.jsonl"
+
+    def fsync(fd: int) -> None:
+        nonlocal count
+        if path.exists() and os.fstat(fd).st_ino == path.stat().st_ino:
+            count += 1
+            if count == 150:
+                raise OSError("sync unavailable")
+        original(fd)
+
+    monkeypatch.setattr(os, "fsync", fsync)
+    with pytest.raises(chat.StorageInterruption):
+        runner.execute("closed-loop")
+    saved = state(runner)
+    assert saved["payload"]["chat"]["transcript"]["lines"] == 151
+    assert len(saved["transcripts"]["chat"]["keys"]) == 150
+
+
+@pytest.mark.parametrize("fault", ["decision", "incomplete"])
+def test_cli_preserves_storage_and_incomplete_line_messages(
+    runs: Factory, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], fault: str
+) -> None:
+    runner = runs()
+    if fault == "incomplete":
+        runner.steps.chat_client = ChatFault("transport")
+        with pytest.raises(chat.TransportInterruption):
+            runner.execute("closed-loop")
+        with (runner.guard.transcript_directory / "chat.jsonl").open("ab") as handle:
+            handle.write(b'{"partial":')
+    else:
+        original = Path.open
+
+        def opening(path: Path, mode: str = "r", *args: Any, **kwargs: Any) -> Any:
+            if path.name == "decision.jsonl" and mode == "a":
+                raise OSError("storage unavailable")
+            return original(path, mode, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "open", opening)
+
+    def local(**kwargs: Any) -> run.Run:
+        return runner
+
+    monkeypatch.setattr(run, "Run", local)
+    assert run.main(["closed-loop", "--stub"]) == 1
+    output = capsys.readouterr()
+    assert "Traceback" not in output.err
+    assert (
+        "StepFailure: could not persist decision transcript"
+        if fault == "decision"
+        else "incomplete transcript line; cut the file back to"
+    ) in output.err
+
+
+def test_simulation_store_contains_paths_and_validates_chat_summaries(
+    runs: Factory, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runner = runs()
+    store = simulation.Store(runner.guard, {}, lambda: None)
+    with pytest.raises(clients.GuardRefusal, match="outside run storage"):
+        store.read("../outside.jsonl", "unused")
+
+    def summaries(*args: Any, **kwargs: Any) -> Any:
+        return np.full(5, np.nan)
+
+    monkeypatch.setattr(simulation.compare, "summaries", summaries)
+    with pytest.raises(ValueError):
+        store.record("chat", "2-FE", (kernel.Run((), ()),))
+
+
+@pytest.mark.parametrize("game_at", [1, len(chat.GAMES)])
+@pytest.mark.parametrize("point", [1, 2, 3])
+@pytest.mark.parametrize("after", [False, True])
+def test_replay_ending_recovers_at_every_final_save(
+    runs: Factory, monkeypatch: pytest.MonkeyPatch, point: int, after: bool, game_at: int
+) -> None:
+    def exercise(name: str, interrupt: bool) -> dict[str, Any]:
+        runner = runs(name)
+        original = runner.steps.save
+        count = 0
+        active = False
+        failed = False
+
+        def save(status: str = "running", reason: str = "") -> dict[str, Any]:
+            nonlocal active, count, failed
+            pending = runner.steps.payload.get("chat_pending", {})
+            if len(pending) == game_at and not active:
+                active = True
+                (runner.guard.storage / next(iter(pending))).write_bytes(b"damaged")
+            if active:
+                count += 1
+            hit = interrupt and active and count == point and not failed
+            if hit and not after:
+                failed = True
+                raise OSError("save interrupted")
+            result = original(status, reason)
+            if runner.steps.payload.get("chat_endings"):
+                assert not result["payload"]["chat_pending"]
+            if hit:
+                failed = True
+                raise StateReplacedError("save interrupted")
+            return result
+
+        with monkeypatch.context() as patch:
+            patch.setattr(runner.steps, "save", save)
+            if interrupt:
+                with pytest.raises(OSError, match="save interrupted"):
+                    runner.execute("closed-loop")
+            else:
+                return runner.execute("closed-loop")
+        assert failed
+        fresh = run.Run(
+            runner.guard.root, stub=True, storage=runner.guard.storage, simulation_groups=1
+        )
+        if state(fresh)["status"] == "completed":
+            return state(fresh)
+        return fresh.execute("closed-loop")
+
+    expected = exercise("plain", False)
+    assert expected["payload"]["chat"]["cause"] == "REPLAY"
+    assert exercise("resumed", True) == expected
+
+
+@pytest.mark.parametrize("fault", ["version", "replies", "cap", "withdrawn"])
+def test_unusable_discards_already_pending_game(runs: Factory, fault: str) -> None:
+    runner = runs(chat_client=ChatFault(fault, at=150))
+    result = runner.execute("closed-loop")
+    assert result["status"] == "completed"
+    assert result["payload"]["chat_pending"] == {}
+    assert "chat" not in result["payload"]["simulations"]

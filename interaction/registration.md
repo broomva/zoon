@@ -99,6 +99,8 @@ blocked. Three unusable replies for one decision, the model's withdrawal, a
 version change, reaching the chat cap, a failed replay of a chat game, or a first
 reported version that does not begin with the model name make `chat` unusable,
 with no scores.
+A missing unscored chat game log or one that differs from its recorded digest is
+a failed replay of that chat game; other storage errors interrupt the step.
 
 If chat requests alone keep `closed-loop` or `recall` from completing, the operator
 may end the chat arm with a recorded reason before `held-out` begins, using
@@ -112,11 +114,15 @@ persistence, this is the only operator decision the run allows, and it cannot be
 taken once `held-out` has started.
 
 Each step keeps at most one ending event, written once. Recall carries earlier
-ending events forward unchanged and may add its own; the earliest event governs
-the arm's reported cause. A withdrawal or an ending event in `recall` stops further
+ending events forward unchanged and may add its own.
+The earliest cause, however detected, governs the arm's reported cause; once a
+completed step records a cause, later steps retain it. A withdrawal or an ending event in `recall` stops further
 recall questions. An earlier ending in `closed-loop` does not prevent an operator
 ending in `recall`; a withdrawal or an ending already in the current step does.
 Completed state files remain unchanged; the recall state exposes all ending events.
+An arm usable at the end of `closed-loop` can become unusable during `recall`.
+Later steps and the report read the arm's status from the recall state; an arm
+unusable there has no scores.
 
 If `held-out` has not completed within 30 days of its first start, both
 hypotheses receive no verdict and the report publishes every score already

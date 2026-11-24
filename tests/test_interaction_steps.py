@@ -275,10 +275,10 @@ def test_chat_receipt_identity_incomplete_line_and_checkpoint_are_guarded(tmp_pa
     lines = original.splitlines(keepends=True)
     header = json.loads(lines[0])
     path.write_bytes(chat.kernel.encoded({**header, "mode": "live"}).encode() + b"".join(lines[1:]))
-    with pytest.raises(clients.GuardRefusal, match="verify inputs"):
+    with pytest.raises(clients.GuardRefusal, match="identity"):
         runner.execute("recall")
     path.write_bytes(original[:-1])
-    with pytest.raises(clients.GuardRefusal, match="verify inputs"):
+    with pytest.raises(clients.GuardRefusal, match="incomplete transcript line"):
         runner.execute("recall")
     assert path.read_bytes() == original[:-1]
     entry = json.loads(lines[1])

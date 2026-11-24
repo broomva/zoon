@@ -67,9 +67,14 @@ class Store:
         return raw
 
     def verify(self) -> None:
-        for outputs in (self.payload["digests"], self.payload["chat_pending"]):
-            for name, expected in outputs.items():
-                self.read(name, expected)
+        for name, expected in self.payload["digests"].items():
+            self.read(name, expected)
+
+    def pending(self, name: str, expected: str) -> bytes:
+        try:
+            return self.read(name, expected)
+        except (FileNotFoundError, clients.GuardRefusal):
+            raise chat.Unusable(chat.Cause.REPLAY) from None
 
     def record(self, arm: str, cell: str, runs: tuple[kernel.Run, ...]) -> dict[str, str]:
         values = np.array([compare.summaries(run.rounds, GAMES[cell]) for run in runs])
@@ -121,7 +126,7 @@ class Store:
         if raw:
             verified = chat.replay_transcript(session.transcript, session.transcript.digest())
             for name, expected in pending.items():
-                chat.replay(self.read(name, expected), verified, session.cap)
+                chat.replay(self.pending(name, expected), verified, session.cap)
         self.payload["digests"].update(pending)
         self.payload["simulations"]["chat"] = sorted(pending)
         self.payload["chat_pending"] = {}

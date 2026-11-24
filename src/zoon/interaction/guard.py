@@ -283,6 +283,8 @@ class Guard:
                 {**self.identity, "schema": SCHEMA, "repairs": self.repairs},
             )
             self.checked_step = step
+        except chat.GuardRefusal as error:
+            raise clients.GuardRefusal(str(error)) from None
         except clients.GuardRefusal:
             raise
         except Exception as error:

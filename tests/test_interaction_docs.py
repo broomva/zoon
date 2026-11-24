@@ -919,8 +919,10 @@ def test_registration_keeps_each_ending_event() -> None:
     text = (NOTE.parents[2] / "interaction" / "registration.md").read_text()
     assert (
         "Each step keeps at most one ending event, written once. Recall carries earlier\n"
-        "ending events forward unchanged and may add its own; the earliest event governs\n"
-        "the arm's reported cause. A withdrawal or an ending event in `recall` stops further\n"
+        "ending events forward unchanged and may add its own.\n"
+        "The earliest cause, however detected, governs the arm's reported cause; once a\n"
+        "completed step records a cause, later steps retain it. A withdrawal or an ending event "
+        "in `recall` stops further\n"
         "recall questions. An earlier ending in `closed-loop` does not prevent an operator\n"
         "ending in `recall`; a withdrawal or an ending already in the current step does.\n"
         "Completed state files remain unchanged; the recall state exposes all ending events."
@@ -928,3 +930,16 @@ def test_registration_keeps_each_ending_event() -> None:
     assert (
         "the report prints each reason and its number of chat decisions already answered," in text
     )
+
+
+def test_registration_pending_logs_and_final_chat_status() -> None:
+    text = (NOTE.parents[2] / "interaction" / "registration.md").read_text()
+    assert (
+        "A missing unscored chat game log or one that differs from its recorded digest is\n"
+        "a failed replay of that chat game; other storage errors interrupt the step."
+    ) in text
+    assert (
+        "An arm usable at the end of `closed-loop` can become unusable during `recall`.\n"
+        "Later steps and the report read the arm's status from the recall state; an arm\n"
+        "unusable there has no scores."
+    ) in text
