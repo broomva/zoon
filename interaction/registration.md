@@ -106,10 +106,17 @@ may end the chat arm with a recorded reason before `held-out` begins, using
 rehearsal). It records the ending; repeating the interrupted step completes it.
 The command is accepted only while `closed-loop` or `recall` is interrupted and its last
 failure was a chat transport failure. `chat` is then unusable, the step completes,
-the report prints the reason and the number of chat decisions already answered,
+the report prints each reason and its number of chat decisions already answered,
 and no verdict changes. Apart from a declared repair and the incomplete-line cut under Guard, repairs and
 persistence, this is the only operator decision the run allows, and it cannot be
 taken once `held-out` has started.
+
+Each step keeps at most one ending event, written once. Recall carries earlier
+ending events forward unchanged and may add its own; the earliest event governs
+the arm's reported cause. A withdrawal or an ending event in `recall` stops further
+recall questions. An earlier ending in `closed-loop` does not prevent an operator
+ending in `recall`; a withdrawal or an ending already in the current step does.
+Completed state files remain unchanged; the recall state exposes all ending events.
 
 If `held-out` has not completed within 30 days of its first start, both
 hypotheses receive no verdict and the report publishes every score already
@@ -119,7 +126,7 @@ held-out group has been read.
 Recall questions with no recorded answer are sent unless the model is withdrawn,
 its first reported version is invalid, its version has changed,
 or the chat cap is reached. An arm made unusable by the three-reply rule, or ended
-by the operator during `closed-loop`, is still asked. If the operator ends the arm
+by the operator during `closed-loop` or made unusable by failed replay, is still asked. If the operator ends the arm
 during `recall`, answered questions are kept and judged and the questions not yet
 answered are recorded "not asked". `closed-loop` and `recall` complete with the
 chat status recorded and "not asked" for each recall question not sent, and later
@@ -476,7 +483,8 @@ Record the version each response reports. The decision model must report exactly
 its name above. For chat, fix the version to the first response's reported version,
 which must begin with its model name, as in the pilot. Withdrawal means the
 service says the model does not exist on every bounded attempt at a request.
-Before generating, check chat model metadata without generating text; missing metadata
+Before the first missing chat request in each step, check model metadata without
+generating text; missing metadata
 does not establish withdrawal.
 A success without a non-empty string modelVersion or integer promptTokenCount is
 a transient transport fault and is retried within the bounded attempts, with no

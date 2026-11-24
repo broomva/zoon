@@ -247,7 +247,8 @@ def main(arguments: Sequence[str] | None = None) -> int:
             print(f"[recalibration] numbers = {payload['recalibration']}")
             print(f"[disguise] {json.dumps(payload['disguise'], sort_keys=True)}")
         elif args.step == "end-chat":
-            print(f"[chat ending] {json.dumps(payload['chat_ending'], sort_keys=True)}")
+            for ending in payload["chat_endings"]:
+                print(f"[chat ending] {json.dumps(ending, sort_keys=True)}")
         else:
             print(f"[chat] {json.dumps(payload['chat'], sort_keys=True)}")
             if args.step == "closed-loop":

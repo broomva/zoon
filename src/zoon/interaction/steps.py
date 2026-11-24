@@ -1,12 +1,27 @@
 """Guarded simulation and recognition steps, with durable chat-only endings."""
 
+from copy import deepcopy
 from dataclasses import asdict
 from decimal import Decimal
 from typing import Any
 
 from zoon.interaction import budget, chat, decisions, score, simulation
-from zoon.interaction.guard import Guard, checkpoint, digest, encoded
+from zoon.interaction.guard import Guard, StateReplacedError, checkpoint, digest, encoded
 from zoon.pilot import clients
+
+
+class PreflightClient:
+    def __init__(self, client: chat.Client) -> None:
+        self.client = client
+        self.ready = False
+
+    def ask(self, text: str) -> chat.Response:
+        if not self.ready:
+            preflight = getattr(self.client, "preflight", None)
+            if callable(preflight):
+                preflight()
+            self.ready = True
+        return self.client.ask(text)
 
 
 class Steps:
@@ -31,6 +46,9 @@ class Steps:
         self.groups = groups
         self.payload: dict[str, Any] = {}
         self.step = ""
+        self.recovering = False
+        self.saved_chat_checkpoint: dict[str, Any] = {}
+        self.saved_chat: dict[str, Any] = {}
         self.decision: decisions.Session | None = None
         self.session: chat.Session | None = None
         guard.register_transcripts("decision")
@@ -46,7 +64,12 @@ class Steps:
         )
 
     def chat_checkpoint(self, keys: list[str] | None) -> dict[str, Any]:
-        transcript = self.transcript()
+        try:
+            transcript = self.transcript()
+        except (chat.Interruption, chat.GuardRefusal, OSError):
+            if self.recovering and (keys is None or keys == self.saved_chat_checkpoint.get("keys")):
+                return self.saved_chat_checkpoint
+            raise
         entries = {digest(encoded(asdict(k))): asdict(e) for k, e in transcript.entries.items()}
         selected = sorted(entries) if keys is None else keys
         if selected != sorted(set(selected)) or any(k not in entries for k in selected):
@@ -56,11 +79,12 @@ class Steps:
     def chat_record(self) -> dict[str, Any]:
         transcript = self.session.transcript if self.session else self.transcript()
         raw = transcript.read_bytes()
-        ending = self.payload.get("chat_ending", {})
+        endings = self.payload.get("chat_endings", [])
         cause = chat.status(transcript, self.chat_cap)
         return {
-            "cause": ending.get("cause") or (cause.name if cause else None),
-            "status": "unusable" if ending or cause else "usable",
+            "cause": (endings[0]["cause"] if endings else None) or (cause.name if cause else None),
+            "status": "unusable" if endings or cause else "usable",
+            "endings": endings,
             "answered_decisions": sum(
                 key.kind == "decision"
                 and chat.points(entry.response.text, chat.GAMES[key.game].endowments[key.seat])
@@ -91,10 +115,21 @@ class Steps:
                 versions=sorted({r.version for r in responses}),
                 transcript=checkpoint(transcript),
             )
-        self.payload["chat"] = self.chat_record()
-        transcript = self.session.transcript if self.session else self.transcript()
-        self.payload["recall"] = [asdict(reply) for reply in chat.read_recall(transcript)]
-        return self.guard.save(self.step, self.payload, status=status, reason=reason)
+        try:
+            record = self.chat_record()
+            transcript = self.session.transcript if self.session else self.transcript()
+            recall = [asdict(reply) for reply in chat.read_recall(transcript)]
+        except (chat.Interruption, chat.GuardRefusal, OSError):
+            if not self.recovering:
+                raise
+            self.payload.update(deepcopy(self.saved_chat))
+        else:
+            self.payload["chat"] = record
+            self.payload["recall"] = recall
+        result = self.guard.save(self.step, self.payload, status=status, reason=reason)
+        self.saved_chat_checkpoint = result["transcripts"]["chat"]
+        self.saved_chat = deepcopy({"chat": self.payload["chat"], "recall": self.payload["recall"]})
+        return result
 
     def open_chat(self) -> chat.Session:
         transcript = self.transcript(read_only=False)
@@ -108,24 +143,19 @@ class Steps:
                 for key in transcript.entries:
                     if key.kind == "decision":
                         client.rng.randrange(chat.GAMES[key.game].endowments[key.seat] + 1)
-        self.session = chat.Session(transcript, client, self.chat_cap)
+        self.session = chat.Session(transcript, PreflightClient(client), self.chat_cap)
         return self.session
-
-    def preflight(self) -> None:
-        if self.session is None:
-            raise clients.GuardRefusal("a guarded chat session is required")
-        preflight = getattr(self.session.client, "preflight", None)
-        if callable(preflight):
-            preflight()
 
     def execute(self, step: str, repair: str | None = None) -> dict[str, Any]:
         if step not in ("closed-loop", "recall"):
             raise clients.GuardRefusal("unknown or unimplemented step")
         self.step = step
+        self.recovering = False
         with self.guard.lock():
             self.guard.before(step, repair)
             old = self.guard.state(step)
             self.payload = old["payload"] if old else {}
+            self.payload.pop("last_failure", None)
             self.decision = decisions.Session(
                 self.guard.transcript_directory, self.client, self.decision_cap, self.guard.identity
             )
@@ -139,7 +169,11 @@ class Steps:
                     self.recall(session)
                 self.payload.pop("last_failure", None)
                 return self.save("completed")
+            except StateReplacedError:
+                raise
             except BaseException as error:
+                self.session = None
+                self.recovering = True
                 if isinstance(error, clients.TerminalStop) and error.reason in (
                     clients.StopReason.WITHDRAWN,
                     clients.StopReason.VERSION,
@@ -169,15 +203,14 @@ class Steps:
         store.verify()
         store.bands(self.decision, self.groups)
         try:
-            ending = self.payload.get("chat_ending")
-            if ending:
+            if self.payload.get("chat_endings"):
+                self.payload["chat_pending"] = {}
                 return
             session.check()
-            self.preflight()
             store.chat(session, self.groups)
         except chat.Unusable as error:
             if error.cause in (chat.Cause.WITHDRAWN, chat.Cause.REPLAY):
-                self.payload["chat_ending"] = {"cause": error.cause.name, "step": self.step}
+                self.add_ending(error.cause.name)
                 self.save()
             # Partial chat games remain unscored. They are never promoted to digests.
             self.payload["chat_pending"] = {}
@@ -186,27 +219,32 @@ class Steps:
         prior = self.guard.state("closed-loop")
         if prior is None:
             raise clients.GuardRefusal("completed simulation is required")
-        ending = self.payload.get("chat_ending") or prior["payload"].get("chat_ending")
-        if ending:
-            self.payload["chat_ending"] = ending
-        if ending and (ending["cause"] == "WITHDRAWN" or ending["step"] == "recall"):
-            self.payload["stopped_by"] = ending["cause"]
-            return
+        endings = self.payload.setdefault(
+            "chat_endings", prior["payload"].get("chat_endings", []).copy()
+        )
+        for ending in endings:
+            if ending["cause"] == "WITHDRAWN" or ending["step"] == "recall":
+                self.payload["stopped_by"] = ending["cause"]
+                return
         cause = chat.status(session.transcript, session.cap, recall=True)
         if cause:
             self.payload["stopped_by"] = cause.name
             return
         try:
-            self.preflight()
             result = chat.recall(session)
             if result.stopped_by == chat.Cause.WITHDRAWN:
-                self.payload["chat_ending"] = {"cause": "WITHDRAWN", "step": self.step}
+                self.add_ending("WITHDRAWN")
             self.payload["stopped_by"] = result.stopped_by.name if result.stopped_by else None
         except chat.Unusable as error:
             # Withdrawal cannot be represented by a paid transcript entry.
-            self.payload["chat_ending"] = {"cause": error.cause.name, "step": self.step}
+            self.add_ending(error.cause.name)
             self.payload["stopped_by"] = error.cause.name
             self.save()
+
+    def add_ending(self, cause: str, **details: Any) -> None:
+        endings = self.payload.setdefault("chat_endings", [])
+        if not any(event["step"] == self.step for event in endings):
+            endings.append({"cause": cause, "step": self.step, **details})
 
     def end_chat(self, reason: str, repair: str | None = None) -> dict[str, Any]:
         if not reason.strip():
@@ -224,12 +262,15 @@ class Steps:
             self.payload = old["payload"]
             if self.payload.get("last_failure", {}).get("kind") != "chat_transport":
                 raise clients.GuardRefusal("the last failure was not a chat transport failure")
-            if self.payload.get("chat_ending"):
+            if any(
+                event["step"] == self.step or event["cause"] == "WITHDRAWN"
+                for event in self.payload.get("chat_endings", [])
+            ):
                 raise clients.GuardRefusal("an ending of the chat arm is already recorded")
-            self.payload["chat_ending"] = {
-                "cause": "OPERATOR",
-                "reason": reason,
-                "step": self.step,
-                "answered_decisions": self.chat_record()["answered_decisions"],
-            }
+            self.session = None
+            self.add_ending(
+                "OPERATOR",
+                reason=reason,
+                answered_decisions=self.chat_record()["answered_decisions"],
+            )
             return self.save("interrupted", old["reason"])

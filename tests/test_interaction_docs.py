@@ -729,10 +729,12 @@ def test_registration_chat_contract_has_only_the_registered_rules() -> None:
         "same H3 composite, difference and interval. It changes no verdict.\n"
     )
     reply_rules = (
-        "Before generating," + text.split("Before generating,", 1)[1].split("\nThe outcomes", 1)[0]
+        "Before the first missing chat request"
+        + text.split("Before the first missing chat request", 1)[1].split("\nThe outcomes", 1)[0]
     )
     assert reply_rules == (
-        "Before generating, check chat model metadata without generating text; missing metadata\n"
+        "Before the first missing chat request in each step, check model metadata without\n"
+        "generating text; missing metadata\n"
         "does not establish withdrawal.\n"
         "A success without a non-empty string modelVersion or integer promptTokenCount is\n"
         "a transient transport fault and is retried within the bounded attempts, with no\n"
@@ -803,7 +805,8 @@ def test_registration_recall_contract() -> None:
         "Recall questions with no recorded answer are sent unless the model is withdrawn,\n"
         "its first reported version is invalid, its version has changed,\n"
         "or the chat cap is reached. An arm made unusable by the three-reply rule, or ended\n"
-        "by the operator during `closed-loop`, is still asked. If the operator ends the arm\n"
+        "by the operator during `closed-loop` or made unusable by failed replay, is still asked. "
+        "If the operator ends the arm\n"
         "during `recall`, answered questions are kept and judged and the questions not yet\n"
         'answered are recorded "not asked". `closed-loop` and `recall` complete with the\n'
         'chat status recorded and "not asked" for each recall question not sent, and later\n'
@@ -910,3 +913,18 @@ def test_available_step_modules_and_remaining_work_are_explicit() -> None:
         assert (root / "src/zoon/interaction" / name).is_file()
     assert "`python -m zoon.interaction.run end-chat --reason TEXT`" in registration
     assert "It records the ending; repeating the interrupted step completes it." in normal
+
+
+def test_registration_keeps_each_ending_event() -> None:
+    text = (NOTE.parents[2] / "interaction" / "registration.md").read_text()
+    assert (
+        "Each step keeps at most one ending event, written once. Recall carries earlier\n"
+        "ending events forward unchanged and may add its own; the earliest event governs\n"
+        "the arm's reported cause. A withdrawal or an ending event in `recall` stops further\n"
+        "recall questions. An earlier ending in `closed-loop` does not prevent an operator\n"
+        "ending in `recall`; a withdrawal or an ending already in the current step does.\n"
+        "Completed state files remain unchanged; the recall state exposes all ending events."
+    ) in text
+    assert (
+        "the report prints each reason and its number of chat decisions already answered," in text
+    )
