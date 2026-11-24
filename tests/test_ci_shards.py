@@ -86,3 +86,15 @@ def test_pytest_collection_matches_ci_pattern(tmp_path: Path) -> None:
     assert result.returncode == 0, result.stdout + result.stderr
     assert "tests/test_included.py::test_included" in result.stdout
     assert "test_excluded" not in result.stdout
+
+
+@pytest.mark.parametrize("directory", ["tests", "tests/nested"])
+def test_ci_shards_refuse_files_outside_the_collection_pattern(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, directory: str
+) -> None:
+    parent = tmp_path / directory
+    parent.mkdir(parents=True)
+    (parent / "omitted_test.py").write_text("def test_omitted(): assert False\n")
+    monkeypatch.chdir(tmp_path)
+    with pytest.raises(ValueError, match="naming pattern"):
+        ci_shards.main(["--check"])

@@ -23,7 +23,12 @@ requirements for registration, not descriptions of an implemented run.
 If both comparisons were computed and either does not meet the rule, the hypothesis
 is failed; if a comparison could not be computed, there is no verdict. The
 completion and run-ending rules under Data govern whether a hypothesis can be judged.
-The `chat` arm decides nothing.
+The `chat` arm decides nothing. A chat request that fails in transport after the
+bounded attempts, is refused by the service without establishing withdrawal, or
+whose reply is refused by the secret check interrupts the step; repeat the step's
+command. Until the operator's ending of the chat arm is implemented, a failure
+that never clears and is not a withdrawal prevents `closed-loop` or `recall` from
+completing, so `held-out` cannot start.
 
 **What a pass means.** H2 shows better next-move prediction by this law using the
 others' history than by the chosen law without it and this prompt to this model.
@@ -92,9 +97,7 @@ For both models, a request has at most 4 attempts, with pauses of 1, 2 and 4
 seconds between failed attempts, as in `src/zoon/pilot/clients.py`, function `retry`.
 The analysis code must use the same counts and pauses.
 
-A chat request that fails in transport after the bounded tries interrupts the
-step and is resumed; it does not count toward the three attempts.
-An unusable
+A transport failure does not count toward the three attempts. An unusable
 reply is a recorded response whose text fails the reply rule, or is empty or
 blocked. Three unusable replies for one decision, the model's withdrawal, a
 version change, reaching the chat cap, a failed replay of a chat game, or a first
@@ -517,6 +520,12 @@ Before the first missing chat request in each attempt, check model metadata with
 generating text; missing metadata
 does not establish withdrawal. A metadata check answered not found (404 or 410) permits the generating request;
 only that request's bounded attempts decide withdrawal.
+For the generating request, an HTTP 200 answer that cannot be processed, whose
+modelVersion is not a non-blank string or whose promptTokenCount is not a
+non-negative integer is unrecorded and retried within the bounded attempts,
+unless the secret check refuses it. An answer refused by the secret check is
+unrecorded, interrupts the step with GuardRefusal, and is requested again on the
+next attempt.
 Missing candidatesTokenCount or thoughtsTokenCount means zero,
 with or without candidate text; a present count that is not a non-negative integer,
 including a boolean, is the same transient fault.
