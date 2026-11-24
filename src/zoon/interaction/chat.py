@@ -142,6 +142,13 @@ class Interruption(Exception):
 class TransportInterruption(Interruption):
     """A transient transport fault; repeating the step may succeed."""
 
+    def __init__(
+        self, message: str, *, stage: str | None = None, last_status: int | None = None
+    ) -> None:
+        super().__init__(message)
+        self.stage = stage
+        self.last_status = last_status
+
 
 class StorageInterruption(Interruption):
     """Storage failed; repeat the command to reopen the transcript."""
@@ -160,7 +167,9 @@ class GuardRefusal(Exception):
 
 
 class TransientError(Exception):
-    pass
+    def __init__(self, message: str = "", *, last_status: int | None = None) -> None:
+        super().__init__(message)
+        self.last_status = last_status
 
 
 class ModelMissing(TransientError):
@@ -214,11 +223,13 @@ def validate(response: Response) -> None:
 def _http(
     url: str, headers: dict[str, str], body: bytes, method: str
 ) -> tuple[int, dict[str, Any]]:
+    status: int | None = None
     try:
         outgoing = urllib.request.Request(
             url, data=body if method == "POST" else None, headers=headers, method=method
         )
         with urllib.request.urlopen(outgoing, timeout=30) as reply:
+            status = getattr(reply, "status", None)
             value = json.loads(reply.read())
             if not isinstance(value, dict):
                 raise ValueError
@@ -227,7 +238,10 @@ def _http(
         return error.code, {}
     except (ValueError, TypeError):
         pass
-    raise TransientError("invalid chat JSON response")
+    except (OSError, http.client.HTTPException):
+        if status is None:
+            raise
+    raise TransientError("invalid chat JSON response", last_status=status)
 
 
 def post(url: str, headers: dict[str, str], body: bytes) -> tuple[int, dict[str, Any]]:
@@ -300,9 +314,13 @@ class VertexClient:
         if not os.environ.get("ZOON_VERTEX_PROJECT", ""):
             raise ConfigurationInterruption("ZOON_VERTEX_PROJECT is required")
 
+        last_status: int | None = None
+
         def probe() -> Response:
+            nonlocal last_status
             try:
                 bearer = self.bearer()
+                last_status = None
                 status, _ = self.preflight_transport(
                     "https://aiplatform.googleapis.com/v1/publishers/google/models/" + MODEL,
                     {
@@ -312,6 +330,7 @@ class VertexClient:
                     },
                     b"",
                 )
+                last_status = status
                 if status == 401:
                     self.bearer(rejected=bearer)
                     raise TransientError
@@ -320,13 +339,21 @@ class VertexClient:
                 if status not in (200, 404, 410):
                     raise ConfigurationInterruption("chat metadata request refused")
                 return Response("", MODEL, 0, 0)
-            except (TransientError, Interruption, GuardRefusal, OSError, http.client.HTTPException):
+            except TransientError as error:
+                if error.last_status is not None:
+                    last_status = error.last_status
+                raise
+            except (Interruption, GuardRefusal, OSError, http.client.HTTPException):
                 raise
             except Exception:
                 pass
             raise TransientError("chat metadata processing failed")
 
-        retry(probe, self.pause)
+        try:
+            retry(probe, self.pause)
+        except TransportInterruption as error:
+            error.stage, error.last_status = "metadata check", last_status
+            raise
         self._preflight_pid = os.getpid()
 
     def ask(self, text: str) -> Response:
@@ -357,9 +384,13 @@ class VertexClient:
             }
         ).encode()
 
+        last_status: int | None = None
+
         def call() -> Response:
+            nonlocal last_status
             try:
                 bearer = self.bearer()
+                last_status = None
                 status, data = self.transport(
                     endpoint,
                     {
@@ -369,6 +400,7 @@ class VertexClient:
                     },
                     body,
                 )
+                last_status = status
                 if status == 401:
                     self.bearer(rejected=bearer)
                 if status in (404, 410):
@@ -411,8 +443,11 @@ class VertexClient:
                 )
                 validate(response)
                 return response
+            except TransientError as error:
+                if error.last_status is not None:
+                    last_status = error.last_status
+                raise
             except (
-                TransientError,
                 Interruption,
                 GuardRefusal,
                 OSError,
@@ -423,7 +458,11 @@ class VertexClient:
                 pass
             raise TransientError("chat response processing failed")
 
-        return retry(call, self.pause)
+        try:
+            return retry(call, self.pause)
+        except TransportInterruption as error:
+            error.stage, error.last_status = "generating request", last_status
+            raise
 
 
 class StubClient:

@@ -248,11 +248,17 @@ def test_flag_on_recorded_ending_does_nothing(
     events = state(runner, step)["payload"]["chat_endings"]
     capsys.readouterr()
     runner.steps.chat_client = ChatFault("transport", at=1)
-    done = runner.execute(step, end_chat="Second reason")
+
+    def local(**kwargs: Any) -> run.Run:
+        return runner
+
+    monkeypatch.setattr(run, "Run", local)
+    assert run.main([step, "--stub", "--end-chat", "Second reason"]) == 0
+    done = state(runner, step)
     assert not runner.steps.ended
     assert done["payload"]["chat_endings"] == events
     assert runner.steps.chat_client.calls == 0
-    assert "flag had no effect" not in capsys.readouterr().out
+    assert capsys.readouterr().out.count("flag had no effect") == 1
 
 
 @pytest.mark.parametrize("flag", [False, True])
@@ -869,3 +875,25 @@ def test_running_state_refuses_flag_without_ending(runs: Factory, step: str) -> 
     with pytest.raises(clients.GuardRefusal, match="only after an attempt"):
         runner.execute(step, end_chat="Unavailable")
     assert state(runner, step) == before
+
+
+def test_closed_loop_ending_does_not_license_recall_flag(runs: Factory) -> None:
+    runner = runs(prepared="bands")
+    interrupt_chat(runner, "closed-loop")
+    runner.steps.chat_client = ChatFault("transport", at=1)
+    runner.execute("closed-loop", end_chat="Down")
+    assert state(runner, "closed-loop")["payload"]["chat_endings"][-1]["cause"] == "OPERATOR"
+
+    class Storage(ChatFault):
+        def ask(self, text: str) -> chat.Response:
+            raise chat.StorageInterruption("storage failed")
+
+    runner.steps.chat_client = Storage("none")
+    with pytest.raises(chat.StorageInterruption):
+        runner.execute("recall")
+    saved = state(runner, "recall")
+    assert saved["reason"] == "StorageInterruption"
+    assert [e["step"] for e in saved["payload"]["chat_endings"]] == ["closed-loop"]
+    runner.steps.chat_client = ChatFault("transport", at=1)
+    with pytest.raises(clients.GuardRefusal, match="only after an attempt"):
+        runner.execute("recall", end_chat="Down")

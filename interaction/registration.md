@@ -148,6 +148,15 @@ persistence, this is the only operator decision the run allows. The operator mus
 use it only when chat transport prevents completion; the guard cannot judge intent.
 It cannot be used once `held-out` has started: completed calling steps cannot be
 repeated.
+Any reply the service returns uses up the flag, including an unusable or blocked
+reply or one reporting another version.
+If the flag was given, a service request succeeded and the step later fails, the
+command prints "flag used up: a chat request succeeded in this attempt" once
+before the error propagates.
+For an operator ending from the service client, the ending records and the command
+prints failure_stage (metadata check or generating request) and last_status (the
+last HTTP status, or null if no HTTP answer reached the client, including a
+failed connection).
 
 Each step keeps at most one ending event, written once. Recall carries earlier
 ending events forward unchanged and may add its own.
@@ -519,7 +528,7 @@ lists the report's output path outside the registered inputs.
 | `src/zoon/interaction/simulation.py` | Existing today | Committed-arm simulation and game log persistence |
 | `src/zoon/interaction/guard.py` | Existing today | Run guards, repairs, state and lock |
 | `src/zoon/interaction/decisions.py` | Existing today | Budgeted decision calls and append-only records |
-| `src/zoon/interaction/chat.py` | Existing today | The chat request renderer |
+| `src/zoon/interaction/chat.py` | Existing today | Chat requests, client, transcript, replay and recall |
 | `docs/interaction/result.md` | Added by the analysis code | The report, outside the registered directory |
 | `interaction/chat-requests/` | Existing today | Committed chat request fixtures |
 
@@ -550,9 +559,28 @@ service says the model does not exist on every bounded attempt at a request.
 When bounded attempts mix not-found answers with a transport fault (for example
 three not-found answers followed by a transport fault), the result is a transport
 failure, not a withdrawal.
-A chat request refused as misconfigured (for example a permission refusal)
-interrupts the step until configuration is corrected; the flag does not apply.
-If configuration cannot be corrected, the step cannot complete.
+For the metadata check, 200, 404 and 410 permit the generating request; 404 and
+410 say the metadata was not found, not that the generating model is withdrawn.
+For that check, 401 refreshes the token and is retried; 429, 5xx and connection
+failures are also retried and, if all bounded attempts fail, interrupt the step
+with TransportInterruption, on which the flag may end the arm.
+Every other metadata status, including 400, 403 and 3xx, is a configuration refusal.
+For the generating request, 200 returns a reply subject to the response checks below;
+404 and 410 mean the model does not exist, and withdrawal requires those answers
+on every bounded attempt.
+For that request, 401 refreshes the token; all 4xx other than 403, 404 and 410,
+including 400, 401 and 429, and all 5xx and connection failures are retried and,
+if they persist, interrupt the step with TransportInterruption, on which the flag
+may end the arm.
+A generating status other than 200 outside 4xx and 5xx, or 403, is a configuration
+refusal.
+The request format is checked against the live service before the registration is
+tagged; a persistent generating 400 during the registered run therefore means the
+service has changed and is a failure on which the operator may end the arm.
+A configuration refusal at either stage interrupts the step until configuration
+is corrected; the flag does not apply.
+If it cannot be corrected, the step cannot complete, `held-out` cannot start,
+and neither hypothesis is decided.
 Before the first missing chat request in each attempt, check model metadata without
 generating text; missing metadata
 does not establish withdrawal. A metadata check answered not found (404 or 410) permits the generating request;
@@ -655,8 +683,8 @@ same H3 composite, difference and interval. It changes no verdict.
 
 ## Spending
 
-Each model has its own cap, so that an arm that decides nothing cannot end the
-run. **Decision-model cap in US dollars: 17.** **Chat-model cap in US dollars,
+Each model has its own cap, so exhausting the chat cap cannot end the run;
+a configuration refusal can still prevent completion as described above. **Decision-model cap in US dollars: 17.** **Chat-model cap in US dollars,
 recall included: 2544.** Count spending from reported tokens in recorded
 responses at the fixed prices. Retain and count unusable chat replies before
 retrying them. As in the pilot, do not send a call if that model's spent tokens'

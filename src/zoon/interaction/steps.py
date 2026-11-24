@@ -161,6 +161,7 @@ class Steps:
             self.payload = old["payload"] if old else {}
             self.session = None
             self.decision = None
+            session: chat.Session | None = None
             try:
                 self.decision = decisions.Session(
                     self.guard.transcript_directory,
@@ -180,9 +181,16 @@ class Steps:
                 self.save()
                 (self.closed_loop if step == "closed-loop" else self.recall)(session, end_chat)
                 return self.save("completed")
-            except StateReplacedError:
-                raise
             except BaseException as error:
+                if (
+                    end_chat is not None
+                    and session is not None
+                    and isinstance(session.client, PreflightClient)
+                    and session.client.succeeded
+                ):
+                    print("[chat ending] flag used up: a chat request succeeded in this attempt")
+                if isinstance(error, StateReplacedError):
+                    raise
                 self.session = None
                 if isinstance(error, clients.TerminalStop) and error.reason in (
                     clients.StopReason.WITHDRAWN,
@@ -215,8 +223,8 @@ class Steps:
                 return
             session.check()
             store.chat(session, self.groups)
-        except chat.TransportInterruption:
-            self.operator_ending(end_chat)
+        except chat.TransportInterruption as error:
+            self.operator_ending(end_chat, error)
         except chat.Unusable as error:
             if error.cause in (chat.Cause.WITHDRAWN, chat.Cause.REPLAY):
                 self.add_ending(error.cause.name)
@@ -230,8 +238,8 @@ class Steps:
                 return
         try:
             result = chat.recall(session)
-        except chat.TransportInterruption:
-            self.operator_ending(end_chat)
+        except chat.TransportInterruption as error:
+            self.operator_ending(end_chat, error)
             self.payload["stopped_by"] = "OPERATOR"
             return
         if result.stopped_by == chat.Cause.WITHDRAWN:
@@ -244,7 +252,7 @@ class Steps:
             {"cause": cause, "step": self.step, **details}
         )
 
-    def operator_ending(self, reason: str | None) -> None:
+    def operator_ending(self, reason: str | None, error: chat.TransportInterruption) -> None:
         if reason is None or (
             self.session is not None
             and isinstance(self.session.client, PreflightClient)
@@ -253,7 +261,9 @@ class Steps:
             raise
         self.ended = True
         self.payload["chat_transport_failures"] = self.payload.get("chat_transport_failures", 0) + 1
-        details = {}
+        details: dict[str, Any] = {}
+        if error.stage is not None:
+            details.update(failure_stage=error.stage, last_status=error.last_status)
         if self.step == "recall":
             details["answered_recall"] = sum(
                 key.kind == "recall" for key in self.transcript().entries

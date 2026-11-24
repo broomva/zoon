@@ -778,8 +778,10 @@ def test_registration_spending_cap_contract() -> None:
     )[0]
     passage = "Each model has its own cap" + passage
     assert passage == (
-        "Each model has its own cap, so that an arm that decides nothing cannot end the\n"
-        "run. **Decision-model cap in US dollars: 17.** **Chat-model cap in US dollars,\n"
+        "Each model has its own cap, so exhausting the chat cap cannot end the run;\n"
+        "a configuration refusal can still prevent completion as described"
+        " above. **Decision-model cap in US dollars: 17.** **Chat-model ca"
+        "p in US dollars,\n"
         "recall included: 2544.** Count spending from reported tokens in recorded\n"
         "responses at the fixed prices. Retain and count unusable chat replies before\n"
         "retrying them. As in the pilot, do not send a call if that model's spent tokens'\n"
@@ -974,6 +976,15 @@ def test_registration_chat_outputs_and_final_status() -> None:
         "use it only when chat transport prevents completion; the guard cannot judge intent.\n"
         "It cannot be used once `held-out` has started: completed calling steps cannot be\n"
         "repeated.\n"
+        "Any reply the service returns uses up the flag, including an unusable or blocked\n"
+        "reply or one reporting another version.\n"
+        "If the flag was given, a service request succeeded and the step later fails, the\n"
+        'command prints "flag used up: a chat request succeeded in this attempt" once\n'
+        "before the error propagates.\n"
+        "For an operator ending from the service client, the ending records and the command\n"
+        "prints failure_stage (metadata check or generating request) and last_status (the\n"
+        "last HTTP status, or null if no HTTP answer reached the client, including a\n"
+        "failed connection).\n"
         "\n"
         "Each step keeps at most one ending event, written once. Recall carries earlier\n"
         "ending events forward unchanged and may add its own.\n"
@@ -1021,12 +1032,141 @@ def test_registration_transport_and_configuration_contract() -> None:
         "When bounded attempts mix not-found answers with a transport fault (for example\n"
         "three not-found answers followed by a transport fault), the result is a transport\n"
         "failure, not a withdrawal.\n"
-        "A chat request refused as misconfigured (for example a permission refusal)\n"
-        "interrupts the step until configuration is corrected; the flag does not apply.\n"
-        "If configuration cannot be corrected, the step cannot complete.\n"
+        "For the metadata check, 200, 404 and 410 permit the generating request; 404 and\n"
+        "410 say the metadata was not found, not that the generating model is withdrawn.\n"
+        "For that check, 401 refreshes the token and is retried; 429, 5xx and connection\n"
+        "failures are also retried and, if all bounded attempts fail, interrupt the step\n"
+        "with TransportInterruption, on which the flag may end the arm.\n"
+        "Every other metadata status, including 400, 403 and 3xx, is a configuration refusal.\n"
+        "For the generating request, 200 returns a reply subject to the response checks below;\n"
+        "404 and 410 mean the model does not exist, and withdrawal requires those answers\n"
+        "on every bounded attempt.\n"
+        "For that request, 401 refreshes the token; all 4xx other than 403, 404 and 410,\n"
+        "including 400, 401 and 429, and all 5xx and connection failures are retried and,\n"
+        "if they persist, interrupt the step with TransportInterruption, on which the flag\n"
+        "may end the arm.\n"
+        "A generating status other than 200 outside 4xx and 5xx, or 403, is a configuration\n"
+        "refusal.\n"
+        "The request format is checked against the live service before the registration is\n"
+        "tagged; a persistent generating 400 during the registered run therefore means the\n"
+        "service has changed and is a failure on which the operator may end the arm.\n"
+        "A configuration refusal at either stage interrupts the step until configuration\n"
+        "is corrected; the flag does not apply.\n"
+        "If it cannot be corrected, the step cannot complete, `held-out` cannot start,\n"
+        "and neither hypothesis is decided.\n"
         "Before the first missing chat request in each attempt, check model metadata without\n"
         "generating text; missing metadata\n"
         "does not establish withdrawal. A metadata check answered not found (40"
         "4 or 410) permits the generating request;\n"
         "only that request's bounded attempts decide withdrawal.\n" in text
     )
+
+
+def test_registration_resume_order_retries_and_files() -> None:
+    text = (NOTE.parents[2] / "interaction" / "registration.md").read_text()
+    for passage in (
+        (
+            "For both models, a request has at most 4 attempts, with pauses of 1, 2 and 4\n"
+            "seconds between failed attempts, as in `src/zoon/pilot/clients.py`, "
+            "function `retry`.\n"
+            "The analysis code must use the same counts and pauses."
+        ),
+        (
+            "Record the version each response reports. The decision model must report exactly\n"
+            "its name above. For chat, fix the version to the first response's "
+            "reported version,\n"
+            "which must begin with its model name, as in the pilot. Withdrawal means the\n"
+            "service says the model does not exist on every bounded attempt at a request."
+        ),
+        (
+            "Everything else interrupts a step and is resumed by repeating its command.\n"
+            "Recorded answers are kept. Only missing answers are requested. A change that is\n"
+            "not a permitted repair ends confirmatory use; what follows is exploratory and\n"
+            "decides neither hypothesis. This is an operator rule; the guard cannot "
+            "judge intent."
+        ),
+        (
+            "2. `python -m zoon.interaction.run closed-loop`: simulate all usable arms. Write\n"
+            "   each coded and prompted arm's logs and guarded digests when that arm "
+            "finishes.\n"
+            "   Write chat logs and their separate digests only on completion, after "
+            "replay against\n"
+            "   the verified transcript. Finish all simulation before any held-out "
+            "group is read.\n"
+            "3. `python -m zoon.interaction.run recall`: ask the chat model the "
+            "recall questions.\n"
+            "4. `python -m zoon.interaction.run held-out`: the first step to read "
+            "held-out groups.\n"
+            "   Only this step may call the second sealing step that produces them. Make the\n"
+            "   open-loop calls and score H2 and H3. An unusable chat arm does not block it."
+        ),
+        (
+            "A completed calling step is not repeated; `report` may be run again and must\n"
+            "reproduce the same file. An interrupted step resumes with recorded\n"
+            "answers and requests only those missing. A later calling step requires completed\n"
+            "prerequisites; report records terminal outcomes without requiring later calling\n"
+            "steps. The held-out prerequisite is completed simulation with recorded\n"
+            "digests."
+        ),
+        (
+            "Each model has its own cap, so exhausting the chat cap cannot end the run;\n"
+            "a configuration refusal can still prevent completion as described above."
+        ),
+        ("| `interaction/registration.md` | Existing today | This registration |"),
+        ("| `interaction/` | Existing today | All interaction materials |"),
+        ("| `interaction/data-manifest.json` | Existing today | Source and training hashes |"),
+        ("| `interaction/instructions/` | Existing today | Eight rendered instructions |"),
+        ("| `interaction/instructions/sha256.json` | Existing today | Instruction digests |"),
+        ("| `interaction/requests/` | Existing today | Rendered request fixtures |"),
+        (
+            "| `interaction/fitted.json` | Existing today | B and twin numbers, from "
+            "the committed fitting procedure |"
+        ),
+        ("| `interaction/amounts.json` | Existing today | The training band-to-points table |"),
+        (
+            "| `src/zoon/interaction/score.py` | Existing today | Registered scores, "
+            "intervals and verdicts |"
+        ),
+        (
+            "| `src/zoon/interaction/registered.py` | Existing today | Committed "
+            "material readers and regeneration |"
+        ),
+        (
+            "| `src/zoon/interaction/power.py` | Existing today | Training power and "
+            "coverage calculation |"
+        ),
+        (
+            "| `docs/interaction/power.md` | Existing today | Power assumptions and "
+            "one recorded run |"
+        ),
+        (
+            "| `src/zoon/interaction/run.py` | Existing today | Calibration and step "
+            "command dispatch |"
+        ),
+        (
+            "| `src/zoon/interaction/steps.py` | Existing today | Closed-loop, recall "
+            "and operator chat endings |"
+        ),
+        (
+            "| `src/zoon/interaction/simulation.py` | Existing today | Committed-arm "
+            "simulation and game log persistence |"
+        ),
+        (
+            "| `src/zoon/interaction/guard.py` | Existing today | Run guards, "
+            "repairs, state and lock |"
+        ),
+        (
+            "| `src/zoon/interaction/decisions.py` | Existing today | Budgeted "
+            "decision calls and append-only records |"
+        ),
+        (
+            "| `src/zoon/interaction/chat.py` | Existing today | Chat requests, "
+            "client, transcript, replay and recall |"
+        ),
+        (
+            "| `docs/interaction/result.md` | Added by the analysis code | The "
+            "report, outside the registered directory |"
+        ),
+        ("| `interaction/chat-requests/` | Existing today | Committed chat request fixtures |"),
+    ):
+        assert passage in text
