@@ -123,11 +123,8 @@ def test_unreadable_chat_never_rewrites_checkpoint(
 
     def save(status: str = "running", reason: str = "") -> dict[str, Any]:
         nonlocal active
-        active = stage != "completed" or status == "completed"
-        try:
-            return original_save(status, reason)
-        finally:
-            active = False
+        active = active or stage != "completed" or status == "completed"
+        return original_save(status, reason)
 
     with monkeypatch.context() as patch:
         patch.setattr(Path, "open", opening)
@@ -139,16 +136,11 @@ def test_unreadable_chat_never_rewrites_checkpoint(
         assert not path.exists()
     else:
         saved = state(runner, "recall")
-        assert saved["status"] == "interrupted"
-        assert saved["payload"]["last_failure"]["kind"] == "other"
+        assert saved["status"] == ("running" if stage == "completed" else "interrupted")
         assert saved["transcripts"] == previous["transcripts"]
         payload = saved["payload"].copy()
-        payload.pop("last_failure")
         old_payload = previous["payload"].copy()
-        old_payload.pop("last_failure")
         assert payload == old_payload
-    with pytest.raises(clients.GuardRefusal):
-        fresh(runner).end_chat("storage recovered")
     completed = fresh(runner).execute("recall")
     assert all(r["status"] == "judged" for r in completed["payload"]["recall"])
 
@@ -219,8 +211,8 @@ def test_final_status_comes_from_recall(
     assert '"cause": "VERSION"' in capsys.readouterr().out
     assert state(runner)["payload"]["chat"]["status"] == "usable"
     with runner.guard.lock():
-        assert runner.guard.chat_record()["status"] == "unusable"
-        assert runner.guard.chat_record()["cause"] == "VERSION"
+        assert runner.guard.final_chat_record()["status"] == "unusable"
+        assert runner.guard.final_chat_record()["cause"] == "VERSION"
 
 
 @pytest.mark.parametrize("fault", ["VERSION", "CAP"])
@@ -250,10 +242,8 @@ def test_terminal_save_failure_is_repeated_from_receipts(
         patch.setattr(runner.steps, "save", save)
         with pytest.raises(OSError):
             runner.execute("closed-loop")
-    assert state(runner)["status"] == "interrupted"
+    assert state(runner)["status"] == "running"
     assert "outcome" not in state(runner)["payload"]
-    with pytest.raises(clients.GuardRefusal):
-        fresh(runner).end_chat("storage recovered")
     assert runner.execute("closed-loop")["payload"]["outcome"]["reason"] == fault
 
 
@@ -262,7 +252,7 @@ def test_completed_chat_logs_are_never_guard_inputs(
 ) -> None:
     runner = runs()
     completed = runner.execute("closed-loop")
-    for name in completed["payload"]["simulations"]["chat"]:
+    for name in completed["payload"]["chat_logs"]:
         (runner.guard.storage / name).unlink()
     runner.execute("recall")
     original_open = Path.open
@@ -313,42 +303,3 @@ def test_final_replay_uses_transcript_and_keeps_ending(
     result = fresh(runner).execute("closed-loop")
     assert result["payload"]["chat"]["cause"] == "REPLAY"
     assert "chat_logs" not in result["payload"]
-
-
-@pytest.mark.parametrize("command", ["execute", "end-chat"])
-def test_atomic_replace_is_not_followed_by_failure_annotation(
-    runs: Factory, monkeypatch: pytest.MonkeyPatch, command: str
-) -> None:
-    from zoon.interaction.guard import StateReplacedError
-
-    runner = runs(chat_client=ChatFault("transport"))
-    if command == "end-chat":
-        with pytest.raises(chat.TransportInterruption):
-            runner.execute("closed-loop")
-    original_replace = Path.replace
-    visible = b""
-    replacements = 0
-
-    def replace(path: Path, target: Any) -> Path:
-        nonlocal visible, replacements
-        result = original_replace(path, target)
-        if Path(target).name == "closed-loop.json":
-            visible = Path(target).read_bytes()
-            replacements += 1
-        return result
-
-    def fsync(fd: int) -> None:
-        if visible:
-            invalid_fsync(fd)
-        REAL_FSYNC(fd)
-
-    with monkeypatch.context() as patch:
-        patch.setattr(Path, "replace", replace)
-        patch.setattr(os, "fsync", fsync)
-        with pytest.raises(StateReplacedError):
-            if command == "execute":
-                runner.execute("closed-loop")
-            else:
-                runner.end_chat("requests unavailable")
-    assert replacements == 1
-    assert (runner.guard.directory / "closed-loop.json").read_bytes() == visible

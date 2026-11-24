@@ -116,7 +116,6 @@ class Store:
         for cell, runs in games.items():
             outputs.update(self.record("chat", cell, runs))
         self.payload["chat_logs"] = outputs
-        self.payload["simulations"]["chat"] = sorted(outputs)
 
 
 def play_chat_game(game: Game, session: chat.Session, groups: int) -> tuple[kernel.Run, ...]:

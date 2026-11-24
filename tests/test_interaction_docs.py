@@ -655,7 +655,7 @@ def test_draft_status_does_not_reopen_completed_chat_work() -> None:
         "chat requests, transcripts and replay, scoring and intervals, the fitted files, "
         "power and coverage under the registered rules, the second seal, "
         "run guards and step state, "
-        "calibration, closed-loop, recall and the operator chat-ending command "
+        "calibration, closed-loop and recall "
         "are implemented and tested; held-out and report "
         "remain open" in readme
     )
@@ -835,8 +835,7 @@ def test_registration_incomplete_line_contract() -> None:
     normal = " ".join(text.split())
     assert (
         "Apart from a declared repair and the incomplete-line cut under Guard, repairs and "
-        "persistence, this is the only operator decision the run allows, and it cannot be "
-        "taken once `held-out` has started."
+        "persistence, this is the only operator decision the run allows."
     ) in normal
     assert (
         "Do not delete or reset state or transcripts during the run, except for that cut."
@@ -898,12 +897,11 @@ def test_available_step_modules_and_remaining_work_are_explicit() -> None:
     registration = (root / "interaction/registration.md").read_text()
     normal = " ".join(registration.split())
     assert (
-        "Calibration, closed-loop, recall and the operator chat-ending command "
+        "Calibration, closed-loop and recall "
         "are implemented today; held-out and report remain requirements."
     ) in normal
     assert (
-        "calibration, closed-loop, recall and the operator chat-ending command "
-        "are implemented; held-out and report remain open work."
+        "calibration, closed-loop and recall are implemented; held-out and report remain open work."
     ) in normal
     assert (
         "- The held-out step and report, including the path marked as added above," in registration
@@ -911,78 +909,88 @@ def test_available_step_modules_and_remaining_work_are_explicit() -> None:
     for name in ("steps.py", "simulation.py"):
         assert f"| `src/zoon/interaction/{name}` | Existing today |" in registration
         assert (root / "src/zoon/interaction" / name).is_file()
-    assert "`python -m zoon.interaction.run end-chat --reason TEXT`" in registration
-    assert "It records the ending; repeating the interrupted step completes it." in normal
-
-
-def test_registration_keeps_each_ending_event() -> None:
-    text = (NOTE.parents[2] / "interaction" / "registration.md").read_text()
-    assert (
-        "Each step keeps at most one ending event, written once. Recall carries earlier\n"
-        "ending events forward unchanged and may add its own.\n"
-        "The earliest cause, however detected, governs the arm's reported cause; once a\n"
-        "completed step records a cause, later steps retain it. A withdrawal or an ending event "
-        "in `recall` stops further\n"
-        "recall questions. An earlier ending in `closed-loop` does not prevent an operator\n"
-        "ending in `recall`; a withdrawal or an ending already in the current step does.\n"
-        "Completed state files remain unchanged; the recall state exposes all ending events."
-    ) in text
-    assert (
-        "the report prints each reason and its number of chat decisions already answered," in text
-    )
 
 
 def test_registration_chat_outputs_and_final_status() -> None:
     text = (NOTE.parents[2] / "interaction" / "registration.md").read_text()
     assert (
-        "Chat game logs are written from the chat transcript when `closed-loop` completes\n"
-        "and are not read back by any run step. A later step that scores them first rebuilds\n"
-        "them from the transcript and requires the rebuilt bytes to match the recorded digests.\n"
-        "A mismatch then is a failed replay of that chat game, which makes `chat` unusable\n"
-        "and blocks nothing else." in text
-    )
-    assert (
+        "Chat game logs are written from the chat transcript when `closed-loop` completes"
+        ",\n"
+        "if the arm is still usable then, and are not read back by any run step. A later\n"
+        "step that scores them first rebuilds them from the transcript, checked against\n"
+        "`recall.json` `payload.chat.transcript.digest`, and requires the rebuilt bytes t"
+        "o\n"
+        "match `closed-loop.json` `payload.chat_logs`. A failed rebuild makes `chat`\n"
+        "unusable; that step records REPLAY in its own state if recall records no earlier"
+        "\n"
+        "cause, and the report prints both the recall record and the later step's record."
+        "\n"
+        "\n"
+        "The operator may use\n"
+        "`python -m zoon.interaction.run closed-loop --end-chat REASON` or\n"
+        "`python -m zoon.interaction.run recall --end-chat REASON` (also with `--stub` fo"
+        "r a rehearsal).\n"
+        "A blank or whitespace-only reason is refused before the step runs. The step runs"
+        "\n"
+        "normally; the flag takes effect only if a chat request, including its preceding\n"
+        "metadata check, fails in transport after the bounded tries during that attempt.\n"
+        "It records OPERATOR, the reason, the step and the number of chat decisions alrea"
+        "dy\n"
+        "answered, saves, and completes the step. Closed-loop then completes without chat"
+        "\n"
+        'logs; recall keeps and judges its answers and marks the rest "not asked".\n'
+        "A decision-model transport failure cannot trigger this ending. If chat answers,\n"
+        "or an ending already prevents chat requests in this step, the flag has no effect"
+        "\n"
+        "and the command prints that fact. The command prints each operator ending's reas"
+        "on\n"
+        "and answered-decision count, and the report prints them too; no verdict changes."
+        "\n"
+        "Apart from a declared repair and the incomplete-line cut under Guard, repairs an"
+        "d\n"
+        "persistence, this is the only operator decision the run allows. The operator mus"
+        "t\n"
+        "use it only when chat transport prevents completion; the guard cannot judge inte"
+        "nt.\n"
+        "It cannot be used once `held-out` has started: completed calling steps cannot be"
+        "\n"
+        "repeated.\n"
+        "\n"
+        "Each step keeps at most one ending event, written once. Recall carries earlier\n"
+        "ending events forward unchanged and may add its own.\n"
+        "The earliest cause, however detected, governs the arm's reported cause; once a\n"
+        "completed step records a cause, later steps retain it. A withdrawal or an ending"
+        " event in `recall` stops further\n"
+        "recall questions. An earlier ending in `closed-loop` does not prevent an operato"
+        "r\n"
+        "ending in `recall`; a withdrawal or an ending already in the current step does.\n"
+        "Completed state files remain unchanged; the recall state exposes all ending even"
+        "ts.\n"
         "An arm usable at the end of `closed-loop` can become unusable during `recall`.\n"
-        "Later steps and the report read the arm's status and cause from `recall.json`\n"
-        "fields `payload.chat.status` and `payload.chat.cause`; an arm unusable ther"
-        "e has no scores.\n"
-        "The `closed-loop.json` field `payload.simulations.chat` lists logs, not final usability."
-        in text
-    )
-    assert (
-        "If chat requests alone keep `closed-loop` or `recall` from completing, the operator\n"
-        "may end the chat arm with a recorded reason before `held-out` begins, using\n"
-        "`python -m zoon.interaction.run end-chat --reason TEXT` (or with `--stub` for a\n"
-        "rehearsal). It records the ending; repeating the interrupted step completes it.\n"
-        "The command is accepted only while `closed-loop` or `recall` is interrupted"
-        " and its last\n"
-        "failure was a chat transport failure. `chat` is then unusable, the step completes,\n"
-        "the report prints each reason and its number of chat decisions already answered,\n"
-        "and no verdict changes. Apart from a declared repair and the incomplete-lin"
-        "e cut under Guard, repairs and\n"
-        "persistence, this is the only operator decision the run allows, and it cannot be\n"
-        "taken once `held-out` has started.\n" in text
-    )
-    assert (
-        "2. `python -m zoon.interaction.run closed-loop`: simulate all usable arms. Write\n"
-        "   each coded and prompted arm's logs and guarded digests when that arm finishes.\n"
-        "   Write chat logs and their separate digests only on completion, after replay against\n"
-        "   the verified transcript. Finish all simulation before any held-out group is read.\n"
-        in text
-    )
-    assert (
-        "| `src/zoon/interaction/run.py` | Existing today | Calibration and step command dispatch |"
-        in text
-    )
-    assert (
-        "| `src/zoon/interaction/steps.py` | Existing today | Closed-loop, recall an"
-        "d operator chat endings |" in text
-    )
-    assert (
-        "| `src/zoon/interaction/simulation.py` | Existing today | Committed-arm sim"
-        "ulation and game log persistence |" in text
-    )
-    assert (
-        "The run module dispatches calibration, closed-loop, recall and the operator\n"
-        "chat-ending command today."
+        "`Guard.final_chat_record()` reads the status at the end of recall from `recall.j"
+        "son`\n"
+        "fields `payload.chat.status` and `payload.chat.cause` and refuses unless recall "
+        "is\n"
+        "completed; an arm unusable there has no scores. A later failed rebuild is record"
+        "ed\n"
+        "in that later step's state as described above. If the run ends with no verdict\n"
+        'before recall completes, the report prints the chat arm as "not run" and labels\n'
+        "any earlier chat record with its step; it does not call that record final.\n"
+        "\n"
+        "If the run cannot record either model's withdrawal, a later attempt records a\n"
+        "withdrawal only if that model is still withdrawn. A failed ending save is carrie"
+        "d\n"
+        "by the handler's one normal save; if that also fails, the last successful state\n"
+        "stands. REPLAY is derived again on retry; an operator ending needs the flag and\n"
+        "a chat transport failure again. A decision version change or cap is detected aga"
+        "in\n"
+        "from the decision transcript. Unreadable or incomplete chat transcripts prevent\n"
+        "the handler's save; the next attempt refuses with the cut-back instruction for a"
+        "n\n"
+        "incomplete line.\n"
+        "\n"
+        "A reply whose append fails before any byte is written is not recorded, is not\n"
+        "counted toward the cap, and is requested again; actual spending can exceed\n"
+        "recorded spending by such replies."
     ) in text
+    assert ("The run module dispatches calibration, closed-loop and recall today.") in text

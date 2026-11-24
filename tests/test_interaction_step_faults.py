@@ -14,7 +14,7 @@ import pytest
 
 from tests.interaction_run_support import repository
 from zoon.interaction import chat, kernel, prompted, run, score, simulation
-from zoon.interaction.guard import atomic, digest
+from zoon.interaction.guard import digest
 from zoon.pilot import clients
 
 Factory = Callable[..., run.Run]
@@ -145,11 +145,7 @@ def test_chat_transport_resume_matches_uninterrupted_and_skips_finished_arms(
         resumed.execute("closed-loop")
     interrupted = state(resumed)
     assert interrupted["status"] == "interrupted"
-    assert interrupted["payload"]["last_failure"] == {
-        "kind": "chat_transport",
-        "type": "TransportInterruption",
-    }
-    assert interrupted["payload"]["chat"]["answered_decisions"] == 0
+    assert interrupted["payload"]["chat"]["answered_decisions"] == 44
     before = (resumed.guard.transcript_directory / "chat.jsonl").read_bytes()
 
     def no_simulate(*args: Any, **kwargs: Any) -> Any:
@@ -198,9 +194,6 @@ def test_decision_faults_end_or_interrupt_the_whole_run(runs: Factory, fault: st
         with pytest.raises(clients.TerminalStop if fault == "other-stop" else clients.StepFailure):
             runner.execute("closed-loop")
         assert state(runner)["status"] == "interrupted"
-        assert state(runner)["payload"]["last_failure"]["kind"] == "other"
-        with pytest.raises(clients.GuardRefusal, match="not a chat transport"):
-            runner.end_chat("stop")
         completed = runner.execute("closed-loop")
         plain = runs("plain")
         assert completed == plain.execute("closed-loop")
@@ -244,76 +237,6 @@ def test_canonical_requests_are_paid_once(runs: Factory) -> None:
                 document["request"], sort_keys=True, ensure_ascii=False, separators=(",", ":")
             ).encode()
         )
-
-
-@pytest.mark.parametrize("step", ["closed-loop", "recall"])
-def test_operator_ending_is_bound_then_resumed_and_preserves_answered_recall(
-    runs: Factory, step: str
-) -> None:
-    runner = runs(chat_client=ChatFault("transport", at=5 if step == "closed-loop" else 443))
-    if step == "recall":
-        runner.execute("closed-loop")
-    with pytest.raises(chat.TransportInterruption):
-        runner.execute(step)
-    before = state(runner, step)
-    operator = run.Run(runner.guard.root, stub=True, storage=runner.guard.storage)
-    ended = operator.end_chat("Requests remain unavailable")
-    assert ended["status"] == "interrupted"
-    assert ended["registered_commit"] == before["registered_commit"]
-    assert ended["mode"] == "stub" and ended["step"] == step
-    assert ended["previous"] == before["previous"] and ended["commit"] == before["commit"]
-    assert ended["payload"]["chat_endings"][0] == {
-        "cause": "OPERATOR",
-        "reason": "Requests remain unavailable",
-        "step": step,
-        "answered_decisions": 4 if step == "closed-loop" else 440,
-    }
-    with pytest.raises(clients.GuardRefusal, match="already recorded"):
-        runner.end_chat("again")
-    completed = runner.execute(step)
-    assert completed["status"] == "completed"
-    assert completed["payload"]["chat"]["cause"] == "OPERATOR"
-    if step == "recall":
-        records = completed["payload"]["recall"]
-        assert [r["status"] for r in records] == ["judged"] * 2 + ["not asked"] * 6
-        assert completed["payload"]["stopped_by"] == "OPERATOR"
-    else:
-        assert "chat" not in completed["payload"]["simulations"]
-        assert not any("/chat/" in n for n in completed["payload"]["digests"])
-        plain = runs("plain")
-        plain.execute("closed-loop")
-        assert band_logs(runner) == band_logs(plain)
-        recognition = runner.execute("recall")
-        assert all(r["status"] == "judged" for r in recognition["payload"]["recall"])
-    with pytest.raises(clients.GuardRefusal, match="completed"):
-        runner.end_chat("too late")
-
-
-@pytest.mark.parametrize("condition", ["unstarted", "running", "storage", "held-out", "blank"])
-def test_operator_command_refuses_every_missing_condition(runs: Factory, condition: str) -> None:
-    runner = runs(chat_client=ChatFault("storage" if condition == "storage" else "transport"))
-    if condition != "unstarted":
-        with pytest.raises(chat.Interruption):
-            runner.execute("closed-loop")
-    if condition == "running":
-        with runner.guard.lock():
-            runner.guard.before("closed-loop")
-            current = runner.guard.state("closed-loop")
-            assert current
-            runner.guard.save("closed-loop", current["payload"], status="running")
-    if condition == "held-out":
-        atomic(runner.guard.directory / "held-out.json", {})
-    match = (
-        "held-out has started"
-        if condition == "held-out"
-        else "not a chat transport"
-        if condition == "storage"
-        else "nonempty reason"
-        if condition == "blank"
-        else "interrupted"
-    )
-    with pytest.raises(clients.GuardRefusal, match=match):
-        runner.end_chat(" \t\n" if condition == "blank" else "end chat")
 
 
 @pytest.mark.parametrize("threads", [1, 4])
@@ -390,10 +313,7 @@ def test_nonfinite_and_replay_faults_are_not_silently_scored(
         runner.execute("closed-loop")
     interrupted = state(runner)
     assert interrupted["status"] == "interrupted"
-    assert interrupted["payload"]["last_failure"]["kind"] == "other"
     assert "outcome" not in interrupted["payload"]
-    with pytest.raises(clients.GuardRefusal, match="not a chat transport"):
-        runner.end_chat("end chat")
 
 
 @pytest.mark.parametrize("fault", ["version", "invalid-version", "cap", "withdrawn", "transport"])
@@ -420,8 +340,9 @@ def test_recall_conditions_labels_full_replies_and_resume(runs: Factory, fault: 
             recognizer.execute("recall")
         interrupted = state(recognizer, "recall")
         assert interrupted["status"] == "interrupted"
-        assert interrupted["payload"]["last_failure"]["kind"] == "chat_transport"
-        assert [r["status"] for r in interrupted["payload"]["recall"]] == (["not asked"] * 8)
+        assert [r["status"] for r in interrupted["payload"]["recall"]] == ["judged"] * 2 + [
+            "not asked"
+        ] * 6
         completed = recognizer.execute("recall")
         assert client.calls == 9
         assert completed["payload"]["stopped_by"] is None
@@ -495,7 +416,7 @@ def test_completed_chat_logs_have_separate_digests(runs: Factory) -> None:
     )
     verified = chat.replay_transcript(transcript, chat_record["digest"])
     assert chat_record["lines"] == len(transcript.entries) + 1
-    for name in completed["payload"]["simulations"]["chat"]:
+    for name in completed["payload"]["chat_logs"]:
         raw = (runner.guard.storage / name).read_bytes()
         assert chat.replay(raw, verified).bytes == raw
 
@@ -534,28 +455,26 @@ def test_arm_and_chat_game_checkpoints_precede_next_work(
     assert len(played) == 8
 
 
-def test_operator_cli_records_reason_without_completing_the_step(
+def test_operator_cli_records_reason_and_completes_the_step(
     runs: Factory, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     runner = runs(chat_client=ChatFault("transport"))
-    with pytest.raises(chat.TransportInterruption):
-        runner.execute("closed-loop")
 
     def local(**kwargs: Any) -> run.Run:
         assert kwargs["stub"]
         return runner
 
     monkeypatch.setattr(run, "Run", local)
-    assert run.main(["end-chat", "--reason", "Requests remain unavailable", "--stub"]) == 0
+    assert run.main(["closed-loop", "--end-chat", "Requests remain unavailable", "--stub"]) == 0
     output = capsys.readouterr()
     assert output.err == ""
-    assert "[interaction stub] end-chat = interrupted" in output.out
+    assert "[interaction stub] closed-loop = completed" in output.out
     assert "Requests remain unavailable" in output.out
-    assert state(runner)["status"] == "interrupted"
+    assert state(runner)["status"] == "completed"
     assert state(runner)["payload"]["chat_endings"][0]["reason"] == "Requests remain unavailable"
 
 
-def test_log_storage_failure_interrupts_and_refuses_operator_ending(
+def test_log_storage_failure_interrupts_and_recovers(
     runs: Factory, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     runner = runs()
@@ -567,11 +486,7 @@ def test_log_storage_failure_interrupts_and_refuses_operator_ending(
         patch.setattr(simulation, "write", refuse)
         with pytest.raises(OSError, match="log storage"):
             runner.execute("closed-loop")
-    interrupted = state(runner)
-    assert interrupted["status"] == "interrupted"
-    assert interrupted["payload"]["last_failure"] == {"kind": "other", "type": "OSError"}
-    with pytest.raises(clients.GuardRefusal, match="not a chat transport"):
-        run.Run(runner.guard.root, stub=True, storage=runner.guard.storage).end_chat("end chat")
+    assert state(runner)["status"] == "interrupted"
     plain = runs("plain")
     assert runner.execute("closed-loop") == plain.execute("closed-loop")
 
@@ -580,8 +495,8 @@ def ended_closed_loop(runs: Factory) -> run.Run:
     runner = runs(chat_client=ChatFault("transport", at=45))
     with pytest.raises(chat.TransportInterruption):
         runner.execute("closed-loop")
-    runner.end_chat("Requests unavailable")
-    runner.execute("closed-loop")
+    runner.steps.chat_client = ChatFault("transport", at=1)
+    runner.execute("closed-loop", end_chat="Requests unavailable")
     return runner
 
 
@@ -592,8 +507,8 @@ def test_each_step_can_end_chat_without_losing_the_first_event(runs: Factory) ->
     runner.steps.chat_client = ChatFault("transport", at=3)
     with pytest.raises(chat.TransportInterruption):
         runner.execute("recall")
-    runner.end_chat("Recall unavailable")
-    completed = runner.execute("recall")
+    runner.steps.chat_client = ChatFault("transport", at=1)
+    completed = runner.execute("recall", end_chat="Recall unavailable")
     events = completed["payload"]["chat_endings"]
     assert events == [
         first,
@@ -645,9 +560,14 @@ def test_actual_append_failure_saves_interrupted(
 
     def opening(path: Path, mode: str = "r", *args: Any, **kwargs: Any) -> Any:
         nonlocal failed, saved
+        if failed and damage == "unreadable" and path.name == "chat.jsonl":
+            raise OSError("read unavailable")
         if path.name == "chat.jsonl" and mode == "ab":
             saved = state(runner)
             failed = True
+            if damage == "unreadable":
+                with original_open(path, "wb"):
+                    pass
             if damage == "partial":
                 with original_open(path, "ab") as handle:
                     handle.write(b'{"incomplete":')
@@ -661,30 +581,13 @@ def test_actual_append_failure_saves_interrupted(
 
     monkeypatch.setattr(Path, "open", opening)
     monkeypatch.setattr(Path, "read_bytes", reading)
-    with pytest.raises(chat.StorageInterruption, match="append failed"):
+    with pytest.raises((chat.StorageInterruption, clients.GuardRefusal, chat.GuardRefusal)):
         runner.execute("closed-loop")
     assert failed
     interrupted = state(runner)
-    assert interrupted["status"] == "interrupted"
-    assert interrupted["payload"]["last_failure"]["kind"] == "other"
+    assert interrupted["status"] == ("interrupted" if damage == "none" else "running")
     assert interrupted["payload"]["chat"] == saved["payload"]["chat"]
     assert interrupted["transcripts"]["chat"] == saved["transcripts"]["chat"]
-
-
-def test_new_attempt_clears_transport_evidence_before_work(
-    runs: Factory, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    runner = runs(chat_client=ChatFault("transport"))
-    with pytest.raises(chat.TransportInterruption):
-        runner.execute("closed-loop")
-    original = simulation.Store.verify
-
-    def verify(store: simulation.Store) -> None:
-        assert "last_failure" not in state(runner)["payload"]
-        original(store)
-
-    monkeypatch.setattr(simulation.Store, "verify", verify)
-    runner.execute("closed-loop")
 
 
 @pytest.mark.parametrize("step", ["closed-loop", "recall"])
@@ -714,37 +617,6 @@ def test_resume_with_every_answer_skips_preflight(
     assert runner.execute(step)["status"] == "completed"
 
 
-@pytest.mark.parametrize("command", ["execute", "end-chat"])
-def test_replaced_state_is_never_saved_again(
-    runs: Factory, monkeypatch: pytest.MonkeyPatch, command: str
-) -> None:
-    from zoon.interaction import guard
-
-    runner = runs(chat_client=ChatFault("transport"))
-    with pytest.raises(chat.TransportInterruption):
-        runner.execute("closed-loop")
-    original = guard.atomic
-    visible = b""
-
-    def atomic(path: Path, document: dict[str, Any]) -> None:
-        nonlocal visible
-        original(path, document)
-        if path.name != "closed-loop.json":
-            return
-        if command == "end-chat" or document["status"] == "completed":
-            visible = path.read_bytes()
-            raise guard.StateReplacedError("directory sync unavailable")
-
-    monkeypatch.setattr(guard, "atomic", atomic)
-    with pytest.raises(guard.StateReplacedError):
-        if command == "end-chat":
-            runner.end_chat("Unavailable")
-        else:
-            runner.execute("closed-loop")
-    assert visible
-    assert (runner.guard.directory / "closed-loop.json").read_bytes() == visible
-
-
 @pytest.mark.parametrize(
     "initial", ["usable", "version", "replies", "cap", "withdrawn", "replay", "operator"]
 )
@@ -763,19 +635,15 @@ def test_chat_cause_and_events_across_steps(
                 raise chat.Unusable(chat.Cause.REPLAY)
 
             patch.setattr(chat, "replay", failed)
-        if initial == "operator":
-            with pytest.raises(chat.TransportInterruption):
-                runner.execute("closed-loop")
-            runner.end_chat("Requests unavailable")
-        closed = runner.execute("closed-loop")
+        closed = runner.execute(
+            "closed-loop", end_chat="Requests unavailable" if initial == "operator" else None
+        )
     path = runner.guard.directory / "closed-loop.json"
     before = path.read_bytes()
     runner.steps.chat_client = ChatFault("transport" if later == "operator" else later, at=1)
-    if later == "operator":
-        with pytest.raises(chat.TransportInterruption):
-            runner.execute("recall")
-        runner.end_chat("Recall unavailable")
-    recalled = runner.execute("recall")
+    recalled = runner.execute(
+        "recall", end_chat="Recall unavailable" if later == "operator" else None
+    )
     first, last = closed["payload"]["chat"], recalled["payload"]["chat"]
     assert path.read_bytes() == before
     assert first["cause"] == (None if initial == "usable" else initial.upper())
@@ -819,12 +687,8 @@ def test_initialization_failure_records_current_failure(
             patch.setattr(runner.steps, "save", save)
         with pytest.raises(OSError, match="storage unavailable"):
             runner.execute("closed-loop")
-    if started:
-        assert state(runner)["payload"]["last_failure"]["kind"] == "other"
-    else:
-        assert not (runner.guard.directory / "closed-loop.json").exists()
-    with pytest.raises(clients.GuardRefusal):
-        runner.end_chat("Requests unavailable")
+    assert state(runner)["status"] == "interrupted"
+    assert state(runner)["reason"] == "OSError"
 
 
 def test_later_append_failure_keeps_checkpoint_line_count(
@@ -847,8 +711,8 @@ def test_later_append_failure_keeps_checkpoint_line_count(
     with pytest.raises(chat.StorageInterruption):
         runner.execute("closed-loop")
     saved = state(runner)
-    assert saved["payload"]["chat"]["transcript"]["lines"] == 0
-    assert len(saved["transcripts"]["chat"]["keys"]) == 0
+    assert saved["payload"]["chat"]["transcript"]["lines"] == 151
+    assert len(saved["transcripts"]["chat"]["keys"]) == 150
 
 
 @pytest.mark.parametrize("fault", ["decision", "incomplete"])

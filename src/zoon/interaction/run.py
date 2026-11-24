@@ -73,9 +73,11 @@ class Run:
             "calibrate", {**self.payload, **self.totals()}, status="terminal", reason=outcome.value
         )
 
-    def execute(self, step: str = "calibrate", *, repair: str | None = None) -> dict[str, Any]:
+    def execute(
+        self, step: str = "calibrate", *, repair: str | None = None, end_chat: str | None = None
+    ) -> dict[str, Any]:
         if step in ("closed-loop", "recall"):
-            return self.steps.execute(step, repair)
+            return self.steps.execute(step, repair, end_chat)
         if step != "calibrate":
             raise clients.GuardRefusal("unknown or unimplemented step")
         with self.guard.lock():
@@ -208,9 +210,6 @@ class Run:
         self.payload["disguise"] = metrics
         return self.guard.save("calibrate", {**self.payload, **self.totals()}, status="completed")
 
-    def end_chat(self, reason: str, *, repair: str | None = None) -> dict[str, Any]:
-        return self.steps.end_chat(reason, repair)
-
 
 class Parser(argparse.ArgumentParser):
     def error(self, message: str) -> NoReturn:
@@ -219,22 +218,24 @@ class Parser(argparse.ArgumentParser):
 
 def main(arguments: Sequence[str] | None = None) -> int:
     parser = Parser(description=__doc__)
-    parser.add_argument("step", choices=("calibrate", "closed-loop", "recall", "end-chat"))
+    parser.add_argument("step", choices=("calibrate", "closed-loop", "recall"))
     parser.add_argument("--stub", action="store_true")
-    parser.add_argument("--reason", help="reason for ending a stalled chat arm")
+    parser.add_argument("--end-chat", metavar="REASON", help="end chat if its transport fails")
     parser.add_argument("--repair", help="reason for the committed repair snapshot")
     try:
         args = parser.parse_args(arguments)
+        if args.end_chat is not None:
+            if args.step not in ("closed-loop", "recall"):
+                raise clients.GuardRefusal("--end-chat requires closed-loop or recall")
+            if not args.end_chat.strip():
+                raise clients.GuardRefusal("ending chat requires a nonempty reason")
         storage = os.environ.get("ZOON_INTERACTION_DATA")
         runner = Run(stub=args.stub, storage=Path(storage) if storage else None)
-        if args.step == "end-chat":
-            if args.reason is None:
-                raise clients.GuardRefusal("end-chat requires --reason")
-            state = runner.end_chat(args.reason, repair=args.repair)
-        else:
-            if args.reason is not None:
-                raise clients.GuardRefusal("--reason is only accepted by end-chat")
-            state = runner.execute(args.step, repair=args.repair)
+        state = runner.execute(
+            args.step,
+            repair=args.repair,
+            **({"end_chat": args.end_chat} if args.end_chat is not None else {}),
+        )
         payload = state["payload"]
         print(f"[interaction {state['mode']}] {args.step} = {state['status']}")
         print(
@@ -246,12 +247,8 @@ def main(arguments: Sequence[str] | None = None) -> int:
         elif args.step == "calibrate":
             print(f"[recalibration] numbers = {payload['recalibration']}")
             print(f"[disguise] {json.dumps(payload['disguise'], sort_keys=True)}")
-        elif args.step == "end-chat":
-            for ending in payload["chat_endings"]:
-                print(f"[chat ending] {json.dumps(ending, sort_keys=True)}")
         else:
-            with runner.guard.lock():
-                record = runner.guard.chat_record() if args.step == "recall" else payload["chat"]
+            record = payload["chat"]
             print(f"[chat] {json.dumps(record, sort_keys=True)}")
             if args.step == "closed-loop":
                 logs = payload["digests"] | payload.get("chat_logs", {})

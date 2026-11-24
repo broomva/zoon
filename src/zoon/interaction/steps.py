@@ -131,15 +131,18 @@ class Steps:
         self.session = chat.Session(transcript, PreflightClient(client), self.chat_cap)
         return self.session
 
-    def execute(self, step: str, repair: str | None = None) -> dict[str, Any]:
+    def execute(
+        self, step: str, repair: str | None = None, end_chat: str | None = None
+    ) -> dict[str, Any]:
         if step not in ("closed-loop", "recall"):
             raise clients.GuardRefusal("unknown or unimplemented step")
+        if end_chat is not None and not end_chat.strip():
+            raise clients.GuardRefusal("ending chat requires a nonempty reason")
         self.step = step
         with self.guard.lock():
             self.guard.before(step, repair)
             old = self.guard.state(step)
             self.payload = old["payload"] if old else {}
-            self.payload.pop("last_failure", None)
             self.session = None
             self.decision = None
             try:
@@ -159,14 +162,12 @@ class Steps:
                         "chat_endings", prior["payload"].get("chat_endings", []).copy()
                     )
                 self.save()
-                if step == "closed-loop":
-                    self.closed_loop(session)
-                else:
-                    self.recall(session)
+                (self.closed_loop if step == "closed-loop" else self.recall)(session, end_chat)
                 return self.save("completed")
             except StateReplacedError:
                 raise
             except BaseException as error:
+                self.session = None
                 if isinstance(error, clients.TerminalStop) and error.reason in (
                     clients.StopReason.WITHDRAWN,
                     clients.StopReason.VERSION,
@@ -177,19 +178,13 @@ class Steps:
                         "H3": "no verdict",
                         "reason": error.reason.name,
                     }
-                    try:
-                        return self.save("terminal", error.reason.value)
-                    except StateReplacedError:
-                        raise
-                    except BaseException as failure:
-                        self.guard.interrupt(self.step, failure)
-                        raise
-                self.guard.interrupt(self.step, error)
+                    return self.save("terminal", error.reason.value)
+                self.save("interrupted", type(error).__name__)
                 if isinstance(error, decisions.StorageFault):
                     raise clients.StepFailure("could not persist decision transcript") from None
                 raise
 
-    def closed_loop(self, session: chat.Session) -> None:
+    def closed_loop(self, session: chat.Session, end_chat: str | None) -> None:
         if self.decision is None:
             raise clients.GuardRefusal("a guarded decision session is required")
         store = simulation.Store(self.guard, self.payload, self.save)
@@ -197,21 +192,38 @@ class Steps:
         store.bands(self.decision, self.groups)
         try:
             if self.payload.get("chat_endings"):
+                if end_chat is not None:
+                    print("[chat ending] flag had no effect")
                 return
             session.check()
             store.chat(session, self.groups)
+            if end_chat is not None:
+                print("[chat ending] flag had no effect")
+        except chat.TransportInterruption:
+            self.operator_ending(end_chat)
         except chat.Unusable as error:
+            if end_chat is not None:
+                print("[chat ending] flag had no effect")
             if error.cause in (chat.Cause.WITHDRAWN, chat.Cause.REPLAY):
                 self.add_ending(error.cause.name)
                 self.save()
 
-    def recall(self, session: chat.Session) -> None:
+    def recall(self, session: chat.Session, end_chat: str | None) -> None:
         endings = self.payload["chat_endings"]
         for ending in endings:
             if ending["cause"] == "WITHDRAWN" or ending["step"] == "recall":
+                if end_chat is not None:
+                    print("[chat ending] flag had no effect")
                 self.payload["stopped_by"] = ending["cause"]
                 return
-        result = chat.recall(session)
+        try:
+            result = chat.recall(session)
+        except chat.TransportInterruption:
+            self.operator_ending(end_chat)
+            self.payload["stopped_by"] = "OPERATOR"
+            return
+        if end_chat is not None:
+            print("[chat ending] flag had no effect")
         if result.stopped_by == chat.Cause.WITHDRAWN:
             self.add_ending("WITHDRAWN")
             self.save()
@@ -222,28 +234,13 @@ class Steps:
             {"cause": cause, "step": self.step, **details}
         )
 
-    def end_chat(self, reason: str, repair: str | None = None) -> dict[str, Any]:
-        if not reason.strip():
-            raise clients.GuardRefusal("ending chat requires a nonempty reason")
-        with self.guard.lock():
-            if (self.guard.directory / "held-out.json").exists():
-                raise clients.GuardRefusal("chat cannot be ended once held-out has started")
-            self.step = (
-                "recall" if (self.guard.directory / "recall.json").exists() else "closed-loop"
-            )
-            self.guard.before(self.step, repair)
-            old = self.guard.state(self.step)
-            if not old or old["status"] != "interrupted":
-                raise clients.GuardRefusal("chat can be ended only while its step is interrupted")
-            self.payload = old["payload"]
-            if self.payload.get("last_failure", {}).get("kind") != "chat_transport":
-                raise clients.GuardRefusal("the last failure was not a chat transport failure")
-            if any(event["step"] == self.step for event in self.payload.get("chat_endings", [])):
-                raise clients.GuardRefusal("an ending of the chat arm is already recorded")
-            self.session = None
-            self.add_ending(
-                "OPERATOR",
-                reason=reason,
-                answered_decisions=self.chat_record()["answered_decisions"],
-            )
-            return self.save("interrupted", old["reason"])
+    def operator_ending(self, reason: str | None) -> None:
+        if reason is None:
+            raise
+        self.add_ending(
+            "OPERATOR",
+            reason=reason,
+            answered_decisions=self.chat_record()["answered_decisions"],
+        )
+        self.save()
+        print(f"[chat ending] {encoded(self.payload['chat_endings'][-1]).decode()}")

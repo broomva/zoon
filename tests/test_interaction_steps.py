@@ -41,7 +41,7 @@ def test_steps_complete_in_order_and_refuse_repetition(
     assert len(sessions) == 1
     assert simulation["status"] == "completed"
     payload = simulation["payload"]
-    assert set(payload["simulations"]) == {"zoon", "alone", "prompted", "chat"}
+    assert set(payload["simulations"]) == {"zoon", "alone", "prompted"}
     assert len(payload["digests"]) == 3 * 8 * 2
     assert len(payload["chat_logs"]) == 8 * 2
     for name, expected in payload["digests"].items():
@@ -259,8 +259,8 @@ def test_step_commands_use_stub_storage_and_print_recognition_in_full(
             assert output.out.count("[recall ") == 9
             assert "WANG\nFull reply" in output.out
     for args, message in (
-        (["end-chat", "--stub"], "requires --reason"),
-        (["recall", "--stub", "--reason", "reason"], "only accepted by end-chat"),
+        (["recall", "--stub", "--end-chat", " "], "nonempty reason"),
+        (["calibrate", "--stub", "--end-chat", "reason"], "requires closed-loop or recall"),
     ):
         assert run.main(args) == 1
         assert message in capsys.readouterr().err
@@ -302,7 +302,7 @@ def test_registered_group_count_and_stub_only_test_sizes(tmp_path: Path) -> None
             run.Run(root, stub=True, simulation_groups=count)
 
 
-@pytest.mark.parametrize("step", ["calibrate", "held-out", "report", "end-chat"])
+@pytest.mark.parametrize("step", ["calibrate", "held-out", "report"])
 def test_step_driver_refuses_other_commands_before_writing(tmp_path: Path, step: str) -> None:
     root = repository(tmp_path / "repo")
     runner = run.Run(root, stub=True)

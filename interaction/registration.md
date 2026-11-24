@@ -99,22 +99,32 @@ blocked. Three unusable replies for one decision, the model's withdrawal, a
 version change, reaching the chat cap, a failed replay of a chat game, or a first
 reported version that does not begin with the model name make `chat` unusable,
 with no scores.
-Chat game logs are written from the chat transcript when `closed-loop` completes
-and are not read back by any run step. A later step that scores them first rebuilds
-them from the transcript and requires the rebuilt bytes to match the recorded digests.
-A mismatch then is a failed replay of that chat game, which makes `chat` unusable
-and blocks nothing else.
+Chat game logs are written from the chat transcript when `closed-loop` completes,
+if the arm is still usable then, and are not read back by any run step. A later
+step that scores them first rebuilds them from the transcript, checked against
+`recall.json` `payload.chat.transcript.digest`, and requires the rebuilt bytes to
+match `closed-loop.json` `payload.chat_logs`. A failed rebuild makes `chat`
+unusable; that step records REPLAY in its own state if recall records no earlier
+cause, and the report prints both the recall record and the later step's record.
 
-If chat requests alone keep `closed-loop` or `recall` from completing, the operator
-may end the chat arm with a recorded reason before `held-out` begins, using
-`python -m zoon.interaction.run end-chat --reason TEXT` (or with `--stub` for a
-rehearsal). It records the ending; repeating the interrupted step completes it.
-The command is accepted only while `closed-loop` or `recall` is interrupted and its last
-failure was a chat transport failure. `chat` is then unusable, the step completes,
-the report prints each reason and its number of chat decisions already answered,
-and no verdict changes. Apart from a declared repair and the incomplete-line cut under Guard, repairs and
-persistence, this is the only operator decision the run allows, and it cannot be
-taken once `held-out` has started.
+The operator may use
+`python -m zoon.interaction.run closed-loop --end-chat REASON` or
+`python -m zoon.interaction.run recall --end-chat REASON` (also with `--stub` for a rehearsal).
+A blank or whitespace-only reason is refused before the step runs. The step runs
+normally; the flag takes effect only if a chat request, including its preceding
+metadata check, fails in transport after the bounded tries during that attempt.
+It records OPERATOR, the reason, the step and the number of chat decisions already
+answered, saves, and completes the step. Closed-loop then completes without chat
+logs; recall keeps and judges its answers and marks the rest "not asked".
+A decision-model transport failure cannot trigger this ending. If chat answers,
+or an ending already prevents chat requests in this step, the flag has no effect
+and the command prints that fact. The command prints each operator ending's reason
+and answered-decision count, and the report prints them too; no verdict changes.
+Apart from a declared repair and the incomplete-line cut under Guard, repairs and
+persistence, this is the only operator decision the run allows. The operator must
+use it only when chat transport prevents completion; the guard cannot judge intent.
+It cannot be used once `held-out` has started: completed calling steps cannot be
+repeated.
 
 Each step keeps at most one ending event, written once. Recall carries earlier
 ending events forward unchanged and may add its own.
@@ -124,9 +134,25 @@ recall questions. An earlier ending in `closed-loop` does not prevent an operato
 ending in `recall`; a withdrawal or an ending already in the current step does.
 Completed state files remain unchanged; the recall state exposes all ending events.
 An arm usable at the end of `closed-loop` can become unusable during `recall`.
-Later steps and the report read the arm's status and cause from `recall.json`
-fields `payload.chat.status` and `payload.chat.cause`; an arm unusable there has no scores.
-The `closed-loop.json` field `payload.simulations.chat` lists logs, not final usability.
+`Guard.final_chat_record()` reads the status at the end of recall from `recall.json`
+fields `payload.chat.status` and `payload.chat.cause` and refuses unless recall is
+completed; an arm unusable there has no scores. A later failed rebuild is recorded
+in that later step's state as described above. If the run ends with no verdict
+before recall completes, the report prints the chat arm as "not run" and labels
+any earlier chat record with its step; it does not call that record final.
+
+If the run cannot record either model's withdrawal, a later attempt records a
+withdrawal only if that model is still withdrawn. A failed ending save is carried
+by the handler's one normal save; if that also fails, the last successful state
+stands. REPLAY is derived again on retry; an operator ending needs the flag and
+a chat transport failure again. A decision version change or cap is detected again
+from the decision transcript. Unreadable or incomplete chat transcripts prevent
+the handler's save; the next attempt refuses with the cut-back instruction for an
+incomplete line.
+
+A reply whose append fails before any byte is written is not recorded, is not
+counted toward the cap, and is requested again; actual spending can exceed
+recorded spending by such replies.
 
 If `held-out` has not completed within 30 days of its first start, both
 hypotheses receive no verdict and the report publishes every score already
@@ -473,11 +499,9 @@ These paths do not exist today and are exempt from the existing-path check:
 
 - `docs/interaction/result.md`
 
-The run module dispatches calibration, closed-loop, recall and the operator
-chat-ending command today. The existing spending script
+The run module dispatches calibration, closed-loop and recall today. The existing spending script
 `src/zoon/interaction/budget.py` produces both bounds. The second sealing step,
-scoring and intervals, run guards, step state, calibration, closed-loop, recall
-and the operator chat-ending command are implemented; held-out and report remain
+scoring and intervals, run guards, step state, calibration, closed-loop and recall are implemented; held-out and report remain
 open work. A material-regeneration test must compare registered instructions,
 fixtures and the amount table with their committed bytes; the fit test uses the
 probability tolerance above.
@@ -647,8 +671,7 @@ The current script's proposed ceiling and pilot cap do not fix this run's caps.
 ## Order of work
 
 Merge the registration, analysis code and registered materials, then create the
-tag as specified above. Calibration, closed-loop, recall and the operator
-chat-ending command are implemented today; held-out and report remain requirements.
+tag as specified above. Calibration, closed-loop and recall are implemented today; held-out and report remain requirements.
 Run them in this order:
 
 1. `python -m zoon.interaction.run calibrate`: make the recalibration calls and the

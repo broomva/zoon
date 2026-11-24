@@ -211,6 +211,6 @@ def test_interaction_run_status_matches_available_steps() -> None:
     text = " ".join((root / "interaction" / "registration.md").read_text().split())
     assert (
         "The second sealing step, scoring and intervals, run guards, step state, calibration, "
-        "closed-loop, recall and the operator chat-ending command are implemented; "
+        "closed-loop and recall are implemented; "
         "held-out and report remain open work."
     ) in text
