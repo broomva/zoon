@@ -110,16 +110,23 @@ cause, and the report prints both the recall record and the later step's record.
 The operator may use
 `python -m zoon.interaction.run closed-loop --end-chat REASON` or
 `python -m zoon.interaction.run recall --end-chat REASON` (also with `--stub` for a rehearsal).
-A blank or whitespace-only reason is refused before the step runs. The step runs
-normally; the flag takes effect only if a chat request, including its preceding
-metadata check, fails in transport after the bounded tries during that attempt.
-It records OPERATOR, the reason, the step and the number of chat decisions already
-answered, saves, and completes the step. Closed-loop then completes without chat
-logs; recall keeps and judges its answers and marks the rest "not asked".
-A decision-model transport failure cannot trigger this ending. If chat answers,
-or an ending already prevents chat requests in this step, the flag has no effect
-and the command prints that fact. The command prints each operator ending's reason
-and answered-decision count, and the report prints them too; no verdict changes.
+A blank or whitespace-only reason is refused before the step runs. The flag is
+accepted only after the saved state of this step is interrupted by chat transport.
+The step runs normally; the flag takes effect only if a chat request, including
+its preceding metadata check, fails in transport again after the bounded tries
+during this attempt. It records OPERATOR, the reason, the step, the count of
+recorded chat transport interruptions including this failure, and the number of
+chat decisions answered; in recall it also records the number of recall questions
+answered. It saves and completes the step. An operator ending in either step makes
+`chat` unusable with no scores; an ending during recall leaves the completed chat
+games unscored. Closed-loop completes without chat logs; recall keeps and judges
+its answers and marks the rest "not asked". A decision-model transport failure
+cannot trigger this ending. If chat answers, or a withdrawal, an ending already
+in this step, the cap, a version change or an invalid first version prevents chat
+requests, the flag has no effect; the command prints "flag had no effect" once
+after the step returns. The command and report print the reason, interruption
+count and answered counts. The tool cannot tell an outage from a connection the
+operator cut, and it does not know why earlier attempts were repeated.
 Apart from a declared repair and the incomplete-line cut under Guard, repairs and
 persistence, this is the only operator decision the run allows. The operator must
 use it only when chat transport prevents completion; the guard cannot judge intent.
@@ -131,13 +138,16 @@ ending events forward unchanged and may add its own.
 The earliest cause, however detected, governs the arm's reported cause; once a
 completed step records a cause, later steps retain it. A withdrawal or an ending event in `recall` stops further
 recall questions. An earlier ending in `closed-loop` does not prevent an operator
-ending in `recall`; a withdrawal or an ending already in the current step does.
+ending in `recall`; a withdrawal, an ending already in the current step, the cap,
+a version change or an invalid first version prevents further recall questions.
 Completed state files remain unchanged; the recall state exposes all ending events.
 An arm usable at the end of `closed-loop` can become unusable during `recall`.
-`Guard.final_chat_record()` reads the status at the end of recall from `recall.json`
+`Guard.recall_chat_record()` reads the status at the end of recall from `recall.json`
 fields `payload.chat.status` and `payload.chat.cause` and refuses unless recall is
 completed; an arm unusable there has no scores. A later failed rebuild is recorded
-in that later step's state as described above. If the run ends with no verdict
+in that later step's state as described above. The arm is unusable if completed
+recall says so or any later step records a failed rebuild; the recall record alone
+is not final once a later step has recorded one. If the run ends with no verdict
 before recall completes, the report prints the chat arm as "not run" and labels
 any earlier chat record with its step; it does not call that record final.
 
@@ -145,14 +155,16 @@ If the run cannot record either model's withdrawal, a later attempt records a
 withdrawal only if that model is still withdrawn. A failed ending save is carried
 by the handler's one normal save; if that also fails, the last successful state
 stands. REPLAY is derived again on retry; an operator ending needs the flag and
-a chat transport failure again. A decision version change or cap is detected again
+a saved earlier chat transport interruption and a chat transport failure again. A decision version change or cap is detected again
 from the decision transcript. Unreadable or incomplete chat transcripts prevent
 the handler's save; the next attempt refuses with the cut-back instruction for an
 incomplete line.
 
 A reply whose append fails before any byte is written is not recorded, is not
 counted toward the cap, and is requested again; actual spending can exceed
-recorded spending by such replies.
+recorded spending by such replies. A reply arriving without a model version or
+token counts is also unrecorded and requested again. No bound is claimed on paid
+but unrecorded spending across repeated storage failures.
 
 If `held-out` has not completed within 30 days of its first start, both
 hypotheses receive no verdict and the report publishes every score already
@@ -519,7 +531,8 @@ which must begin with its model name, as in the pilot. Withdrawal means the
 service says the model does not exist on every bounded attempt at a request.
 Before the first missing chat request in each step, check model metadata without
 generating text; missing metadata
-does not establish withdrawal.
+does not establish withdrawal. A metadata check answered not found (404 or 410) permits the generating request;
+only that request's bounded attempts decide withdrawal.
 A success without a non-empty string modelVersion or integer promptTokenCount is
 a transient transport fault and is retried within the bounded attempts, with no
 transcript record. Missing candidatesTokenCount or thoughtsTokenCount means zero,

@@ -264,8 +264,8 @@ class Client(Protocol):
 class VertexClient:
     """A step must call preflight before its first generating request.
 
-    Preflight queries model metadata without generating text. Missing metadata is
-    a configuration fault; only four missing generating responses mean withdrawn.
+    Preflight queries model metadata without generating text. Missing metadata
+    permits generation; only four missing generating responses mean withdrawn.
     """
 
     def __init__(
@@ -317,7 +317,7 @@ class VertexClient:
                     raise TransientError
                 if status == 429 or 500 <= status < 600:
                     raise TransientError
-                if status != 200:
+                if status not in (200, 404, 410):
                     raise ConfigurationInterruption("chat metadata request refused")
                 return Response("", MODEL, 0, 0)
             except (TransientError, Interruption, GuardRefusal, OSError, http.client.HTTPException):

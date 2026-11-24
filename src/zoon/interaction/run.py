@@ -78,6 +78,8 @@ class Run:
     ) -> dict[str, Any]:
         if step in ("closed-loop", "recall"):
             return self.steps.execute(step, repair, end_chat)
+        if end_chat is not None:
+            raise clients.GuardRefusal("ending chat is accepted only for closed-loop or recall")
         if step != "calibrate":
             raise clients.GuardRefusal("unknown or unimplemented step")
         with self.guard.lock():
@@ -236,6 +238,8 @@ def main(arguments: Sequence[str] | None = None) -> int:
             repair=args.repair,
             **({"end_chat": args.end_chat} if args.end_chat is not None else {}),
         )
+        if args.end_chat is not None and not runner.steps.ended:
+            print("[chat ending] flag had no effect")
         payload = state["payload"]
         print(f"[interaction {state['mode']}] {args.step} = {state['status']}")
         print(

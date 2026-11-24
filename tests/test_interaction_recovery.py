@@ -211,8 +211,8 @@ def test_final_status_comes_from_recall(
     assert '"cause": "VERSION"' in capsys.readouterr().out
     assert state(runner)["payload"]["chat"]["status"] == "usable"
     with runner.guard.lock():
-        assert runner.guard.final_chat_record()["status"] == "unusable"
-        assert runner.guard.final_chat_record()["cause"] == "VERSION"
+        assert runner.guard.recall_chat_record()["status"] == "unusable"
+        assert runner.guard.recall_chat_record()["cause"] == "VERSION"
 
 
 @pytest.mark.parametrize("fault", ["VERSION", "CAP"])

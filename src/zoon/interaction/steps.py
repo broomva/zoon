@@ -45,6 +45,7 @@ class Steps:
         self.groups = groups
         self.payload: dict[str, Any] = {}
         self.step = ""
+        self.ended = False
         self.decision: decisions.Session | None = None
         self.session: chat.Session | None = None
         guard.register_transcripts("decision")
@@ -142,6 +143,14 @@ class Steps:
         with self.guard.lock():
             self.guard.before(step, repair)
             old = self.guard.state(step)
+            if end_chat is not None and not (
+                old and old["status"] == "interrupted" and old["reason"] == "TransportInterruption"
+            ):
+                raise clients.GuardRefusal(
+                    "flag is accepted only after an attempt of this step "
+                    "that chat transport interrupted"
+                )
+            self.ended = False
             self.payload = old["payload"] if old else {}
             self.session = None
             self.decision = None
@@ -179,6 +188,10 @@ class Steps:
                         "reason": error.reason.name,
                     }
                     return self.save("terminal", error.reason.value)
+                if isinstance(error, chat.TransportInterruption):
+                    self.payload["chat_transport_failures"] = (
+                        self.payload.get("chat_transport_failures", 0) + 1
+                    )
                 self.save("interrupted", type(error).__name__)
                 if isinstance(error, decisions.StorageFault):
                     raise clients.StepFailure("could not persist decision transcript") from None
@@ -192,18 +205,12 @@ class Steps:
         store.bands(self.decision, self.groups)
         try:
             if self.payload.get("chat_endings"):
-                if end_chat is not None:
-                    print("[chat ending] flag had no effect")
                 return
             session.check()
             store.chat(session, self.groups)
-            if end_chat is not None:
-                print("[chat ending] flag had no effect")
         except chat.TransportInterruption:
             self.operator_ending(end_chat)
         except chat.Unusable as error:
-            if end_chat is not None:
-                print("[chat ending] flag had no effect")
             if error.cause in (chat.Cause.WITHDRAWN, chat.Cause.REPLAY):
                 self.add_ending(error.cause.name)
                 self.save()
@@ -212,8 +219,6 @@ class Steps:
         endings = self.payload["chat_endings"]
         for ending in endings:
             if ending["cause"] == "WITHDRAWN" or ending["step"] == "recall":
-                if end_chat is not None:
-                    print("[chat ending] flag had no effect")
                 self.payload["stopped_by"] = ending["cause"]
                 return
         try:
@@ -222,8 +227,6 @@ class Steps:
             self.operator_ending(end_chat)
             self.payload["stopped_by"] = "OPERATOR"
             return
-        if end_chat is not None:
-            print("[chat ending] flag had no effect")
         if result.stopped_by == chat.Cause.WITHDRAWN:
             self.add_ending("WITHDRAWN")
             self.save()
@@ -237,8 +240,17 @@ class Steps:
     def operator_ending(self, reason: str | None) -> None:
         if reason is None:
             raise
+        self.ended = True
+        self.payload["chat_transport_failures"] = self.payload.get("chat_transport_failures", 0) + 1
+        details = {}
+        if self.step == "recall":
+            details["answered_recall"] = sum(
+                key.kind == "recall" for key in self.transcript().entries
+            )
         self.add_ending(
             "OPERATOR",
+            chat_transport_failures=self.payload["chat_transport_failures"],
+            **details,
             reason=reason,
             answered_decisions=self.chat_record()["answered_decisions"],
         )

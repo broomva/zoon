@@ -56,6 +56,17 @@ def band_logs(runner: run.Run) -> dict[str, bytes]:
     }
 
 
+def interrupt_chat(runner: run.Run, step: str) -> None:
+    original = runner.steps.chat_client
+    decision = runner.steps.client
+    runner.steps.client = clients.StubClient("decision")
+    runner.steps.chat_client = ChatFault("transport", at=1)
+    with pytest.raises(chat.TransportInterruption):
+        runner.execute(step)
+    runner.steps.chat_client = original
+    runner.steps.client = decision
+
+
 class ChatFault(chat.StubClient):
     def __init__(self, fault: str, at: int = 5) -> None:
         super().__init__()
@@ -107,6 +118,8 @@ def test_chat_outcomes_keep_all_other_arms_and_complete(
     completed = faulty.execute("closed-loop")
     payload = completed["payload"]
     assert completed["status"] == "completed"
+    if cause in ("REPLIES", "VERSION", "CAP"):
+        assert not payload.get("chat_endings")
     assert payload["chat"]["cause"] == cause
     assert payload["chat"]["status"] == "unusable"
     assert "chat_logs" not in payload
@@ -165,7 +178,10 @@ def test_chat_transport_resume_matches_uninterrupted_and_skips_finished_arms(
         resumed.guard.root, stub=True, storage=resumed.guard.storage, simulation_groups=1
     )
     completed = fresh.execute("closed-loop")
-    assert completed == expected
+    assert completed["payload"].pop("chat_transport_failures") == 1
+    assert {k: v for k, v in completed.items() if k not in ("digest", "payload_digest")} == {
+        k: v for k, v in expected.items() if k not in ("digest", "payload_digest")
+    }
     assert len(requested) == 440 - 44
     assert (fresh.guard.transcript_directory / "chat.jsonl").read_bytes().startswith(before)
     assert band_logs(fresh) == band_logs(plain)
@@ -393,7 +409,10 @@ def test_recall_transport_resume_equals_uninterrupted(runs: Factory) -> None:
     with pytest.raises(chat.TransportInterruption):
         interrupted.execute("recall")
     final = run.Run(resumed.guard.root, stub=True, storage=resumed.guard.storage).execute("recall")
-    assert final == expected
+    assert final["payload"].pop("chat_transport_failures") == 1
+    assert {k: v for k, v in final.items() if k not in ("digest", "payload_digest")} == {
+        k: v for k, v in expected.items() if k not in ("digest", "payload_digest")
+    }
 
 
 def test_completed_chat_logs_have_separate_digests(runs: Factory) -> None:
@@ -459,6 +478,7 @@ def test_operator_cli_records_reason_and_completes_the_step(
     runs: Factory, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     runner = runs(chat_client=ChatFault("transport"))
+    interrupt_chat(runner, "closed-loop")
 
     def local(**kwargs: Any) -> run.Run:
         assert kwargs["stub"]
@@ -517,6 +537,8 @@ def test_each_step_can_end_chat_without_losing_the_first_event(runs: Factory) ->
             "step": "recall",
             "reason": "Recall unavailable",
             "answered_decisions": 44,
+            "answered_recall": 2,
+            "chat_transport_failures": 2,
         },
     ]
     assert first == {
@@ -524,6 +546,7 @@ def test_each_step_can_end_chat_without_losing_the_first_event(runs: Factory) ->
         "step": "closed-loop",
         "reason": "Requests unavailable",
         "answered_decisions": 44,
+        "chat_transport_failures": 2,
     }
     assert completed["payload"]["chat"]["endings"] == events
     assert completed["payload"]["chat"]["cause"] == "OPERATOR"
@@ -635,12 +658,20 @@ def test_chat_cause_and_events_across_steps(
                 raise chat.Unusable(chat.Cause.REPLAY)
 
             patch.setattr(chat, "replay", failed)
+        if initial == "operator":
+            interrupt_chat(runner, "closed-loop")
         closed = runner.execute(
             "closed-loop", end_chat="Requests unavailable" if initial == "operator" else None
         )
     path = runner.guard.directory / "closed-loop.json"
     before = path.read_bytes()
     runner.steps.chat_client = ChatFault("transport" if later == "operator" else later, at=1)
+    if later == "operator":
+        # A cause that already prevents questions cannot satisfy the flag precondition.
+        if initial in ("version", "cap", "withdrawn"):
+            later = "none"
+        else:
+            interrupt_chat(runner, "recall")
     recalled = runner.execute(
         "recall", end_chat="Recall unavailable" if later == "operator" else None
     )
