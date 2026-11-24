@@ -42,7 +42,8 @@ def test_steps_complete_in_order_and_refuse_repetition(
     assert simulation["status"] == "completed"
     payload = simulation["payload"]
     assert set(payload["simulations"]) == {"zoon", "alone", "prompted", "chat"}
-    assert len(payload["digests"]) == 4 * 8 * 2
+    assert len(payload["digests"]) == 3 * 8 * 2
+    assert len(payload["chat_logs"]) == 8 * 2
     for name, expected in payload["digests"].items():
         assert digest((runner.guard.storage / name).read_bytes()) == expected
     assert all(r["status"] == "not asked" for r in payload["recall"])

@@ -45,8 +45,6 @@ class Steps:
         self.groups = groups
         self.payload: dict[str, Any] = {}
         self.step = ""
-        self.recovering = False
-        self.saved_chat_checkpoint: dict[str, Any] = {}
         self.decision: decisions.Session | None = None
         self.session: chat.Session | None = None
         guard.register_transcripts("decision")
@@ -62,12 +60,7 @@ class Steps:
         )
 
     def chat_checkpoint(self, keys: list[str] | None) -> dict[str, Any]:
-        try:
-            transcript = self.transcript()
-        except (chat.Interruption, chat.GuardRefusal, OSError):
-            if self.recovering and (keys is None or keys == self.saved_chat_checkpoint.get("keys")):
-                return self.saved_chat_checkpoint
-            raise
+        transcript = self.transcript()
         entries = {digest(encoded(asdict(k))): asdict(e) for k, e in transcript.entries.items()}
         selected = sorted(entries) if keys is None else keys
         if selected != sorted(set(selected)) or any(k not in entries for k in selected):
@@ -118,19 +111,10 @@ class Steps:
                 versions=sorted({r.version for r in responses}),
                 transcript=checkpoint(transcript),
             )
-        try:
-            record = self.chat_record()
-            transcript = self.session.transcript if self.session else self.transcript()
-            recall = [asdict(reply) for reply in chat.read_recall(transcript)]
-        except (chat.Interruption, chat.GuardRefusal, OSError):
-            if not self.recovering:
-                raise
-        else:
-            self.payload["chat"] = record
-            self.payload["recall"] = recall
-        result = self.guard.save(self.step, self.payload, status=status, reason=reason)
-        self.saved_chat_checkpoint = result["transcripts"]["chat"]
-        return result
+        self.payload["chat"] = self.chat_record()
+        transcript = self.session.transcript if self.session else self.transcript()
+        self.payload["recall"] = [asdict(reply) for reply in chat.read_recall(transcript)]
+        return self.guard.save(self.step, self.payload, status=status, reason=reason)
 
     def open_chat(self) -> chat.Session:
         transcript = self.transcript(read_only=False)
@@ -167,6 +151,13 @@ class Steps:
                 )
                 self.guard.transcripts["decision"] = self.decision.transcript
                 session = self.open_chat()
+                if step == "recall":
+                    prior = self.guard.state("closed-loop")
+                    if prior is None:
+                        raise clients.GuardRefusal("completed simulation is required")
+                    self.payload.setdefault(
+                        "chat_endings", prior["payload"].get("chat_endings", []).copy()
+                    )
                 self.save()
                 if step == "closed-loop":
                     self.closed_loop(session)
@@ -176,8 +167,6 @@ class Steps:
             except StateReplacedError:
                 raise
             except BaseException as error:
-                self.session = None
-                self.recovering = True
                 if isinstance(error, clients.TerminalStop) and error.reason in (
                     clients.StopReason.WITHDRAWN,
                     clients.StopReason.VERSION,
@@ -188,14 +177,14 @@ class Steps:
                         "H3": "no verdict",
                         "reason": error.reason.name,
                     }
-                    return self.save("terminal", error.reason.value)
-                self.payload["last_failure"] = {
-                    "kind": "chat_transport"
-                    if isinstance(error, chat.TransportInterruption)
-                    else "other",
-                    "type": type(error).__name__,
-                }
-                self.save("interrupted", type(error).__name__)
+                    try:
+                        return self.save("terminal", error.reason.value)
+                    except StateReplacedError:
+                        raise
+                    except BaseException as failure:
+                        self.guard.interrupt(self.step, failure)
+                        raise
+                self.guard.interrupt(self.step, error)
                 if isinstance(error, decisions.StorageFault):
                     raise clients.StepFailure("could not persist decision transcript") from None
                 raise
@@ -215,16 +204,9 @@ class Steps:
             if error.cause in (chat.Cause.WITHDRAWN, chat.Cause.REPLAY):
                 self.add_ending(error.cause.name)
                 self.save()
-            # Partial chat games remain unscored. They are never promoted to digests.
-            self.payload["chat_pending"] = {}
 
     def recall(self, session: chat.Session) -> None:
-        prior = self.guard.state("closed-loop")
-        if prior is None:
-            raise clients.GuardRefusal("completed simulation is required")
-        endings = self.payload.setdefault(
-            "chat_endings", prior["payload"].get("chat_endings", []).copy()
-        )
+        endings = self.payload["chat_endings"]
         for ending in endings:
             if ending["cause"] == "WITHDRAWN" or ending["step"] == "recall":
                 self.payload["stopped_by"] = ending["cause"]
@@ -232,10 +214,10 @@ class Steps:
         result = chat.recall(session)
         if result.stopped_by == chat.Cause.WITHDRAWN:
             self.add_ending("WITHDRAWN")
+            self.save()
         self.payload["stopped_by"] = result.stopped_by.name if result.stopped_by else None
 
     def add_ending(self, cause: str, **details: Any) -> None:
-        self.payload["chat_pending"] = {}
         self.payload.setdefault("chat_endings", []).append(
             {"cause": cause, "step": self.step, **details}
         )
@@ -256,10 +238,7 @@ class Steps:
             self.payload = old["payload"]
             if self.payload.get("last_failure", {}).get("kind") != "chat_transport":
                 raise clients.GuardRefusal("the last failure was not a chat transport failure")
-            if any(
-                event["step"] == self.step or event["cause"] == "WITHDRAWN"
-                for event in self.payload.get("chat_endings", [])
-            ):
+            if any(event["step"] == self.step for event in self.payload.get("chat_endings", [])):
                 raise clients.GuardRefusal("an ending of the chat arm is already recorded")
             self.session = None
             self.add_ending(

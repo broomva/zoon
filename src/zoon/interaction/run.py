@@ -250,9 +250,12 @@ def main(arguments: Sequence[str] | None = None) -> int:
             for ending in payload["chat_endings"]:
                 print(f"[chat ending] {json.dumps(ending, sort_keys=True)}")
         else:
-            print(f"[chat] {json.dumps(payload['chat'], sort_keys=True)}")
+            with runner.guard.lock():
+                record = runner.guard.chat_record() if args.step == "recall" else payload["chat"]
+            print(f"[chat] {json.dumps(record, sort_keys=True)}")
             if args.step == "closed-loop":
-                print(f"[simulation] logs = {len(payload['digests'])}")
+                logs = payload["digests"] | payload.get("chat_logs", {})
+                print(f"[simulation] logs = {len(logs)}")
             else:
                 print(f"[recall stopped by] {payload['stopped_by']}")
                 for reply in payload["recall"]:

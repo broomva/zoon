@@ -55,7 +55,6 @@ class Store:
         self.guard, self.payload, self.save = guard, payload, save
         payload.setdefault("digests", {})
         payload.setdefault("simulations", {})
-        payload.setdefault("chat_pending", {})
 
     def read(self, name: str, expected: str) -> bytes:
         path = (self.guard.storage / name).resolve()
@@ -69,12 +68,6 @@ class Store:
     def verify(self) -> None:
         for name, expected in self.payload["digests"].items():
             self.read(name, expected)
-
-    def pending(self, name: str, expected: str) -> bytes:
-        try:
-            return self.read(name, expected)
-        except (FileNotFoundError, clients.GuardRefusal):
-            raise chat.Unusable(chat.Cause.REPLAY) from None
 
     def record(self, arm: str, cell: str, runs: tuple[kernel.Run, ...]) -> dict[str, str]:
         values = np.array([compare.summaries(run.rounds, GAMES[cell]) for run in runs])
@@ -112,24 +105,18 @@ class Store:
             self.save()
 
     def chat(self, session: chat.Session, groups: int) -> None:
-        pending = self.payload["chat_pending"]
-        for cell, game in sorted(GAMES.items()):
-            prefix = (self.guard.directory / "closed-loop" / "chat" / cell).relative_to(
-                self.guard.storage
-            ).as_posix() + "/"
-            if sum(name.startswith(prefix) for name in pending) == groups:
-                continue
-            runs = play_chat_game(game, session, groups)
-            pending.update(self.record("chat", cell, runs))
-            self.save()
-        raw = session.transcript.read_bytes()
-        if raw:
-            verified = chat.replay_transcript(session.transcript, session.transcript.digest())
-            for name, expected in pending.items():
-                chat.replay(self.pending(name, expected), verified, session.cap)
-        self.payload["digests"].update(pending)
-        self.payload["simulations"]["chat"] = sorted(pending)
-        self.payload["chat_pending"] = {}
+        games = {
+            cell: play_chat_game(game, session, groups) for cell, game in sorted(GAMES.items())
+        }
+        verified = chat.replay_transcript(session.transcript, session.transcript.digest())
+        for runs in games.values():
+            for run in runs:
+                chat.replay(run.bytes, verified, session.cap)
+        outputs: dict[str, str] = {}
+        for cell, runs in games.items():
+            outputs.update(self.record("chat", cell, runs))
+        self.payload["chat_logs"] = outputs
+        self.payload["simulations"]["chat"] = sorted(outputs)
 
 
 def play_chat_game(game: Game, session: chat.Session, groups: int) -> tuple[kernel.Run, ...]:

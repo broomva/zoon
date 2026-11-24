@@ -932,14 +932,57 @@ def test_registration_keeps_each_ending_event() -> None:
     )
 
 
-def test_registration_pending_logs_and_final_chat_status() -> None:
+def test_registration_chat_outputs_and_final_status() -> None:
     text = (NOTE.parents[2] / "interaction" / "registration.md").read_text()
     assert (
-        "A missing unscored chat game log or one that differs from its recorded digest is\n"
-        "a failed replay of that chat game; other storage errors interrupt the step."
-    ) in text
+        "Chat game logs are written from the chat transcript when `closed-loop` completes\n"
+        "and are not read back by any run step. A later step that scores them first rebuilds\n"
+        "them from the transcript and requires the rebuilt bytes to match the recorded digests.\n"
+        "A mismatch then is a failed replay of that chat game, which makes `chat` unusable\n"
+        "and blocks nothing else." in text
+    )
     assert (
         "An arm usable at the end of `closed-loop` can become unusable during `recall`.\n"
-        "Later steps and the report read the arm's status from the recall state; an arm\n"
-        "unusable there has no scores."
+        "Later steps and the report read the arm's status and cause from `recall.json`\n"
+        "fields `payload.chat.status` and `payload.chat.cause`; an arm unusable ther"
+        "e has no scores.\n"
+        "The `closed-loop.json` field `payload.simulations.chat` lists logs, not final usability."
+        in text
+    )
+    assert (
+        "If chat requests alone keep `closed-loop` or `recall` from completing, the operator\n"
+        "may end the chat arm with a recorded reason before `held-out` begins, using\n"
+        "`python -m zoon.interaction.run end-chat --reason TEXT` (or with `--stub` for a\n"
+        "rehearsal). It records the ending; repeating the interrupted step completes it.\n"
+        "The command is accepted only while `closed-loop` or `recall` is interrupted"
+        " and its last\n"
+        "failure was a chat transport failure. `chat` is then unusable, the step completes,\n"
+        "the report prints each reason and its number of chat decisions already answered,\n"
+        "and no verdict changes. Apart from a declared repair and the incomplete-lin"
+        "e cut under Guard, repairs and\n"
+        "persistence, this is the only operator decision the run allows, and it cannot be\n"
+        "taken once `held-out` has started.\n" in text
+    )
+    assert (
+        "2. `python -m zoon.interaction.run closed-loop`: simulate all usable arms. Write\n"
+        "   each coded and prompted arm's logs and guarded digests when that arm finishes.\n"
+        "   Write chat logs and their separate digests only on completion, after replay against\n"
+        "   the verified transcript. Finish all simulation before any held-out group is read.\n"
+        in text
+    )
+    assert (
+        "| `src/zoon/interaction/run.py` | Existing today | Calibration and step command dispatch |"
+        in text
+    )
+    assert (
+        "| `src/zoon/interaction/steps.py` | Existing today | Closed-loop, recall an"
+        "d operator chat endings |" in text
+    )
+    assert (
+        "| `src/zoon/interaction/simulation.py` | Existing today | Committed-arm sim"
+        "ulation and game log persistence |" in text
+    )
+    assert (
+        "The run module dispatches calibration, closed-loop, recall and the operator\n"
+        "chat-ending command today."
     ) in text

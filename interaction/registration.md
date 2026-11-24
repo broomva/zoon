@@ -99,8 +99,11 @@ blocked. Three unusable replies for one decision, the model's withdrawal, a
 version change, reaching the chat cap, a failed replay of a chat game, or a first
 reported version that does not begin with the model name make `chat` unusable,
 with no scores.
-A missing unscored chat game log or one that differs from its recorded digest is
-a failed replay of that chat game; other storage errors interrupt the step.
+Chat game logs are written from the chat transcript when `closed-loop` completes
+and are not read back by any run step. A later step that scores them first rebuilds
+them from the transcript and requires the rebuilt bytes to match the recorded digests.
+A mismatch then is a failed replay of that chat game, which makes `chat` unusable
+and blocks nothing else.
 
 If chat requests alone keep `closed-loop` or `recall` from completing, the operator
 may end the chat arm with a recorded reason before `held-out` begins, using
@@ -121,8 +124,9 @@ recall questions. An earlier ending in `closed-loop` does not prevent an operato
 ending in `recall`; a withdrawal or an ending already in the current step does.
 Completed state files remain unchanged; the recall state exposes all ending events.
 An arm usable at the end of `closed-loop` can become unusable during `recall`.
-Later steps and the report read the arm's status from the recall state; an arm
-unusable there has no scores.
+Later steps and the report read the arm's status and cause from `recall.json`
+fields `payload.chat.status` and `payload.chat.cause`; an arm unusable there has no scores.
+The `closed-loop.json` field `payload.simulations.chat` lists logs, not final usability.
 
 If `held-out` has not completed within 30 days of its first start, both
 hypotheses receive no verdict and the report publishes every score already
@@ -650,8 +654,9 @@ Run them in this order:
 1. `python -m zoon.interaction.run calibrate`: make the recalibration calls and the
    disguise calls; fit and save recalibration. Do not refit the primary coded arms.
 2. `python -m zoon.interaction.run closed-loop`: simulate all usable arms. Write
-   every game's log and digest. Finish all simulation and record all its digests
-   before any held-out group is read.
+   each coded and prompted arm's logs and guarded digests when that arm finishes.
+   Write chat logs and their separate digests only on completion, after replay against
+   the verified transcript. Finish all simulation before any held-out group is read.
 3. `python -m zoon.interaction.run recall`: ask the chat model the recall questions.
 4. `python -m zoon.interaction.run held-out`: the first step to read held-out groups.
    Only this step may call the second sealing step that produces them. Make the

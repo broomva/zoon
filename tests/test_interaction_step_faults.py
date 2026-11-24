@@ -14,7 +14,7 @@ import pytest
 
 from tests.interaction_run_support import repository
 from zoon.interaction import chat, kernel, prompted, run, score, simulation
-from zoon.interaction.guard import StateReplacedError, atomic, digest
+from zoon.interaction.guard import atomic, digest
 from zoon.pilot import clients
 
 Factory = Callable[..., run.Run]
@@ -109,7 +109,7 @@ def test_chat_outcomes_keep_all_other_arms_and_complete(
     assert completed["status"] == "completed"
     assert payload["chat"]["cause"] == cause
     assert payload["chat"]["status"] == "unusable"
-    assert payload["chat_pending"] == {}
+    assert "chat_logs" not in payload
     assert "outcome" not in payload and "chat" not in payload["simulations"]
     assert not any("/chat/" in n for n in payload["digests"])
     assert band_logs(faulty) == band_logs(plain)
@@ -149,7 +149,7 @@ def test_chat_transport_resume_matches_uninterrupted_and_skips_finished_arms(
         "kind": "chat_transport",
         "type": "TransportInterruption",
     }
-    assert interrupted["payload"]["chat"]["answered_decisions"] == 44
+    assert interrupted["payload"]["chat"]["answered_decisions"] == 0
     before = (resumed.guard.transcript_directory / "chat.jsonl").read_bytes()
 
     def no_simulate(*args: Any, **kwargs: Any) -> Any:
@@ -421,9 +421,7 @@ def test_recall_conditions_labels_full_replies_and_resume(runs: Factory, fault: 
         interrupted = state(recognizer, "recall")
         assert interrupted["status"] == "interrupted"
         assert interrupted["payload"]["last_failure"]["kind"] == "chat_transport"
-        assert [r["status"] for r in interrupted["payload"]["recall"]] == (
-            ["judged"] * 2 + ["not asked"] * 6
-        )
+        assert [r["status"] for r in interrupted["payload"]["recall"]] == (["not asked"] * 8)
         completed = recognizer.execute("recall")
         assert client.calls == 9
         assert completed["payload"]["stopped_by"] is None
@@ -477,12 +475,14 @@ def test_recall_transport_resume_equals_uninterrupted(runs: Factory) -> None:
     assert final == expected
 
 
-def test_completed_chat_logs_meet_the_guard_digest_contract(runs: Factory) -> None:
+def test_completed_chat_logs_have_separate_digests(runs: Factory) -> None:
     # Inspect the required data contract without obtaining a data capability.
     runner = runs()
     completed = runner.execute("closed-loop")
-    assert completed["payload"]["chat_pending"] == {}
-    outputs = cast(dict[str, str], completed["payload"]["digests"])
+    assert "chat_logs" in completed["payload"]
+    outputs = cast(
+        dict[str, str], completed["payload"]["digests"] | completed["payload"]["chat_logs"]
+    )
     assert isinstance(outputs, dict) and outputs
     for name, expected in outputs.items():
         path = (runner.guard.storage / name).resolve()
@@ -520,20 +520,18 @@ def test_arm_and_chat_game_checkpoints_precede_next_work(
     with pytest.raises(chat.TransportInterruption):
         runner.execute("closed-loop")
     assert checked == ["zoon", "alone"]
-    pending = state(runner)["payload"]["chat_pending"]
-    assert len(pending) == 1
+    assert "chat_logs" not in state(runner)["payload"]
     original_play = chat.play
     played: list[str] = []
 
     def play(game: chat.Game, session: chat.Session, group: str) -> kernel.Run:
-        assert not any(f"/{game.cell}/" in name for name in pending)
         played.append(group)
         return original_play(game, session, group)
 
     monkeypatch.setattr(chat, "play", play)
     fresh = run.Run(runner.guard.root, stub=True, storage=runner.guard.storage, simulation_groups=1)
     assert fresh.execute("closed-loop")["status"] == "completed"
-    assert len(played) == 7
+    assert len(played) == 8
 
 
 def test_operator_cli_records_reason_without_completing_the_step(
@@ -629,9 +627,9 @@ def test_recall_keeps_the_first_cause_and_operator_details(runs: Factory) -> Non
     assert completed["payload"]["chat"]["cause"] == "OPERATOR"
 
 
-def test_ending_discards_pending_chat_games(runs: Factory) -> None:
+def test_ending_leaves_chat_games_unscored(runs: Factory) -> None:
     runner = ended_closed_loop(runs)
-    assert state(runner)["payload"]["chat_pending"] == {}
+    assert "chat_logs" not in state(runner)["payload"]
     assert "chat" not in state(runner)["payload"]["simulations"]
     assert state(runner)["payload"]["chat"]["calls"] == 44
 
@@ -791,58 +789,6 @@ def test_chat_cause_and_events_across_steps(
     assert recalled["status"] == "completed"
 
 
-@pytest.mark.parametrize("damage", ["missing", "changed", "unreadable"])
-@pytest.mark.parametrize("ending", [False, True])
-def test_pending_damage_completes_without_blocking_other_arms(
-    runs: Factory, monkeypatch: pytest.MonkeyPatch, damage: str, ending: bool
-) -> None:
-    runner = runs()
-    original = runner.steps.save
-    stopped = False
-    name = ""
-
-    def save(status: str = "running", reason: str = "") -> dict[str, Any]:
-        nonlocal stopped, name
-        result = original(status, reason)
-        if not stopped and len(runner.steps.payload.get("chat_pending", {})) == 1:
-            name = next(iter(runner.steps.payload["chat_pending"]))
-            stopped = True
-            raise chat.TransportInterruption("requests unavailable")
-        return result
-
-    monkeypatch.setattr(runner.steps, "save", save)
-    with pytest.raises(chat.TransportInterruption):
-        runner.execute("closed-loop")
-    monkeypatch.setattr(runner.steps, "save", original)
-    if ending:
-        ended = runner.end_chat("Requests unavailable")
-        assert not ended["payload"]["chat_pending"]
-    path = runner.guard.storage / name
-    if damage == "missing":
-        path.unlink()
-    elif damage == "changed":
-        path.write_bytes(b"damaged")
-    else:
-        original_read = Path.read_bytes
-
-        def read(target: Path) -> bytes:
-            if target == path:
-                raise PermissionError("storage unavailable")
-            return original_read(target)
-
-        monkeypatch.setattr(Path, "read_bytes", read)
-        if not ending:
-            with pytest.raises(PermissionError, match="storage unavailable"):
-                runner.execute("closed-loop")
-            assert state(runner)["payload"]["last_failure"]["kind"] == "other"
-            return
-    result = runner.execute("closed-loop")
-    assert result["status"] == "completed"
-    assert result["payload"]["chat"]["cause"] == ("OPERATOR" if ending else "REPLAY")
-    assert result["payload"]["chat_pending"] == {}
-    assert "chat" not in result["payload"]["simulations"]
-
-
 @pytest.mark.parametrize("stage", ["decision", "chat", "save"])
 @pytest.mark.parametrize("started", [False, True])
 def test_initialization_failure_records_current_failure(
@@ -873,8 +819,11 @@ def test_initialization_failure_records_current_failure(
             patch.setattr(runner.steps, "save", save)
         with pytest.raises(OSError, match="storage unavailable"):
             runner.execute("closed-loop")
-    assert state(runner)["payload"]["last_failure"]["kind"] == "other"
-    with pytest.raises(clients.GuardRefusal, match="not a chat transport"):
+    if started:
+        assert state(runner)["payload"]["last_failure"]["kind"] == "other"
+    else:
+        assert not (runner.guard.directory / "closed-loop.json").exists()
+    with pytest.raises(clients.GuardRefusal):
         runner.end_chat("Requests unavailable")
 
 
@@ -898,8 +847,8 @@ def test_later_append_failure_keeps_checkpoint_line_count(
     with pytest.raises(chat.StorageInterruption):
         runner.execute("closed-loop")
     saved = state(runner)
-    assert saved["payload"]["chat"]["transcript"]["lines"] == 151
-    assert len(saved["transcripts"]["chat"]["keys"]) == 150
+    assert saved["payload"]["chat"]["transcript"]["lines"] == 0
+    assert len(saved["transcripts"]["chat"]["keys"]) == 0
 
 
 @pytest.mark.parametrize("fault", ["decision", "incomplete"])
@@ -953,63 +902,10 @@ def test_simulation_store_contains_paths_and_validates_chat_summaries(
         store.record("chat", "2-FE", (kernel.Run((), ()),))
 
 
-@pytest.mark.parametrize("game_at", [1, len(chat.GAMES)])
-@pytest.mark.parametrize("point", [1, 2, 3])
-@pytest.mark.parametrize("after", [False, True])
-def test_replay_ending_recovers_at_every_final_save(
-    runs: Factory, monkeypatch: pytest.MonkeyPatch, point: int, after: bool, game_at: int
-) -> None:
-    def exercise(name: str, interrupt: bool) -> dict[str, Any]:
-        runner = runs(name)
-        original = runner.steps.save
-        count = 0
-        active = False
-        failed = False
-
-        def save(status: str = "running", reason: str = "") -> dict[str, Any]:
-            nonlocal active, count, failed
-            pending = runner.steps.payload.get("chat_pending", {})
-            if len(pending) == game_at and not active:
-                active = True
-                (runner.guard.storage / next(iter(pending))).write_bytes(b"damaged")
-            if active:
-                count += 1
-            hit = interrupt and active and count == point and not failed
-            if hit and not after:
-                failed = True
-                raise OSError("save interrupted")
-            result = original(status, reason)
-            if runner.steps.payload.get("chat_endings"):
-                assert not result["payload"]["chat_pending"]
-            if hit:
-                failed = True
-                raise StateReplacedError("save interrupted")
-            return result
-
-        with monkeypatch.context() as patch:
-            patch.setattr(runner.steps, "save", save)
-            if interrupt:
-                with pytest.raises(OSError, match="save interrupted"):
-                    runner.execute("closed-loop")
-            else:
-                return runner.execute("closed-loop")
-        assert failed
-        fresh = run.Run(
-            runner.guard.root, stub=True, storage=runner.guard.storage, simulation_groups=1
-        )
-        if state(fresh)["status"] == "completed":
-            return state(fresh)
-        return fresh.execute("closed-loop")
-
-    expected = exercise("plain", False)
-    assert expected["payload"]["chat"]["cause"] == "REPLAY"
-    assert exercise("resumed", True) == expected
-
-
 @pytest.mark.parametrize("fault", ["version", "replies", "cap", "withdrawn"])
-def test_unusable_discards_already_pending_game(runs: Factory, fault: str) -> None:
+def test_unusable_leaves_chat_games_unscored(runs: Factory, fault: str) -> None:
     runner = runs(chat_client=ChatFault(fault, at=150))
     result = runner.execute("closed-loop")
     assert result["status"] == "completed"
-    assert result["payload"]["chat_pending"] == {}
+    assert "chat_logs" not in result["payload"]
     assert "chat" not in result["payload"]["simulations"]

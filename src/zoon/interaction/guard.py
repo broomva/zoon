@@ -534,6 +534,29 @@ class Guard:
         atomic(self.directory / f"{step}.json", result)
         return result
 
+    def interrupt(self, step: str, error: BaseException) -> None:
+        """Annotate the last durable state without reading either transcript."""
+        self._require_lock()
+        path = self.directory / f"{step}.json"
+        if not path.exists():
+            return
+        state = json.loads(path.read_bytes())
+        state["status"], state["reason"] = "interrupted", type(error).__name__
+        state["payload"]["last_failure"] = {
+            "kind": "chat_transport" if isinstance(error, chat.TransportInterruption) else "other",
+            "type": type(error).__name__,
+        }
+        state["payload_digest"] = digest(encoded(state["payload"]))
+        state.pop("digest")
+        atomic(path, {**state, "digest": digest(encoded(state))})
+
+    def chat_record(self) -> dict[str, Any]:
+        """Return the final arm record once recall has completed."""
+        state = self.state("recall")
+        if state is None or state["status"] != "completed":
+            raise clients.GuardRefusal("completed recall is required for the final chat record")
+        return state["payload"]["chat"]
+
     def permit(self) -> HeldOutPermit:
         self._require_lock()
         if self.mode != "live" or self.checked_step != "held-out":

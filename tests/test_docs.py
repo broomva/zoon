@@ -138,7 +138,8 @@ def check_interaction_registration(root: Path, document: Path) -> None:
         )
     )
     assert paths and exempt <= paths
-    for path in paths - exempt:
+    # Step documents are generated in run storage by Guard.save.
+    for path in paths - exempt - {"closed-loop.json", "recall.json"}:
         # A short filename in prose names a note already linked in the document.
         candidates = [root / path]
         if "/" not in path:
