@@ -48,3 +48,41 @@ def test_ci_shard_invokes_its_files_only(monkeypatch: pytest.MonkeyPatch, shard:
     assert commands == [
         [ci_shards.sys.executable, "-m", "pytest", *ci_shards.groups()[shard], "-q"]
     ]
+
+
+def test_ci_shard_check_refuses_an_unassigned_file(monkeypatch: pytest.MonkeyPatch) -> None:
+    assignments = ci_shards.groups()
+    # Simulate a shard definition that silently drops one discoverable file.
+    missing = assignments["remaining"][0]
+    original = ci_shards.validate
+
+    def validate(shards: dict[str, tuple[str, ...]], files: tuple[str, ...]) -> None:
+        shards["remaining"] = tuple(p for p in shards["remaining"] if p != missing)
+        original(shards, files)
+
+    monkeypatch.setattr(ci_shards, "validate", validate)
+    with pytest.raises(ValueError, match="exactly one"):
+        ci_shards.main(["--check"])
+
+
+def test_pytest_collection_matches_ci_pattern(tmp_path: Path) -> None:
+    import subprocess
+    import sys
+    import tomllib
+
+    configuration = Path("pyproject.toml").read_bytes()
+    settings = tomllib.loads(configuration.decode())["tool"]["pytest"]["ini_options"]
+    assert settings["python_files"] == ["test_*.py"]
+    (tmp_path / "pyproject.toml").write_bytes(configuration)
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests/test_included.py").write_text("def test_included(): assert True\n")
+    (tmp_path / "tests/excluded_test.py").write_text("def test_excluded(): assert False\n")
+    result = subprocess.run(
+        [sys.executable, "-m", "pytest", "--collect-only", "-q", "-p", "no:cacheprovider"],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "tests/test_included.py::test_included" in result.stdout
+    assert "test_excluded" not in result.stdout

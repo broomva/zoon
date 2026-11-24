@@ -23,7 +23,9 @@ requirements for registration, not descriptions of an implemented run.
 If both comparisons were computed and either does not meet the rule, the hypothesis
 is failed; if a comparison could not be computed, there is no verdict. The
 completion and run-ending rules under Data govern whether a hypothesis can be judged.
-The `chat` arm decides nothing.
+The `chat` arm decides nothing, except that an uncorrectable configuration refusal
+prevents `closed-loop` or `recall` from completing, so `held-out` cannot start and
+neither hypothesis is decided.
 
 **What a pass means.** H2 shows better next-move prediction by this law using the
 others' history than by the chosen law without it and this prompt to this model.
@@ -148,15 +150,18 @@ persistence, this is the only operator decision the run allows. The operator mus
 use it only when chat transport prevents completion; the guard cannot judge intent.
 It cannot be used once `held-out` has started: completed calling steps cannot be
 repeated.
-Any reply the service returns uses up the flag, including an unusable or blocked
-reply or one reporting another version.
+The flag is used up when the client returns a reply to the step: an HTTP 200 whose
+body can be processed, passes the secret check, and reports a non-empty model
+version and valid token counts under Models. That reply uses up the flag whether
+its text is usable, unusable or blocked, whether it reports another version, and
+whether its transcript append succeeds; the success marker is set before the append.
 If the flag was given, a service request succeeded and the step later fails, the
 command prints "flag used up: a chat request succeeded in this attempt" once
 before the error propagates.
 For an operator ending from the service client, the ending records and the command
 prints failure_stage (metadata check or generating request) and last_status (the
-last HTTP status, or null if no HTTP answer reached the client, including a
-failed connection).
+HTTP status of the last attempt, or null if that attempt received no HTTP answer,
+for example after a failed connection).
 
 Each step keeps at most one ending event, written once. Recall carries earlier
 ending events forward unchanged and may add its own.
@@ -189,9 +194,12 @@ incomplete line.
 
 A reply whose append fails before any byte is written is not recorded, is not
 counted toward the cap, and is requested again; actual spending can exceed
-recorded spending by such replies. A reply arriving without a model version or
-token counts is also unrecorded and requested again. No bound is claimed on paid
-but unrecorded spending across repeated storage failures.
+recorded spending by such replies. An HTTP 200 answer that cannot be processed, or passes the secret check but fails
+the version or token checks under Models, is unrecorded and retried within the
+bounded attempts without using up the flag. An HTTP 200 answer refused by the
+secret check is unrecorded, interrupts the step with GuardRefusal without using
+up the flag, and is requested again on the next attempt. No bound is claimed on
+paid but unrecorded spending across repeated storage failures.
 
 If `held-out` has not completed within 30 days of its first start, both
 hypotheses receive no verdict and the report publishes every score already
@@ -561,22 +569,28 @@ three not-found answers followed by a transport fault), the result is a transpor
 failure, not a withdrawal.
 For the metadata check, 200, 404 and 410 permit the generating request; 404 and
 410 say the metadata was not found, not that the generating model is withdrawn.
-For that check, 401 refreshes the token and is retried; 429, 5xx and connection
-failures are also retried and, if all bounded attempts fail, interrupt the step
+For that check, 401 refreshes the token and is retried while a new token can be
+obtained; 429, 5xx and connection failures are also retried and, if all bounded
+attempts fail, interrupt the step
 with TransportInterruption, on which the flag may end the arm.
 Every other metadata status, including 400, 403 and 3xx, is a configuration refusal.
 For the generating request, 200 returns a reply subject to the response checks below;
 404 and 410 mean the model does not exist, and withdrawal requires those answers
 on every bounded attempt.
-For that request, 401 refreshes the token; all 4xx other than 403, 404 and 410,
-including 400, 401 and 429, and all 5xx and connection failures are retried and,
+For that request, 401 refreshes the token while a new token can be obtained;
+all 4xx other than 403, 404 and 410, including 400, 401 and 429, and all 5xx and
+connection failures are retried and,
 if they persist, interrupt the step with TransportInterruption, on which the flag
 may end the arm.
 A generating status other than 200 outside 4xx and 5xx, or 403, is a configuration
 refusal.
+If a token cannot be obtained or refreshed, including when the token source cannot
+be reached, the client raises a configuration refusal at once with no retry at
+either stage; the flag does not apply and is not accepted on the next attempt.
 The request format is checked against the live service before the registration is
-tagged; a persistent generating 400 during the registered run therefore means the
-service has changed and is a failure on which the operator may end the arm.
+tagged; a persistent generating 400 during the registered run is therefore treated
+as a change of the service and is a failure on which the operator may end the arm.
+A 401 that persists although the token is refreshed is treated the same way.
 A configuration refusal at either stage interrupts the step until configuration
 is corrected; the flag does not apply.
 If it cannot be corrected, the step cannot complete, `held-out` cannot start,
@@ -585,9 +599,12 @@ Before the first missing chat request in each attempt, check model metadata with
 generating text; missing metadata
 does not establish withdrawal. A metadata check answered not found (404 or 410) permits the generating request;
 only that request's bounded attempts decide withdrawal.
-A success without a non-empty string modelVersion or integer promptTokenCount is
-a transient transport fault and is retried within the bounded attempts, with no
-transcript record. Missing candidatesTokenCount or thoughtsTokenCount means zero,
+For the generating request, except for an answer refused by the secret check, an
+HTTP 200 answer without a non-empty string modelVersion or a non-negative integer
+promptTokenCount, or whose body cannot be processed, is a transient transport fault
+and is retried within the bounded attempts, with no transcript record or use of
+the flag; if it persists, the flag may end the arm with last_status 200.
+Missing candidatesTokenCount or thoughtsTokenCount means zero,
 with or without candidate text; a present count that is not a non-negative integer,
 including a boolean, is the same transient fault.
 The outcomes for withdrawal and version change are under Data.

@@ -738,9 +738,12 @@ def test_registration_chat_contract_has_only_the_registered_rules() -> None:
         "does not establish withdrawal. A metadata check answered not found (404 or 410) "
         "permits the generating request;\n"
         "only that request's bounded attempts decide withdrawal.\n"
-        "A success without a non-empty string modelVersion or integer promptTokenCount is\n"
-        "a transient transport fault and is retried within the bounded attempts, with no\n"
-        "transcript record. Missing candidatesTokenCount or thoughtsTokenCount means zero,\n"
+        "For the generating request, except for an answer refused by the secret check, an\n"
+        "HTTP 200 answer without a non-empty string modelVersion or a non-negative integer\n"
+        "promptTokenCount, or whose body cannot be processed, is a transient transport fault\n"
+        "and is retried within the bounded attempts, with no transcript record or use of\n"
+        "the flag; if it persists, the flag may end the arm with last_status 200.\n"
+        "Missing candidatesTokenCount or thoughtsTokenCount means zero,\n"
         "with or without candidate text; a present count that is not a non-negative integer,\n"
         "including a boolean, is the same transient fault."
     )
@@ -976,15 +979,18 @@ def test_registration_chat_outputs_and_final_status() -> None:
         "use it only when chat transport prevents completion; the guard cannot judge intent.\n"
         "It cannot be used once `held-out` has started: completed calling steps cannot be\n"
         "repeated.\n"
-        "Any reply the service returns uses up the flag, including an unusable or blocked\n"
-        "reply or one reporting another version.\n"
+        "The flag is used up when the client returns a reply to the step: an HTTP 200 whose\n"
+        "body can be processed, passes the secret check, and reports a non-empty model\n"
+        "version and valid token counts under Models. That reply uses up the flag whether\n"
+        "its text is usable, unusable or blocked, whether it reports another version, and\n"
+        "whether its transcript append succeeds; the success marker is set before the append.\n"
         "If the flag was given, a service request succeeded and the step later fails, the\n"
         'command prints "flag used up: a chat request succeeded in this attempt" once\n'
         "before the error propagates.\n"
         "For an operator ending from the service client, the ending records and the command\n"
         "prints failure_stage (metadata check or generating request) and last_status (the\n"
-        "last HTTP status, or null if no HTTP answer reached the client, including a\n"
-        "failed connection).\n"
+        "HTTP status of the last attempt, or null if that attempt received no HTTP answer,\n"
+        "for example after a failed connection).\n"
         "\n"
         "Each step keeps at most one ending event, written once. Recall carries earlier\n"
         "ending events forward unchanged and may add its own.\n"
@@ -1019,9 +1025,13 @@ def test_registration_chat_outputs_and_final_status() -> None:
         "\n"
         "A reply whose append fails before any byte is written is not recorded, is not\n"
         "counted toward the cap, and is requested again; actual spending can exceed\n"
-        "recorded spending by such replies. A reply arriving without a model version or\n"
-        "token counts is also unrecorded and requested again. No bound is claimed on paid\n"
-        "but unrecorded spending across repeated storage failures.\n" in text
+        "recorded spending by such replies. "
+        "An HTTP 200 answer that cannot be processed, or passes the secret check but fails\n"
+        "the version or token checks under Models, is unrecorded and retried within the\n"
+        "bounded attempts without using up the flag. An HTTP 200 answer refused by the\n"
+        "secret check is unrecorded, interrupts the step with GuardRefusal without using\n"
+        "up the flag, and is requested again on the next attempt. No bound is claimed on\n"
+        "paid but unrecorded spending across repeated storage failures.\n" in text
     )
     assert ("The run module dispatches calibration, closed-loop and recall today.") in text
 
@@ -1034,22 +1044,28 @@ def test_registration_transport_and_configuration_contract() -> None:
         "failure, not a withdrawal.\n"
         "For the metadata check, 200, 404 and 410 permit the generating request; 404 and\n"
         "410 say the metadata was not found, not that the generating model is withdrawn.\n"
-        "For that check, 401 refreshes the token and is retried; 429, 5xx and connection\n"
-        "failures are also retried and, if all bounded attempts fail, interrupt the step\n"
+        "For that check, 401 refreshes the token and is retried while a new token can be\n"
+        "obtained; 429, 5xx and connection failures are also retried and, if all bounded\n"
+        "attempts fail, interrupt the step\n"
         "with TransportInterruption, on which the flag may end the arm.\n"
         "Every other metadata status, including 400, 403 and 3xx, is a configuration refusal.\n"
         "For the generating request, 200 returns a reply subject to the response checks below;\n"
         "404 and 410 mean the model does not exist, and withdrawal requires those answers\n"
         "on every bounded attempt.\n"
-        "For that request, 401 refreshes the token; all 4xx other than 403, 404 and 410,\n"
-        "including 400, 401 and 429, and all 5xx and connection failures are retried and,\n"
+        "For that request, 401 refreshes the token while a new token can be obtained;\n"
+        "all 4xx other than 403, 404 and 410, including 400, 401 and 429, and all 5xx and\n"
+        "connection failures are retried and,\n"
         "if they persist, interrupt the step with TransportInterruption, on which the flag\n"
         "may end the arm.\n"
         "A generating status other than 200 outside 4xx and 5xx, or 403, is a configuration\n"
         "refusal.\n"
+        "If a token cannot be obtained or refreshed, including when the token source cannot\n"
+        "be reached, the client raises a configuration refusal at once with no retry at\n"
+        "either stage; the flag does not apply and is not accepted on the next attempt.\n"
         "The request format is checked against the live service before the registration is\n"
-        "tagged; a persistent generating 400 during the registered run therefore means the\n"
-        "service has changed and is a failure on which the operator may end the arm.\n"
+        "tagged; a persistent generating 400 during the registered run is therefore treated\n"
+        "as a change of the service and is a failure on which the operator may end the arm.\n"
+        "A 401 that persists although the token is refreshed is treated the same way.\n"
         "A configuration refusal at either stage interrupts the step until configuration\n"
         "is corrected; the flag does not apply.\n"
         "If it cannot be corrected, the step cannot complete, `held-out` cannot start,\n"
@@ -1170,3 +1186,21 @@ def test_registration_resume_order_retries_and_files() -> None:
         ("| `interaction/chat-requests/` | Existing today | Committed chat request fixtures |"),
     ):
         assert passage in text
+
+
+def test_registration_configuration_blocks_hypotheses() -> None:
+    text = (NOTE.parents[2] / "interaction" / "registration.md").read_text()
+    assert (
+        "The `chat` arm decides nothing, except that an uncorrectable configuration refusal\n"
+        "prevents `closed-loop` or `recall` from completing, so `held-out` cannot start and\n"
+        "neither hypothesis is decided."
+    ) in text
+
+
+def test_registration_step_outcome_pointer_and_calibration_order() -> None:
+    text = (NOTE.parents[2] / "interaction" / "registration.md").read_text()
+    assert "The outcomes for withdrawal and version change are under Data." in text
+    assert (
+        "1. `python -m zoon.interaction.run calibrate`: make the recalibration calls and the\n"
+        "   disguise calls; fit and save recalibration. Do not refit the primary coded arms."
+    ) in text
