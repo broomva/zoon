@@ -93,11 +93,13 @@ seconds between failed attempts, as in `src/zoon/pilot/clients.py`, function `re
 The analysis code must use the same counts and pauses.
 
 A chat request that fails in transport after the bounded tries interrupts the
-step and is resumed; it does not count toward the three attempts. An unusable
+step unless the flag below ends the arm; otherwise repeat the command to resume.
+It does not count toward the three attempts. An unusable
 reply is a recorded response whose text fails the reply rule, or is empty or
 blocked. Three unusable replies for one decision, the model's withdrawal, a
 version change, reaching the chat cap, a failed replay of a chat game, or a first
-reported version that does not begin with the model name make `chat` unusable,
+reported version that does not begin with the model name, or an operator ending
+(below) make `chat` unusable,
 with no scores.
 Chat game logs are written from the chat transcript when `closed-loop` completes,
 if the arm is still usable then, and are not read back by any run step. A later
@@ -109,15 +111,29 @@ cause, and the report prints both the recall record and the later step's record.
 
 The operator may use
 `python -m zoon.interaction.run closed-loop --end-chat REASON` or
-`python -m zoon.interaction.run recall --end-chat REASON` (also with `--stub` for a rehearsal).
+`python -m zoon.interaction.run recall --end-chat REASON`.
+The stub client never fails in transport, so the flag cannot take effect with `--stub`.
 A blank or whitespace-only reason is refused before the step runs. The flag is
-accepted only after the saved state of this step is interrupted by chat transport.
-The step runs normally; the flag takes effect only if a chat request, including
-its preceding metadata check, fails in transport again after the bounded tries
-during this attempt. It records OPERATOR, the reason, the step, the count of
+accepted only after the saved state of this step is interrupted by chat transport,
+unless an ending for this step is already saved. In that case the step completes
+with the saved ending and the command says the flag had no effect.
+If the saved state is not an interruption by chat transport and has no ending for
+this step (for example after another failure, a killed process or a failed save),
+repeat the step without the flag; if chat transport interrupts it again, the flag
+is accepted on the next attempt.
+The step runs normally; the flag takes effect only if no chat request to the
+service has succeeded during this attempt and a request, including its preceding
+metadata check, fails in transport after the bounded tries. A successful metadata
+check followed by a failed first generating request can end the arm. Replies
+reused from the transcript are not service requests and do not use up the flag.
+Once a service request succeeds, the flag has no effect for the rest of the attempt;
+a later chat transport failure interrupts the step and increases its recorded count.
+An operator ending therefore means no chat request succeeded during the flagged
+attempt, and its answered counts are the counts at the start of that attempt. It records OPERATOR, the reason, the step, the count of
 recorded chat transport interruptions including this failure, and the number of
 chat decisions answered; in recall it also records the number of recall questions
-answered. It saves and completes the step. An operator ending in either step makes
+answered. The count of recorded chat transport interruptions stays in the step
+state whether or not an ending occurs. It saves and completes the step. An operator ending in either step makes
 `chat` unusable with no scores; an ending during recall leaves the completed chat
 games unscored. Closed-loop completes without chat logs; recall keeps and judges
 its answers and marks the rest "not asked". A decision-model transport failure
@@ -154,8 +170,10 @@ any earlier chat record with its step; it does not call that record final.
 If the run cannot record either model's withdrawal, a later attempt records a
 withdrawal only if that model is still withdrawn. A failed ending save is carried
 by the handler's one normal save; if that also fails, the last successful state
-stands. REPLAY is derived again on retry; an operator ending needs the flag and
-a saved earlier chat transport interruption and a chat transport failure again. A decision version change or cap is detected again
+stands. REPLAY is derived again on retry. If the operator ending was not saved
+and the saved state is not interrupted by chat transport, first repeat without
+the flag until chat transport interrupts the step again, then repeat with the flag;
+only a further transport failure before any service request succeeds can end the arm. A decision version change or cap is detected again
 from the decision transcript. Unreadable or incomplete chat transcripts prevent
 the handler's save; the next attempt refuses with the cut-back instruction for an
 incomplete line.
@@ -529,7 +547,13 @@ Record the version each response reports. The decision model must report exactly
 its name above. For chat, fix the version to the first response's reported version,
 which must begin with its model name, as in the pilot. Withdrawal means the
 service says the model does not exist on every bounded attempt at a request.
-Before the first missing chat request in each step, check model metadata without
+When bounded attempts mix not-found answers with a transport fault (for example
+three not-found answers followed by a transport fault), the result is a transport
+failure, not a withdrawal.
+A chat request refused as misconfigured (for example a permission refusal)
+interrupts the step until configuration is corrected; the flag does not apply.
+If configuration cannot be corrected, the step cannot complete.
+Before the first missing chat request in each attempt, check model metadata without
 generating text; missing metadata
 does not establish withdrawal. A metadata check answered not found (404 or 410) permits the generating request;
 only that request's bounded attempts decide withdrawal.

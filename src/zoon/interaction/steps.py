@@ -13,6 +13,7 @@ class PreflightClient:
     def __init__(self, client: chat.Client) -> None:
         self.client = client
         self.ready = False
+        self.succeeded = False
 
     def ask(self, text: str) -> chat.Response:
         if not self.ready:
@@ -20,7 +21,9 @@ class PreflightClient:
             if callable(preflight):
                 preflight()
             self.ready = True
-        return self.client.ask(text)
+        response = self.client.ask(text)
+        self.succeeded = True
+        return response
 
 
 class Steps:
@@ -144,7 +147,11 @@ class Steps:
             self.guard.before(step, repair)
             old = self.guard.state(step)
             if end_chat is not None and not (
-                old and old["status"] == "interrupted" and old["reason"] == "TransportInterruption"
+                old
+                and (
+                    (old["status"] == "interrupted" and old["reason"] == "TransportInterruption")
+                    or any(e["step"] == step for e in old["payload"].get("chat_endings", []))
+                )
             ):
                 raise clients.GuardRefusal(
                     "flag is accepted only after an attempt of this step "
@@ -238,7 +245,11 @@ class Steps:
         )
 
     def operator_ending(self, reason: str | None) -> None:
-        if reason is None:
+        if reason is None or (
+            self.session is not None
+            and isinstance(self.session.client, PreflightClient)
+            and self.session.client.succeeded
+        ):
             raise
         self.ended = True
         self.payload["chat_transport_failures"] = self.payload.get("chat_transport_failures", 0) + 1

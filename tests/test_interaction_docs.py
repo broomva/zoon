@@ -733,7 +733,7 @@ def test_registration_chat_contract_has_only_the_registered_rules() -> None:
         + text.split("Before the first missing chat request", 1)[1].split("\nThe outcomes", 1)[0]
     )
     assert reply_rules == (
-        "Before the first missing chat request in each step, check model metadata without\n"
+        "Before the first missing chat request in each attempt, check model metadata without\n"
         "generating text; missing metadata\n"
         "does not establish withdrawal. A metadata check answered not found (404 or 410) "
         "permits the generating request;\n"
@@ -916,6 +916,15 @@ def test_available_step_modules_and_remaining_work_are_explicit() -> None:
 def test_registration_chat_outputs_and_final_status() -> None:
     text = (NOTE.parents[2] / "interaction" / "registration.md").read_text()
     assert (
+        "A chat request that fails in transport after the bounded tries interrupts the\n"
+        "step unless the flag below ends the arm; otherwise repeat the command to resume.\n"
+        "It does not count toward the three attempts. An unusable\n"
+        "reply is a recorded response whose text fails the reply rule, or is empty or\n"
+        "blocked. Three unusable replies for one decision, the model's withdrawal, a\n"
+        "version change, reaching the chat cap, a failed replay of a chat game, or a first\n"
+        "reported version that does not begin with the model name, or an operator ending\n"
+        "(below) make `chat` unusable,\n"
+        "with no scores.\n"
         "Chat game logs are written from the chat transcript when `closed-loop` completes,\n"
         "if the arm is still usable then, and are not read back by any run step. A later\n"
         "step that scores them first rebuilds them from the transcript, checked against\n"
@@ -926,16 +935,31 @@ def test_registration_chat_outputs_and_final_status() -> None:
         "\n"
         "The operator may use\n"
         "`python -m zoon.interaction.run closed-loop --end-chat REASON` or\n"
-        "`python -m zoon.interaction.run recall --end-chat REASON` (also with `--stu"
-        "b` for a rehearsal).\n"
+        "`python -m zoon.interaction.run recall --end-chat REASON`.\n"
+        "The stub client never fails in transport, so the flag cannot take effect with `--stub`.\n"
         "A blank or whitespace-only reason is refused before the step runs. The flag is\n"
-        "accepted only after the saved state of this step is interrupted by chat transport.\n"
-        "The step runs normally; the flag takes effect only if a chat request, including\n"
-        "its preceding metadata check, fails in transport again after the bounded tries\n"
-        "during this attempt. It records OPERATOR, the reason, the step, the count of\n"
+        "accepted only after the saved state of this step is interrupted by chat transport,\n"
+        "unless an ending for this step is already saved. In that case the step completes\n"
+        "with the saved ending and the command says the flag had no effect.\n"
+        "If the saved state is not an interruption by chat transport and has no ending for\n"
+        "this step (for example after another failure, a killed process or a failed save),\n"
+        "repeat the step without the flag; if chat transport interrupts it again, the flag\n"
+        "is accepted on the next attempt.\n"
+        "The step runs normally; the flag takes effect only if no chat request to the\n"
+        "service has succeeded during this attempt and a request, including its preceding\n"
+        "metadata check, fails in transport after the bounded tries. A successful metadata\n"
+        "check followed by a failed first generating request can end the arm. Replies\n"
+        "reused from the transcript are not service requests and do not use up the flag.\n"
+        "Once a service request succeeds, the flag has no effect for the rest of the attempt;\n"
+        "a later chat transport failure interrupts the step and increases its recorded count.\n"
+        "An operator ending therefore means no chat request succeeded during the flagged\n"
+        "attempt, and its answered counts are the counts at the start of that a"
+        "ttempt. It records OPERATOR, the reason, the step, the count of\n"
         "recorded chat transport interruptions including this failure, and the number of\n"
         "chat decisions answered; in recall it also records the number of recall questions\n"
-        "answered. It saves and completes the step. An operator ending in either step makes\n"
+        "answered. The count of recorded chat transport interruptions stays in the step\n"
+        "state whether or not an ending occurs. It saves and completes the step"
+        ". An operator ending in either step makes\n"
         "`chat` unusable with no scores; an ending during recall leaves the completed chat\n"
         "games unscored. Closed-loop completes without chat logs; recall keeps and judges\n"
         'its answers and marks the rest "not asked". A decision-model transport failure\n'
@@ -954,8 +978,8 @@ def test_registration_chat_outputs_and_final_status() -> None:
         "Each step keeps at most one ending event, written once. Recall carries earlier\n"
         "ending events forward unchanged and may add its own.\n"
         "The earliest cause, however detected, governs the arm's reported cause; once a\n"
-        "completed step records a cause, later steps retain it. A withdrawal or an e"
-        "nding event in `recall` stops further\n"
+        "completed step records a cause, later steps retain it. A withdrawal or"
+        " an ending event in `recall` stops further\n"
         "recall questions. An earlier ending in `closed-loop` does not prevent an operator\n"
         "ending in `recall`; a withdrawal, an ending already in the current step, the cap,\n"
         "a version change or an invalid first version prevents further recall questions.\n"
@@ -973,9 +997,11 @@ def test_registration_chat_outputs_and_final_status() -> None:
         "If the run cannot record either model's withdrawal, a later attempt records a\n"
         "withdrawal only if that model is still withdrawn. A failed ending save is carried\n"
         "by the handler's one normal save; if that also fails, the last successful state\n"
-        "stands. REPLAY is derived again on retry; an operator ending needs the flag and\n"
-        "a saved earlier chat transport interruption and a chat transport failure ag"
-        "ain. A decision version change or cap is detected again\n"
+        "stands. REPLAY is derived again on retry. If the operator ending was not saved\n"
+        "and the saved state is not interrupted by chat transport, first repeat without\n"
+        "the flag until chat transport interrupts the step again, then repeat with the flag;\n"
+        "only a further transport failure before any service request succeeds c"
+        "an end the arm. A decision version change or cap is detected again\n"
         "from the decision transcript. Unreadable or incomplete chat transcripts prevent\n"
         "the handler's save; the next attempt refuses with the cut-back instruction for an\n"
         "incomplete line.\n"
@@ -984,6 +1010,23 @@ def test_registration_chat_outputs_and_final_status() -> None:
         "counted toward the cap, and is requested again; actual spending can exceed\n"
         "recorded spending by such replies. A reply arriving without a model version or\n"
         "token counts is also unrecorded and requested again. No bound is claimed on paid\n"
-        "but unrecorded spending across repeated storage failures."
-    ) in text
+        "but unrecorded spending across repeated storage failures.\n" in text
+    )
     assert ("The run module dispatches calibration, closed-loop and recall today.") in text
+
+
+def test_registration_transport_and_configuration_contract() -> None:
+    text = (NOTE.parents[2] / "interaction" / "registration.md").read_text()
+    assert (
+        "When bounded attempts mix not-found answers with a transport fault (for example\n"
+        "three not-found answers followed by a transport fault), the result is a transport\n"
+        "failure, not a withdrawal.\n"
+        "A chat request refused as misconfigured (for example a permission refusal)\n"
+        "interrupts the step until configuration is corrected; the flag does not apply.\n"
+        "If configuration cannot be corrected, the step cannot complete.\n"
+        "Before the first missing chat request in each attempt, check model metadata without\n"
+        "generating text; missing metadata\n"
+        "does not establish withdrawal. A metadata check answered not found (40"
+        "4 or 410) permits the generating request;\n"
+        "only that request's bounded attempts decide withdrawal.\n" in text
+    )

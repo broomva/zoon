@@ -20,7 +20,7 @@ from zoon.pilot import clients
 Factory = Callable[..., run.Run]
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture(scope="session")
 def calibrated(tmp_path_factory: pytest.TempPathFactory) -> Generator[tuple[Path, Path]]:
     directory = tmp_path_factory.mktemp("calibrated")
     root, storage = repository(directory / "repo"), directory / "storage"
@@ -29,13 +29,49 @@ def calibrated(tmp_path_factory: pytest.TempPathFactory) -> Generator[tuple[Path
     shutil.rmtree(directory)
 
 
-@pytest.fixture
-def runs(calibrated: tuple[Path, Path], tmp_path: Path) -> Generator[Factory]:
+@pytest.fixture(scope="session")
+def prepared_states(
+    calibrated: tuple[Path, Path], tmp_path_factory: pytest.TempPathFactory
+) -> Generator[dict[str, Path]]:
     root, initial = calibrated
+    directory = tmp_path_factory.mktemp("prepared")
+    bands = directory / "bands"
+    shutil.copytree(initial, bands)
+    runner = run.Run(
+        root,
+        stub=True,
+        storage=bands,
+        simulation_groups=1,
+        chat_client=ChatFault("transport", at=1),
+    )
+    with pytest.raises(chat.TransportInterruption):
+        runner.execute("closed-loop")
+    with runner.guard.lock():
+        runner.guard.before("closed-loop")
+        saved = runner.guard.state("closed-loop")
+        assert saved is not None
+        payload = saved["payload"]
+        assert payload.pop("chat_transport_failures") == 1
+        runner.guard.save("closed-loop", payload, status="running")
+    completed = directory / "closed-loop"
+    shutil.copytree(bands, completed)
+    run.Run(root, stub=True, storage=completed, simulation_groups=1).execute("closed-loop")
+    yield {"calibrated": initial, "bands": bands, "closed-loop": completed}
+    shutil.rmtree(directory)
 
-    def make(name: str = "run", **kwargs: Any) -> run.Run:
+
+@pytest.fixture
+def runs(
+    calibrated: tuple[Path, Path], prepared_states: dict[str, Path], tmp_path: Path
+) -> Generator[Factory]:
+    root, _ = calibrated
+
+    def make(name: str = "run", *, prepared: str = "bands", **kwargs: Any) -> run.Run:
         storage = tmp_path / name
-        shutil.copytree(initial, storage)
+        # Different ensembles and decision clients must exercise their own coded arms.
+        if kwargs.get("simulation_groups", 1) != 1 or "client" in kwargs or "cap" in kwargs:
+            prepared = "calibrated"
+        shutil.copytree(prepared_states[prepared], storage)
         kwargs.setdefault("simulation_groups", 1)
         return run.Run(root, stub=True, storage=storage, **kwargs)
 
@@ -150,10 +186,10 @@ def test_chat_outcomes_keep_all_other_arms_and_complete(
 def test_chat_transport_resume_matches_uninterrupted_and_skips_finished_arms(
     runs: Factory, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    plain = runs("plain")
+    plain = runs("plain", prepared="calibrated")
     expected = plain.execute("closed-loop")
     client = ChatFault("transport", at=45)
-    resumed = runs("resumed", chat_client=client)
+    resumed = runs("resumed", prepared="calibrated", chat_client=client)
     with pytest.raises(chat.TransportInterruption):
         resumed.execute("closed-loop")
     interrupted = state(resumed)
@@ -205,13 +241,13 @@ def test_decision_faults_end_or_interrupt_the_whole_run(runs: Factory, fault: st
             return replace(response, version="another version") if fault == "VERSION" else response
 
     client = Fault("decision")
-    runner = runs(client=client, cap=Decimal(0) if fault == "CAP" else None)
+    runner = runs(prepared="calibrated", client=client, cap=Decimal(0) if fault == "CAP" else None)
     if fault in ("transport", "other-stop"):
         with pytest.raises(clients.TerminalStop if fault == "other-stop" else clients.StepFailure):
             runner.execute("closed-loop")
         assert state(runner)["status"] == "interrupted"
         completed = runner.execute("closed-loop")
-        plain = runs("plain")
+        plain = runs("plain", prepared="calibrated")
         assert completed == plain.execute("closed-loop")
     else:
         completed = runner.execute("closed-loop")
@@ -299,7 +335,7 @@ def test_worker_count_preserves_every_byte_and_state(
 def test_nonfinite_and_replay_faults_are_not_silently_scored(
     runs: Factory, monkeypatch: pytest.MonkeyPatch, fault: str
 ) -> None:
-    runner = runs(chat_client=ChatFault("transport"))
+    runner = runs(prepared="calibrated", chat_client=ChatFault("transport"))
 
     def nonfinite(*args: Any) -> score.Floats:
         return np.full(5, np.nan if fault == "probability" else np.inf)
@@ -314,7 +350,7 @@ def test_nonfinite_and_replay_faults_are_not_silently_scored(
             raise chat.Unusable(chat.Cause.REPLAY)
 
         monkeypatch.setattr(chat, "replay", failed)
-        runner = runs("replay")
+        runner = runs("replay", prepared="calibrated")
         completed = runner.execute("closed-loop")
         assert completed["status"] == "completed"
         assert completed["payload"]["chat"]["cause"] == "REPLAY"
@@ -335,7 +371,7 @@ def test_nonfinite_and_replay_faults_are_not_silently_scored(
 @pytest.mark.parametrize("fault", ["version", "invalid-version", "cap", "withdrawn", "transport"])
 def test_recall_conditions_labels_full_replies_and_resume(runs: Factory, fault: str) -> None:
     # Use a completed, unusable chat arm so the recall-only cases stay small.
-    runner = runs(chat_client=ChatFault("replies", at=1))
+    runner = runs(prepared="calibrated", chat_client=ChatFault("replies", at=1))
     runner.execute("closed-loop")
 
     class RecallFault(ChatFault):
@@ -443,7 +479,7 @@ def test_completed_chat_logs_have_separate_digests(runs: Factory) -> None:
 def test_arm_and_chat_game_checkpoints_precede_next_work(
     runs: Factory, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    runner = runs(chat_client=ChatFault("transport", at=45))
+    runner = runs(prepared="calibrated", chat_client=ChatFault("transport", at=45))
     original = score.simulate
     checked: list[str] = []
 
@@ -477,7 +513,7 @@ def test_arm_and_chat_game_checkpoints_precede_next_work(
 def test_operator_cli_records_reason_and_completes_the_step(
     runs: Factory, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    runner = runs(chat_client=ChatFault("transport"))
+    runner = runs(chat_client=ChatFault("transport", at=1))
     interrupt_chat(runner, "closed-loop")
 
     def local(**kwargs: Any) -> run.Run:
@@ -617,9 +653,7 @@ def test_actual_append_failure_saves_interrupted(
 def test_resume_with_every_answer_skips_preflight(
     runs: Factory, monkeypatch: pytest.MonkeyPatch, step: str
 ) -> None:
-    runner = runs()
-    if step == "recall":
-        runner.execute("closed-loop")
+    runner = runs(prepared="closed-loop" if step == "recall" else "bands")
     original = runner.steps.save
 
     def save(status: str = "running", reason: str = "") -> dict[str, Any]:
@@ -650,7 +684,11 @@ def test_chat_cause_and_events_across_steps(
     # VERSION, CAP and WITHDRAWN prevent recall requests, so only 'none' is reachable.
     if initial in ("version", "cap", "withdrawn") and later != "none":
         pytest.skip("the earlier version, cap or withdrawal prevents recall requests")
-    runner = runs(chat_client=ChatFault("transport" if initial == "operator" else initial, at=5))
+    runner = runs(
+        chat_client=ChatFault(
+            "transport" if initial == "operator" else initial, at=1 if initial == "operator" else 5
+        )
+    )
     with monkeypatch.context() as patch:
         if initial == "replay":
 
@@ -693,7 +731,7 @@ def test_chat_cause_and_events_across_steps(
 def test_initialization_failure_records_current_failure(
     runs: Factory, monkeypatch: pytest.MonkeyPatch, stage: str, started: bool
 ) -> None:
-    runner = runs(chat_client=ChatFault("transport"))
+    runner = runs(prepared="calibrated", chat_client=ChatFault("transport"))
     if started:
         with pytest.raises(chat.TransportInterruption):
             runner.execute("closed-loop")
@@ -750,7 +788,7 @@ def test_later_append_failure_keeps_checkpoint_line_count(
 def test_cli_preserves_storage_and_incomplete_line_messages(
     runs: Factory, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], fault: str
 ) -> None:
-    runner = runs()
+    runner = runs(prepared="calibrated")
     if fault == "incomplete":
         runner.steps.chat_client = ChatFault("transport")
         with pytest.raises(chat.TransportInterruption):

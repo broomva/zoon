@@ -40,7 +40,7 @@ def test_every_interruption_preserves_receipts(
 
     # Every save (initial, each committed arm, completion), and every tenth request.
     def exercise(kind: str, point: int) -> None:
-        runner = runs(f"{kind}-{point}")
+        runner = runs(f"{kind}-{point}", prepared="calibrated" if kind == "save" else "bands")
         paid.clear()
         calls = 0
         original_save = runner.steps.save
@@ -105,8 +105,7 @@ def test_every_interruption_preserves_receipts(
 def test_unreadable_chat_never_rewrites_checkpoint(
     runs: Factory, monkeypatch: pytest.MonkeyPatch, stage: str
 ) -> None:
-    runner = runs()
-    runner.execute("closed-loop")
+    runner = runs(prepared="closed-loop")
     if stage != "first":
         runner.steps.chat_client = ChatFault("transport", at=1)
         with pytest.raises(chat.TransportInterruption):
