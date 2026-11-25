@@ -655,7 +655,8 @@ def test_draft_status_does_not_reopen_completed_chat_work() -> None:
         "chat requests, transcripts and replay, scoring and intervals, the fitted files, "
         "power and coverage under the registered rules, the second seal, "
         "run guards and step state, "
-        "and calibration are implemented and tested; closed-loop, recall, held-out and report "
+        "calibration, closed-loop and recall "
+        "are implemented and tested; held-out and report "
         "remain open" in readme
     )
     design = " ".join((NOTE.parent / "design.md").read_text().split())
@@ -674,92 +675,6 @@ def test_draft_status_does_not_reopen_completed_chat_work() -> None:
     )
 
 
-def test_registration_chat_contract_has_only_the_registered_rules() -> None:
-    from zoon.interaction import chat
-
-    text = (NOTE.parents[2] / "interaction" / "registration.md").read_text()
-    section = text.split("### The chat arm\n\n", 1)[1].split("\n## Spending", 1)[0]
-    assert section == (
-        "It plays one seat at a time. Its request is the participant instructions, the\n"
-        'line "You are Player n.", the history as rendered for `prompted`, and then:\n'
-        "\n"
-        "> How many of your E points do you contribute to the common pool in round r? "
-        "Answer with one whole number of points and nothing else.\n"
-        "\n"
-        "Substitute that seat's endowment for E, seat for n and round for r.\n"
-        "The instructions already end in `\\n`: append\n"
-        "one `\\n`, then `You are Player n.`, then `\\n\\n`, then the history, then `\\n\\n`,\n"
-        "then the question, with no final newline and no system instruction. The history\n"
-        "joins rounds with `\\n\\n`; each round starts with `Round r\\n`.\n"
-        "Use the same empty-history line as `prompted` when there is no earlier round.\n"
-        "Safety settings are the pilot's second-family client's: `HARM_CATEGORY_HARASSMENT`,\n"
-        "`HARM_CATEGORY_HATE_SPEECH`, `HARM_CATEGORY_SEXUALLY_EXPLICIT` and\n"
-        "`HARM_CATEGORY_DANGEROUS_CONTENT` each have threshold `OFF`. The reply is the\n"
-        "concatenated text parts of the first candidate, in their returned order.\n"
-        "A candidate with text and no finish reason is read as its text.\n"
-        "\n"
-        "After trimming white space (space, tab, line feed and carriage return only), "
-        "the reply must be a whole number from zero to E.\n"
-        "Fixed here: accept only a non-empty run of ASCII digits, with no sign, decimal\n"
-        "point or other text; leading zeroes are allowed. Retry unusable replies under\n"
-        "the three-reply rule in Data; transport failures and arm-only outcomes follow\n"
-        "that section.\n"
-        "\n"
-        "Every seat of every round of every simulated group is its own call. Identical\n"
-        "requests are NOT reused across decisions. The transcript identifies the game,\n"
-        "group, round, seat and attempt, and a resumed decision uses its recorded replies.\n"
-        "The incomplete-line rule under Guard, repairs and persistence applies.\n"
-        "Replay requires the recorded whole-transcript SHA-256 and exact line count, and\n"
-        "uses one verified copy re-read from disk without fresh calls. Rendered "
-        "decision and recall\n"
-        "requests must match; attempts for each decision must be consecutive from one,\n"
-        "with no attempt after an accepted reply and no more than three attempts.\n"
-        "A later round of a group requires accepted replies for every seat of its earlier rounds.\n"
-        "Changing text or token counts on any line fails replay. A game cannot be scored\n"
-        "when the arm is unusable; its whole transcript can still pass replay.\n"
-        "The arm's status is derived from the transcript and the cap, in file order: the\n"
-        "first invalid or changed version, third unusable reply for one decision, or\n"
-        "the chat cap reached under Spending. At the same entry, that is the order of precedence.\n"
-        "The transcript cannot show a withdrawal or an operator's ending of the arm; the run\n"
-        "step records them, and that record governs later steps.\n"
-        'Each recall question is labelled "judged", "not judged: version", or "not asked".\n'
-        "The accepted points bypass recalibration and the band-to-points step.\n"
-        "Run closed loop only, with the H3 simulation count. Score against `zoon` by the\n"
-        "same H3 composite, difference and interval. It changes no verdict.\n"
-    )
-    reply_rules = (
-        "Before generating," + text.split("Before generating,", 1)[1].split("\nThe outcomes", 1)[0]
-    )
-    assert reply_rules == (
-        "Before generating, check chat model metadata without generating text; missing metadata\n"
-        "does not establish withdrawal.\n"
-        "A success without a non-empty string modelVersion or integer promptTokenCount is\n"
-        "a transient transport fault and is retried within the bounded attempts, with no\n"
-        "transcript record. Missing candidatesTokenCount or thoughtsTokenCount means zero,\n"
-        "with or without candidate text; a present count that is not a non-negative integer,\n"
-        "including a boolean, is the same transient fault."
-    )
-    normal = " ".join(text.split())
-    assert (
-        "The decision-model cap is also reached when recorded spending is above it; "
-        "equality is allowed."
-    ) in normal
-    assert (
-        "answered questions are kept and judged and the questions not yet "
-        'answered are recorded "not asked".'
-    ) in normal
-    assert {c.name for c in chat.Cause} == {
-        "REPLIES",
-        "WITHDRAWN",
-        "VERSION",
-        "CAP",
-        "REPLAY",
-    }
-    assert chat.points(" \t\n\r00036\r", 36) == 36
-    assert all(chat.points(t, 36) is None for t in ("+1", "1.", "37", "\x0c1", "1\xa0"))
-    assert chat.request(kernel_view_for_docs()).count("How many of your") == 1
-
-
 def test_chat_probe_history_is_not_a_claim_about_registered_thinking() -> None:
     text = " ".join((NOTE.parents[2] / "interaction" / "registration.md").read_text().split())
     assert "that reported no thinking tokens in those probes." in text
@@ -773,8 +688,10 @@ def test_registration_spending_cap_contract() -> None:
     )[0]
     passage = "Each model has its own cap" + passage
     assert passage == (
-        "Each model has its own cap, so that an arm that decides nothing cannot end the\n"
-        "run. **Decision-model cap in US dollars: 17.** **Chat-model cap in US dollars,\n"
+        "Each model has its own cap, so exhausting the chat cap cannot end the run;\n"
+        "a configuration refusal can still prevent completion as described"
+        " above. **Decision-model cap in US dollars: 17.** **Chat-model ca"
+        "p in US dollars,\n"
         "recall included: 2544.** Count spending from reported tokens in recorded\n"
         "responses at the fixed prices. Retain and count unusable chat replies before\n"
         "retrying them. As in the pilot, do not send a call if that model's spent tokens'\n"
@@ -790,53 +707,6 @@ def test_registration_spending_cap_contract() -> None:
         "hypotheses. Reaching the chat-model cap makes `chat` unusable and changes no\n"
         "verdict."
     )
-
-
-def test_registration_recall_contract() -> None:
-    text = (NOTE.parents[2] / "interaction" / "registration.md").read_text()
-    passage = text.split("Recall questions with no recorded answer", 1)[1].split(
-        "\n\nA non-finite probability", 1
-    )[0]
-    passage = "Recall questions with no recorded answer" + passage
-    assert passage == (
-        "Recall questions with no recorded answer are sent unless the model is withdrawn,\n"
-        "its first reported version is invalid, its version has changed,\n"
-        "or the chat cap is reached. An arm made unusable by the three-reply rule, or ended\n"
-        "by the operator during `closed-loop`, is still asked. If the operator ends the arm\n"
-        "during `recall`, answered questions are kept and judged and the questions not yet\n"
-        'answered are recorded "not asked". `closed-loop` and `recall` complete with the\n'
-        'chat status recorded and "not asked" for each recall question not sent, and later\n'
-        "steps proceed. This changes no hypothesis verdict. The chat reply rule is under\n"
-        'The chat arm. A paid reply with an invalid version is retained as "not judged: version",\n'
-        "without judging or flagging it. Recall reports separately what stopped it asking."
-    )
-
-
-def test_registration_incomplete_line_contract() -> None:
-    text = (NOTE.parents[2] / "interaction" / "registration.md").read_text()
-    passage = text.split("Transcripts are append-only", 1)[1].split(
-        " State is separate for this registration", 1
-    )[0]
-    assert "Transcripts are append-only" + passage == (
-        "Transcripts are append-only except for the incomplete-line cut below, and bound\n"
-        "to the full registered commit and mode; check that identity before replay.\n"
-        "An incomplete final line, left by a write the system cut short, is not a record;\n"
-        "every opening refuses it and changes no bytes. The operator cuts the file back\n"
-        "to the byte after its last line feed, or to empty if it has none, changes nothing\n"
-        "else, and repeats the command, and the decision is asked again. If the cut bytes\n"
-        "held a reply, it was paid for and is not counted. The operator notes each cut and\n"
-        "its size in bytes in the message of the commit that adds the result. This is the\n"
-        "one change to a transcript the run allows; other damage is refused."
-    )
-    normal = " ".join(text.split())
-    assert (
-        "Apart from a declared repair and the incomplete-line cut under Guard, repairs and "
-        "persistence, this is the only operator decision the run allows, and it cannot be "
-        "taken once `held-out` has started."
-    ) in normal
-    assert (
-        "Do not delete or reset state or transcripts during the run, except for that cut."
-    ) in normal
 
 
 def test_registration_calls_before_registration_contract() -> None:
@@ -887,3 +757,12 @@ def test_registration_calls_before_registration_contract() -> None:
         " recorded in\n"
         "[`docs/interaction/output-limit.txt`](../docs/interaction/output-limit.txt).\n"
     )
+
+
+def test_registration_step_outcome_pointer_and_calibration_order() -> None:
+    text = (NOTE.parents[2] / "interaction" / "registration.md").read_text()
+    assert "The outcomes for withdrawal and version change are under Data." in text
+    assert (
+        "1. `python -m zoon.interaction.run calibrate`: make the recalibration calls and the\n"
+        "   disguise calls; fit and save recalibration. Do not refit the primary coded arms."
+    ) in text

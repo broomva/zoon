@@ -205,7 +205,13 @@ class Simulation:
     summaries: Mapping[str, Floats]
 
 
-def simulate(agent: kernel.Agent, amounts: kernel.Amounts, *, open_channel: bool) -> Simulation:
+def simulate(
+    agent: kernel.Agent,
+    amounts: kernel.Amounts,
+    *,
+    open_channel: bool,
+    groups: int = SIMULATED_GROUPS,
+) -> Simulation:
     logs: dict[str, tuple[kernel.Run, ...]] = {}
     values: dict[str, Floats] = {}
     for cell in sorted(GAMES):
@@ -219,7 +225,7 @@ def simulate(agent: kernel.Agent, amounts: kernel.Amounts, *, open_channel: bool
                 f"{SIMULATION_PREFIX}|{cell}|{n}",
                 open_channel=open_channel,
             )
-            for n in range(SIMULATED_GROUPS)
+            for n in range(groups)
         )
         logs[cell] = runs
         values[cell] = np.array([compare.summaries(run.rounds, game) for run in runs])

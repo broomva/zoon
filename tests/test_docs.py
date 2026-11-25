@@ -138,7 +138,8 @@ def check_interaction_registration(root: Path, document: Path) -> None:
         )
     )
     assert paths and exempt <= paths
-    for path in paths - exempt:
+    # Step documents are generated in run storage by Guard.save.
+    for path in paths - exempt - {"closed-loop.json", "recall.json"}:
         # A short filename in prose names a note already linked in the document.
         candidates = [root / path]
         if "/" not in path:
@@ -203,12 +204,3 @@ These paths do not exist today and are exempt from the existing-path check:
     document.write_text(text)
     with pytest.raises(AssertionError):
         check_interaction_registration(root, document)
-
-
-def test_interaction_run_status_matches_the_first_slice() -> None:
-    root = NOTES.parent.parent
-    text = " ".join((root / "interaction" / "registration.md").read_text().split())
-    assert (
-        "The second sealing step, scoring and intervals, run guards, step state and "
-        "calibration are implemented; closed-loop, recall, held-out and report remain open work."
-    ) in text

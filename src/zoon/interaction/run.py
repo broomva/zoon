@@ -12,7 +12,7 @@ from typing import Any, NoReturn
 
 import numpy as np
 
-from zoon.interaction import budget, data, decisions, measure, prompted, score
+from zoon.interaction import budget, chat, data, decisions, measure, prompted, score, steps
 from zoon.interaction.guard import Guard, StateReplacedError, checkpoint, digest, encoded
 from zoon.pilot import clients
 
@@ -34,11 +34,22 @@ class Run:
         storage: Path | None = None,
         client: clients.Client | None = None,
         cap: Decimal | None = None,
+        chat_client: chat.Client | None = None,
+        chat_cap: Decimal | None = None,
+        simulation_groups: int = score.SIMULATED_GROUPS,
     ) -> None:
         self.guard = Guard(root, stub=stub, storage=storage)
         self.guard.register_transcripts("decision")
         self.client = client or (clients.StubClient("decision") if stub else decisions.LiveClient())
         self.cap = cap
+        self.steps = steps.Steps(
+            self.guard,
+            self.client,
+            decision_cap=cap,
+            chat_client=chat_client,
+            chat_cap=chat_cap,
+            groups=simulation_groups,
+        )
         self.session: decisions.Session | None = None
         self.payload: dict[str, Any] = {}
 
@@ -63,6 +74,8 @@ class Run:
         )
 
     def execute(self, step: str = "calibrate", *, repair: str | None = None) -> dict[str, Any]:
+        if step in ("closed-loop", "recall"):
+            return self.steps.execute(step, repair)
         if step != "calibrate":
             raise clients.GuardRefusal("unknown or unimplemented step")
         with self.guard.lock():
@@ -188,7 +201,7 @@ class Run:
         changed /= changed.sum(axis=1, keepdims=True)
         metrics = {
             "mean_log_probability_change": float(np.mean(log_change)),
-            "mean_total_variation": float(np.mean(np.sum(0.5 * np.abs(changed - plain), axis=1))),
+            "mean_total_variation": float((0.5 * np.abs(changed - plain)).sum(axis=1).mean()),
         }
         if not all(np.isfinite(v) for v in metrics.values()):
             raise clients.StepFailure("non-finite disguise summary")
@@ -203,15 +216,14 @@ class Parser(argparse.ArgumentParser):
 
 def main(arguments: Sequence[str] | None = None) -> int:
     parser = Parser(description=__doc__)
-    parser.add_argument("step", choices=("calibrate",))
+    parser.add_argument("step", choices=("calibrate", "closed-loop", "recall"))
     parser.add_argument("--stub", action="store_true")
     parser.add_argument("--repair", help="reason for the committed repair snapshot")
     try:
         args = parser.parse_args(arguments)
         storage = os.environ.get("ZOON_INTERACTION_DATA")
-        state = Run(stub=args.stub, storage=Path(storage) if storage else None).execute(
-            args.step, repair=args.repair
-        )
+        runner = Run(stub=args.stub, storage=Path(storage) if storage else None)
+        state = runner.execute(args.step, repair=args.repair)
         payload = state["payload"]
         print(f"[interaction {state['mode']}] {args.step} = {state['status']}")
         print(
@@ -220,9 +232,24 @@ def main(arguments: Sequence[str] | None = None) -> int:
         )
         if state["status"] == "terminal":
             print(f"[outcome] H2 = no verdict | H3 = no verdict | reason = {state['reason']}")
-        else:
+        elif args.step == "calibrate":
             print(f"[recalibration] numbers = {payload['recalibration']}")
             print(f"[disguise] {json.dumps(payload['disguise'], sort_keys=True)}")
+        else:
+            record = payload["chat"]
+            print(f"[chat] {json.dumps(record, sort_keys=True)}")
+            if args.step == "closed-loop":
+                logs = payload["digests"] | payload.get("chat_logs", {})
+                print(f"[simulation] logs = {len(logs)}")
+            else:
+                print(f"[recall stopped by] {payload['stopped_by']}")
+                for reply in payload["recall"]:
+                    response = reply["response"]
+                    text = response["text"] if response and response["text"] else "no reply"
+                    print(
+                        f"[recall {reply['game']}] {reply['status']} | "
+                        f"flagged = {reply['flagged']} | {text}"
+                    )
         return 0
     except (Exception, KeyboardInterrupt) as error:
         # No traceback, exception chain, frame, request or connection metadata.

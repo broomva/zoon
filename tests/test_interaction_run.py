@@ -257,7 +257,7 @@ def test_retry_is_the_pilots_bounded_retry_with_registered_pauses() -> None:
 def test_cli_accepts_only_implemented_steps_and_prints_no_traceback(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    for step in ("closed-loop", "recall", "held-out", "report", "reset"):
+    for step in ("held-out", "report", "reset"):
         assert run.main([step, "--stub"]) == 1
         error = capsys.readouterr().err
         assert error.startswith("GuardRefusal: ") and "invalid choice" in error

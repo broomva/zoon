@@ -283,6 +283,8 @@ class Guard:
                 {**self.identity, "schema": SCHEMA, "repairs": self.repairs},
             )
             self.checked_step = step
+        except chat.GuardRefusal as error:
+            raise clients.GuardRefusal(str(error)) from None
         except clients.GuardRefusal:
             raise
         except Exception as error:
@@ -531,6 +533,13 @@ class Guard:
             return old
         atomic(self.directory / f"{step}.json", result)
         return result
+
+    def recall_chat_record(self) -> dict[str, Any]:
+        """Return the completed recall record; later rebuild failures live in later states."""
+        state = self.state("recall")
+        if state is None or state["status"] != "completed":
+            raise clients.GuardRefusal("completed recall is required for the recall chat record")
+        return state["payload"]["chat"]
 
     def permit(self) -> HeldOutPermit:
         self._require_lock()

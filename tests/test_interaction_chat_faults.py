@@ -327,7 +327,7 @@ def test_sanitized_faults_have_no_reachable_secret_chain(
 
 
 @pytest.mark.parametrize("status", [404, 410, 403])
-def test_preflight_missing_is_configuration_and_never_withdrawal(status: int) -> None:
+def test_preflight_missing_never_establishes_withdrawal(status: int) -> None:
     calls: list[Any] = []
 
     def metadata(*args: Any) -> Any:
@@ -342,7 +342,10 @@ def test_preflight_missing_is_configuration_and_never_withdrawal(status: int) ->
         token=lambda: "token",
         preflight_transport=metadata,
     )
-    with pytest.raises(chat.ConfigurationInterruption):
+    if status == 403:
+        with pytest.raises(chat.ConfigurationInterruption):
+            client.preflight()
+    else:
         client.preflight()
     assert len(calls) == 1
     assert (

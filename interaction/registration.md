@@ -23,7 +23,12 @@ requirements for registration, not descriptions of an implemented run.
 If both comparisons were computed and either does not meet the rule, the hypothesis
 is failed; if a comparison could not be computed, there is no verdict. The
 completion and run-ending rules under Data govern whether a hypothesis can be judged.
-The `chat` arm decides nothing.
+The `chat` arm decides nothing. A chat request that fails in transport after the
+bounded attempts, is refused by the service without establishing withdrawal, or
+whose reply is refused by the secret check interrupts the step; repeat the step's
+command. Until the operator's ending of the chat arm is implemented, a failure
+that never clears and is not a withdrawal prevents `closed-loop` or `recall` from
+completing, so `held-out` cannot start.
 
 **What a pass means.** H2 shows better next-move prediction by this law using the
 others' history than by the chosen law without it and this prompt to this model.
@@ -92,13 +97,19 @@ For both models, a request has at most 4 attempts, with pauses of 1, 2 and 4
 seconds between failed attempts, as in `src/zoon/pilot/clients.py`, function `retry`.
 The analysis code must use the same counts and pauses.
 
-A chat request that fails in transport after the bounded tries interrupts the
-step and is resumed; it does not count toward the three attempts. An unusable
+A transport failure does not count toward the three attempts. An unusable
 reply is a recorded response whose text fails the reply rule, or is empty or
 blocked. Three unusable replies for one decision, the model's withdrawal, a
 version change, reaching the chat cap, a failed replay of a chat game, or a first
 reported version that does not begin with the model name make `chat` unusable,
 with no scores.
+Chat game logs are written from the chat transcript when `closed-loop` completes,
+if the arm is still usable then, and are not read back by any run step. A later
+step that scores them first rebuilds them from the transcript, checked against
+`recall.json` `payload.chat.transcript.digest`, and requires the rebuilt bytes to
+match `closed-loop.json` `payload.chat_logs`. A failed rebuild makes `chat`
+unusable; that step records REPLAY in its own state if recall records no earlier
+cause, and the report prints both the recall record and the later step's record.
 
 If chat requests alone keep `closed-loop` or `recall` from completing, the operator
 may end the chat arm with a recorded reason before `held-out` begins. The command
@@ -108,6 +119,36 @@ the report prints the reason and the number of chat decisions already answered,
 and no verdict changes. Apart from a declared repair and the incomplete-line cut under Guard, repairs and
 persistence, this is the only operator decision the run allows, and it cannot be
 taken once `held-out` has started.
+
+Each step keeps at most one ending event, written once. Recall carries earlier
+ending events forward unchanged and may add its own.
+The earliest cause, however detected, governs the arm's reported cause; once a
+completed step records a cause, later steps retain it. A withdrawal or an ending event in `recall` stops further
+recall questions. A withdrawal, an ending already in the current step, the cap,
+a version change or an invalid first version prevents further recall questions.
+Completed state files remain unchanged; the recall state exposes all ending events.
+An arm usable at the end of `closed-loop` can become unusable during `recall`.
+`Guard.recall_chat_record()` reads the status at the end of recall from `recall.json`
+fields `payload.chat.status` and `payload.chat.cause` and refuses unless recall is
+completed; an arm unusable there has no scores. A later failed rebuild is recorded
+in that later step's state as described above. The arm is unusable if completed
+recall says so or any later step records a failed rebuild; the recall record alone
+is not final once a later step has recorded one. If the run ends with no verdict
+before recall completes, the report prints the chat arm as "not run" and labels
+any earlier chat record with its step; it does not call that record final.
+
+If the run cannot record either model's withdrawal, a later attempt records a
+withdrawal only if that model is still withdrawn. A failed ending save is carried
+by the handler's one normal save; if that also fails, the last successful state
+stands. REPLAY is derived again on retry. A decision version change or cap is detected again
+from the decision transcript. Unreadable or incomplete chat transcripts prevent
+the handler's save; the next attempt refuses with the cut-back instruction for an
+incomplete line.
+
+A reply whose append fails before any byte is written is not recorded, is not
+counted toward the cap, and is requested again; actual spending can exceed
+recorded spending by such replies. No bound is claimed on
+paid but unrecorded spending across repeated storage failures.
 
 If `held-out` has not completed within 30 days of its first start, both
 hypotheses receive no verdict and the report publishes every score already
@@ -439,10 +480,12 @@ lists the report's output path outside the registered inputs.
 | `src/zoon/interaction/registered.py` | Existing today | Committed material readers and regeneration |
 | `src/zoon/interaction/power.py` | Existing today | Training power and coverage calculation |
 | `docs/interaction/power.md` | Existing today | Power assumptions and one recorded run |
-| `src/zoon/interaction/run.py` | Existing today | Calibration and the command line |
+| `src/zoon/interaction/run.py` | Existing today | Calibration and step command dispatch |
+| `src/zoon/interaction/steps.py` | Existing today | Closed-loop and recall |
+| `src/zoon/interaction/simulation.py` | Existing today | Committed-arm simulation and game log persistence |
 | `src/zoon/interaction/guard.py` | Existing today | Run guards, repairs, state and lock |
 | `src/zoon/interaction/decisions.py` | Existing today | Budgeted decision calls and append-only records |
-| `src/zoon/interaction/chat.py` | Existing today | The chat request renderer |
+| `src/zoon/interaction/chat.py` | Existing today | Chat requests, client, transcript, replay and recall |
 | `docs/interaction/result.md` | Added by the analysis code | The report, outside the registered directory |
 | `interaction/chat-requests/` | Existing today | Committed chat request fixtures |
 
@@ -452,10 +495,10 @@ These paths do not exist today and are exempt from the existing-path check:
 
 - `docs/interaction/result.md`
 
-The run module supplies calibration today. The existing spending script
+The run module dispatches calibration, closed-loop and recall today. The existing spending script
 `src/zoon/interaction/budget.py` produces both bounds. The second sealing step,
-scoring and intervals, run guards, step state and calibration are implemented;
-closed-loop, recall, held-out and report remain open work. A material-regeneration test must compare registered instructions,
+scoring and intervals, run guards, step state, calibration, closed-loop and recall are implemented; the operator's ending of the chat arm, held-out and report remain
+open work. A material-regeneration test must compare registered instructions,
 fixtures and the amount table with their committed bytes; the fit test uses the
 probability tolerance above.
 
@@ -470,11 +513,20 @@ Record the version each response reports. The decision model must report exactly
 its name above. For chat, fix the version to the first response's reported version,
 which must begin with its model name, as in the pilot. Withdrawal means the
 service says the model does not exist on every bounded attempt at a request.
-Before generating, check chat model metadata without generating text; missing metadata
-does not establish withdrawal.
-A success without a non-empty string modelVersion or integer promptTokenCount is
-a transient transport fault and is retried within the bounded attempts, with no
-transcript record. Missing candidatesTokenCount or thoughtsTokenCount means zero,
+When bounded attempts mix not-found answers with a transport fault (for example
+three not-found answers followed by a transport fault), the result is a transport
+failure, not a withdrawal.
+Before the first missing chat request in each attempt, check model metadata without
+generating text; missing metadata
+does not establish withdrawal. A metadata check answered not found (404 or 410) permits the generating request;
+only that request's bounded attempts decide withdrawal.
+For the generating request, an HTTP 200 answer that cannot be processed, whose
+modelVersion is not a non-blank string or whose promptTokenCount is not a
+non-negative integer is unrecorded and retried within the bounded attempts,
+unless the secret check refuses it. An answer refused by the secret check is
+unrecorded, interrupts the step with GuardRefusal, and is requested again on the
+next attempt.
+Missing candidatesTokenCount or thoughtsTokenCount means zero,
 with or without candidate text; a present count that is not a non-negative integer,
 including a boolean, is the same transient fault.
 The outcomes for withdrawal and version change are under Data.
@@ -561,8 +613,8 @@ when the arm is unusable; its whole transcript can still pass replay.
 The arm's status is derived from the transcript and the cap, in file order: the
 first invalid or changed version, third unusable reply for one decision, or
 the chat cap reached under Spending. At the same entry, that is the order of precedence.
-The transcript cannot show a withdrawal or an operator's ending of the arm; the run
-step records them, and that record governs later steps.
+The transcript cannot show a withdrawal; the run
+step records it, and that record governs later steps.
 Each recall question is labelled "judged", "not judged: version", or "not asked".
 The accepted points bypass recalibration and the band-to-points step.
 Run closed loop only, with the H3 simulation count. Score against `zoon` by the
@@ -570,8 +622,8 @@ same H3 composite, difference and interval. It changes no verdict.
 
 ## Spending
 
-Each model has its own cap, so that an arm that decides nothing cannot end the
-run. **Decision-model cap in US dollars: 17.** **Chat-model cap in US dollars,
+Each model has its own cap, so exhausting the chat cap cannot end the run;
+a configuration refusal can still prevent completion as described above. **Decision-model cap in US dollars: 17.** **Chat-model cap in US dollars,
 recall included: 2544.** Count spending from reported tokens in recorded
 responses at the fixed prices. Retain and count unusable chat replies before
 retrying them. As in the pilot, do not send a call if that model's spent tokens'
@@ -623,14 +675,15 @@ The current script's proposed ceiling and pilot cap do not fix this run's caps.
 ## Order of work
 
 Merge the registration, analysis code and registered materials, then create the
-tag as specified above. Only calibration is implemented today; the later commands
-remain requirements. Run them in this order:
+tag as specified above. Calibration, closed-loop and recall are implemented today; the operator's ending of the chat arm, held-out and report remain requirements.
+Run them in this order:
 
 1. `python -m zoon.interaction.run calibrate`: make the recalibration calls and the
    disguise calls; fit and save recalibration. Do not refit the primary coded arms.
 2. `python -m zoon.interaction.run closed-loop`: simulate all usable arms. Write
-   every game's log and digest. Finish all simulation and record all its digests
-   before any held-out group is read.
+   each coded and prompted arm's logs and guarded digests when that arm finishes.
+   Write chat logs and their separate digests only on completion, after replay against
+   the verified transcript. Finish all simulation before any held-out group is read.
 3. `python -m zoon.interaction.run recall`: ask the chat model the recall questions.
 4. `python -m zoon.interaction.run held-out`: the first step to read held-out groups.
    Only this step may call the second sealing step that produces them. Make the
@@ -798,7 +851,7 @@ nothing and is not run closed loop.
 
 - **DONE:** the caps and chat bound are filled from the spending script's
   output with dated chat prices. Vertex price confirmation remains due at registration.
-- The later run steps and report, including the path marked as added above,
+- The held-out step and report, including the path marked as added above,
   and the required checks.
 - **DONE:** the format check of the chat request with the committed renderer;
   see [Calls made before registration](registration.md#calls-made-before-registration).
