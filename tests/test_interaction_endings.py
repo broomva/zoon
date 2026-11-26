@@ -399,3 +399,51 @@ def test_generating_retry_exhaustion_is_transport(
         runner.execute("closed-loop")
     assert methods == ["GET"] + ["POST"] * 4 and pauses == [1, 2, 4]
     assert not state(runner)["payload"].get("chat_endings")
+
+
+@pytest.mark.parametrize("fault", ["withdrawn", "invalid-version", "none", "empty"])
+def test_recall_command_prints_stop_and_question_labels(
+    runs: Factory, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], fault: str
+) -> None:
+    runner = runs(prepared="closed-loop")
+    if fault == "empty":
+        from dataclasses import replace
+
+        class Empty(chat.StubClient):
+            def ask(self, text: str) -> chat.Response:
+                return replace(super().ask(text), text="")
+
+        runner.steps.chat_client = Empty()
+    elif fault != "none":
+        runner.steps.chat_client = ChatFault(fault, at=2)
+
+    def local(**kwargs: Any) -> run.Run:
+        return runner
+
+    monkeypatch.setattr(run, "Run", local)
+    assert run.main(["recall", "--stub"]) == 0
+    output = capsys.readouterr()
+    assert output.err == ""
+    stop = {
+        "withdrawn": "WITHDRAWN",
+        "invalid-version": "VERSION",
+        "none": "None",
+        "empty": "None",
+    }[fault]
+    assert f"[recall stopped by] {stop}\n" in output.out
+    replies = state(runner, "recall")["payload"]["recall"]
+    for index, reply in enumerate(replies):
+        label = (
+            "judged"
+            if fault in ("none", "empty") or index == 0
+            else (
+                "not judged: version" if fault == "invalid-version" and index == 1 else "not asked"
+            )
+        )
+        assert reply["status"] == label
+        response = reply["response"]
+        text = response["text"] if response and response["text"] else "no reply"
+        assert (
+            f"[recall {reply['game']}] {label} | flagged = {reply['flagged']} | {text}\n"
+            in output.out
+        )
