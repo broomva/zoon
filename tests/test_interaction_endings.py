@@ -290,3 +290,45 @@ def test_injected_chat_cap_stops_before_first_call(runs: Factory) -> None:
     done = runner.execute("closed-loop")
     assert done["payload"]["chat"]["cause"] == "CAP"
     assert client.calls == 0
+
+
+def test_calibration_records_only_decision_transcript(runs: Factory) -> None:
+    runner = runs(prepared="calibrated")
+    assert set(state(runner, "calibrate")["transcripts"]) == {"decision"}
+
+
+@pytest.mark.parametrize("checkpoint", ["empty", "keys", "digest"])
+def test_legacy_empty_chat_checkpoint_accepts_a_plain_guard(runs: Factory, checkpoint: str) -> None:
+    runner = runs(prepared="calibrated")
+    path = runner.guard.directory / "calibrate.json"
+    saved = json.loads(path.read_bytes())
+    saved["transcripts"]["chat"] = {"keys": [], "digest": guard.digest(guard.encoded([]))}
+    if checkpoint == "keys":
+        saved["transcripts"]["chat"]["keys"] = ["invented"]
+    elif checkpoint == "digest":
+        saved["transcripts"]["chat"]["digest"] = "0" * 64
+    saved.pop("digest")
+    path.write_bytes(guard.encoded({**saved, "digest": guard.digest(guard.encoded(saved))}))
+    original = path.read_bytes()
+    gate = guard.Guard(runner.guard.root, stub=True, storage=runner.guard.storage)
+    gate.register_transcripts("decision")
+    if checkpoint != "empty":
+        with gate.lock(), pytest.raises(clients.GuardRefusal, match="transcript reader"):
+            gate.before("closed-loop")
+        assert path.read_bytes() == original
+        return
+    with gate.lock():
+        gate.before("closed-loop")
+        assert path.read_bytes() == original
+        assert gate.state("calibrate") is not None
+        new = gate.save("closed-loop", {}, status="running")
+        assert set(new["transcripts"]) == {"decision"}
+
+
+def test_calibration_guard_does_not_read_chat(runs: Factory) -> None:
+    runner = runs(prepared="calibrated")
+    path = runner.guard.transcript_directory / "chat.jsonl"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"unrelated chat bytes")
+    with runner.guard.lock(), pytest.raises(clients.GuardRefusal, match="completed calling step"):
+        runner.guard.before("calibrate")

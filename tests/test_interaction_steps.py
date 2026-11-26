@@ -35,6 +35,7 @@ def test_steps_complete_in_order_and_refuse_repetition(
             runner.execute(step)
     calibration = runner.execute("calibrate")
     assert not sessions
+    assert set(calibration["transcripts"]) == {"decision"}
     with pytest.raises(clients.GuardRefusal, match="prerequisite closed-loop"):
         runner.execute("recall")
     simulation = runner.execute("closed-loop")

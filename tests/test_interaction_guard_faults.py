@@ -278,16 +278,18 @@ def test_steps_register_their_own_transcript_format(root: Path) -> None:
     gate.register_transcript("chat", read)
     with gate.lock():
         gate.before("calibrate")
-        saved = gate.save("calibrate", {}, status="completed")
+        gate.save("calibrate", {}, status="completed")
+        gate.before("closed-loop")
+        saved = gate.save("closed-loop", {}, status="completed")
         assert saved["transcripts"] == {"chat": read(None)}
     resumed = Guard(root)
     resumed.register_transcript("chat", read)
     with resumed.lock():
-        resumed.before("closed-loop")
-        assert resumed.state("calibrate") == saved
+        resumed.before("recall")
+        assert resumed.state("closed-loop") == saved
         records["turn-1"]["text"] = "changed"
         with pytest.raises(clients.GuardRefusal, match="checkpoint"):
-            resumed.state("calibrate")
+            resumed.state("closed-loop")
 
 
 def test_root_data_ignore_does_not_hide_source_packages(root: Path) -> None:
