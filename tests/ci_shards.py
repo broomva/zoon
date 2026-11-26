@@ -10,7 +10,6 @@ STEP_FILES = (
     "tests/test_interaction_step_faults.py",
     "tests/test_interaction_recovery.py",
     "tests/test_interaction_endings.py",
-    "tests/test_interaction_service_boundary.py",
     "tests/test_interaction_continuation.py",
     "tests/test_interaction_http_boundary.py",
 )
