@@ -280,3 +280,13 @@ def test_guarded_output_restoration(runs: Factory, damage: str) -> None:
         if damage == "missing":
             assert name in str(caught.value) and "restore" in str(caught.value)
             assert str(runner.guard.storage) not in str(caught.value)
+
+
+def test_injected_chat_cap_stops_before_first_call(runs: Factory) -> None:
+    from decimal import Decimal
+
+    client = ChatFault("transport", at=1)
+    runner = runs(chat_client=client, chat_cap=Decimal(0))
+    done = runner.execute("closed-loop")
+    assert done["payload"]["chat"]["cause"] == "CAP"
+    assert client.calls == 0
