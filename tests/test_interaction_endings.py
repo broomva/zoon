@@ -332,3 +332,37 @@ def test_calibration_guard_does_not_read_chat(runs: Factory) -> None:
     path.write_bytes(b"unrelated chat bytes")
     with runner.guard.lock(), pytest.raises(clients.GuardRefusal, match="completed calling step"):
         runner.guard.before("calibrate")
+
+
+def test_recall_repeat_keeps_withdrawal_after_replay_and_failed_completion(
+    runs: Factory, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runner = runs()
+
+    def fail(*args: Any, **kwargs: Any) -> Any:
+        raise chat.Unusable(chat.Cause.REPLAY)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(chat, "replay", fail)
+        runner.execute("closed-loop")
+    client = ChatFault("withdrawn", at=2)
+    runner.steps.chat_client = client
+    original = runner.steps.save
+
+    def save(status: str = "running", reason: str = "") -> dict[str, Any]:
+        if status == "completed":
+            raise OSError("completion unavailable")
+        return original(status, reason)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(runner.steps, "save", save)
+        with pytest.raises(OSError):
+            runner.execute("recall")
+    assert client.calls == 2
+    done = runner.execute("recall")
+    assert client.calls == 2
+    assert done["payload"]["stopped_by"] == "WITHDRAWN"
+    assert done["payload"]["chat_endings"] == [
+        {"cause": "REPLAY", "step": "closed-loop"},
+        {"cause": "WITHDRAWN", "step": "recall"},
+    ]
