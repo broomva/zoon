@@ -263,3 +263,20 @@ def test_recall_record_reads_saved_recall_only(runs: Factory) -> None:
     done = runner.execute("recall")
     with runner.guard.lock():
         assert runner.guard.recall_chat_record() == done["payload"]["chat"]
+
+
+@pytest.mark.parametrize("damage", ["missing", "altered"])
+def test_guarded_output_restoration(runs: Factory, damage: str) -> None:
+    runner = runs()
+    name = next(iter(state(runner)["payload"]["digests"]))
+    path = runner.guard.storage / name
+    if damage == "missing":
+        path.unlink()
+    else:
+        path.write_bytes(b"altered")
+    for _ in range(2):
+        with pytest.raises(clients.GuardRefusal) as caught:
+            runner.execute("closed-loop")
+        if damage == "missing":
+            assert name in str(caught.value) and "restore" in str(caught.value)
+            assert str(runner.guard.storage) not in str(caught.value)
