@@ -198,7 +198,7 @@ def protect(value: object, bearer: str = "") -> None:
             raise GuardRefusal("connection metadata refused; no record was written")
 
 
-def validate(response: Response) -> None:
+def validate(response: Response, bearer: str = "") -> None:
     if (
         not isinstance(cast(object, response.text), str)
         or not isinstance(cast(object, response.version), str)
@@ -208,7 +208,7 @@ def validate(response: Response) -> None:
         )
     ):
         raise ConsistencyInterruption("invalid chat response or token usage")
-    protect(asdict(response))
+    protect(asdict(response), bearer)
 
 
 def _http(
@@ -409,7 +409,7 @@ class VertexClient:
                     usage.get("candidatesTokenCount", 0),
                     usage.get("thoughtsTokenCount", 0),
                 )
-                validate(response)
+                validate(response, bearer)
                 return response
             except (
                 TransientError,

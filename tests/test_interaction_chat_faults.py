@@ -750,7 +750,7 @@ def test_preflight_retries_transient_statuses_with_bounded_pauses(status: int) -
 
     client = chat.VertexClient(
         generation_ok,
-        token=lambda: "token",
+        token=lambda: "dummy-bearer",
         preflight_transport=metadata,
         pause=pauses.append,
     )
@@ -759,7 +759,7 @@ def test_preflight_retries_transient_statuses_with_bounded_pauses(status: int) -
     assert client.ask("question").text == "12"
     for _, headers, body in calls:
         assert headers == {
-            "Authorization": "Bearer token",
+            "Authorization": "Bearer dummy-bearer",
             "Content-Type": "application/json",
             "x-goog-user-project": os.environ["ZOON_VERTEX_PROJECT"],
         }
@@ -848,7 +848,9 @@ def test_generation_requires_preflight_in_current_process(monkeypatch: pytest.Mo
         calls.append(1)
         return 200, payload()
 
-    client = chat.VertexClient(generating, token=lambda: "token", preflight_transport=preflight_ok)
+    client = chat.VertexClient(
+        generating, token=lambda: "dummy-bearer", preflight_transport=preflight_ok
+    )
     with pytest.raises(chat.ConfigurationInterruption, match="preflight"):
         client.ask("question")
     assert calls == []

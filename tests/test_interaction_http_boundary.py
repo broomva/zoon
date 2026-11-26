@@ -209,7 +209,7 @@ def test_credentials_refuse_at_once_without_recording(
 @pytest.mark.parametrize("step", ["closed-loop", "recall"])
 @pytest.mark.parametrize("secret", ["fixture-project", "dummy-bearer"])
 @pytest.mark.parametrize(
-    "shape", ["valid", "missing version", "invalid tokens", "unprocessable body"]
+    "shape", ["valid", "split", "missing version", "invalid tokens", "unprocessable body"]
 )
 def test_secret_refusal_precedes_response_validation_and_can_repeat(
     runs: Factory, monkeypatch: pytest.MonkeyPatch, step: str, secret: str, shape: str
@@ -218,7 +218,12 @@ def test_secret_refusal_precedes_response_validation_and_can_repeat(
         if method == "GET":
             return 200, b"{}"
         result = json.loads(answer(secret))
-        if shape == "missing version":
+        if shape == "split":
+            result["candidates"][0]["content"]["parts"] = [
+                {"text": secret[:5]},
+                {"text": secret[5:]},
+            ]
+        elif shape == "missing version":
             del result["modelVersion"]
         elif shape == "invalid tokens":
             result["usageMetadata"]["promptTokenCount"] = -1
