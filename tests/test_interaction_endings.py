@@ -383,3 +383,19 @@ def test_chat_games_follow_sorted_cells(runs: Factory, monkeypatch: pytest.Monke
     monkeypatch.setattr(simulation, "play_chat_game", play)
     runner.execute("closed-loop")
     assert order == sorted(chat.GAMES)
+
+
+@pytest.mark.parametrize("status", [429, 503])
+def test_generating_retry_exhaustion_is_transport(
+    runs: Factory, monkeypatch: pytest.MonkeyPatch, status: int
+) -> None:
+    from tests.test_interaction_http_boundary import connection
+
+    client, methods, pauses = connection(
+        monkeypatch, lambda method, count: (200, b"{}") if method == "GET" else (status, b"{}")
+    )
+    runner = runs(chat_client=client)
+    with pytest.raises(chat.TransportInterruption):
+        runner.execute("closed-loop")
+    assert methods == ["GET"] + ["POST"] * 4 and pauses == [1, 2, 4]
+    assert not state(runner)["payload"].get("chat_endings")
