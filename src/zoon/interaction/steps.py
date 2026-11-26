@@ -199,7 +199,7 @@ class Steps:
     def recall(self, session: chat.Session) -> None:
         endings = self.payload["chat_endings"]
         for ending in endings:
-            if ending["cause"] == "WITHDRAWN" or ending["step"] == "recall":
+            if ending["cause"] == "WITHDRAWN":
                 self.payload["stopped_by"] = ending["cause"]
                 return
         result = chat.recall(session)
