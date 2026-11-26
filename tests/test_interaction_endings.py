@@ -366,3 +366,20 @@ def test_recall_repeat_keeps_withdrawal_after_replay_and_failed_completion(
         {"cause": "REPLAY", "step": "closed-loop"},
         {"cause": "WITHDRAWN", "step": "recall"},
     ]
+
+
+def test_chat_games_follow_sorted_cells(runs: Factory, monkeypatch: pytest.MonkeyPatch) -> None:
+    from zoon.interaction import simulation
+
+    runner = runs()
+    order: list[str] = []
+    monkeypatch.setattr(simulation, "GAMES", dict(reversed(sorted(chat.GAMES.items()))))
+    original = simulation.play_chat_game
+
+    def play(game: chat.Game, session: chat.Session, groups: int) -> Any:
+        order.append(game.cell)
+        return original(game, session, groups)
+
+    monkeypatch.setattr(simulation, "play_chat_game", play)
+    runner.execute("closed-loop")
+    assert order == sorted(chat.GAMES)
