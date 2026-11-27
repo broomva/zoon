@@ -88,20 +88,19 @@ def test_registration_recall_contract() -> None:
     )[0]
     passage = "Recall questions with no recorded answer" + passage
     assert passage == (
-        "Recall questions with no recorded answer are sent unless the mode"
-        "l is withdrawn,\nits first reported version is invalid, its versio"
-        "n has changed,\nor the chat cap is reached. An arm made unusable b"
-        "y the three-reply rule, or ended\nby the operator during `closed-l"
-        "oop`, is still asked; a service still failing\nthen needs its own "
-        "interrupted attempt and its own flagged attempt. If the operator "
-        "ends the arm\nduring `recall`, answered questions are kept and jud"
-        'ged and the questions not yet\nanswered are recorded "not asked". '
-        "`closed-loop` and `recall` complete with the\nchat status recorded"
-        ' and "not asked" for each recall question not sent, and later\nste'
-        "ps proceed. This changes no hypothesis verdict. The chat reply ru"
-        "le is under\nThe chat arm. A paid reply with an invalid version is"
-        ' retained as "not judged: version",\nwithout judging or flagging i'
-        "t. Recall reports separately what stopped it asking."
+        "Recall questions with no recorded answer are sent unless the model is withd"
+        "rawn,\nan ending is already saved in recall, its first reported version is i"
+        "nvalid,\nits version has changed, or the chat cap is reached. An arm made un"
+        "usable by the three-reply rule, or ended\nby the operator during `closed-loo"
+        "p`, is still asked; a service still failing\nthen needs its own interrupted "
+        "attempt and its own flagged attempt. If the operator ends the arm\nduring `r"
+        "ecall`, answered questions are kept and judged and the questions not yet\nan"
+        'swered are recorded "not asked". `closed-loop` and `recall` complete with t'
+        'he\nchat status recorded and "not asked" for each recall question not sent, '
+        "and later\nsteps proceed. This changes no hypothesis verdict. The chat reply"
+        " rule is under\nThe chat arm. A paid reply with an invalid version is retain"
+        'ed as "not judged: version",\nwithout judging or flagging it. Recall reports'
+        " separately what stopped it asking."
     )
 
 
@@ -191,12 +190,12 @@ def test_registration_resume_order_retries_and_files() -> None:
             "   open-loop calls and score H2 and H3. An unusable chat arm does not block it."
         ),
         (
-            "A completed calling step is not repeated; `report` may be run again and must\n"
-            "reproduce the same file. An interrupted step resumes with recorded\n"
-            "answers and requests only those missing. A later calling step requires completed\n"
-            "prerequisites; report records terminal outcomes without requiring later calling\n"
-            "steps. The held-out prerequisite is completed simulation with recorded\n"
-            "digests."
+            "A completed step that sends model requests is not repeated; `report` may be"
+            " run again and must\nreproduce the same file. An interrupted step resumes wi"
+            "th recorded\nanswers and requests only those missing. A later step that send"
+            "s model requests requires completed prerequisites;\nreport records terminal "
+            "outcomes without requiring later steps that send model requests. The held-o"
+            "ut prerequisite is completed simulation with recorded\ndigests."
         ),
         (
             "Each model has its own cap, so exhausting the chat cap cannot end the run;\n"
@@ -303,25 +302,21 @@ def test_registration_step_state_and_http_contracts() -> None:
             "call record and the later step's record."
         ),
         (
-            "Each step keeps at most one ending event, written once. Recall ca"
-            "rries earlier\nending events forward unchanged and may add its own"
-            ".\nThe earliest cause, however detected, governs the arm's reporte"
-            "d cause; once a\ncompleted step records a cause, later steps retai"
-            "n it. A withdrawal, an ending already in the current step, the ca"
-            "p,\na version change or an invalid first version prevents further "
-            "recall questions.\nCompleted state files remain unchanged; the rec"
-            "all state exposes all ending events.\nAn arm usable at the end of "
-            "`closed-loop` can become unusable during `recall`.\n`Guard.recall_"
-            "chat_record()` reads the status at the end of recall from `recall"
-            ".json`\nfields `payload.chat.status` and `payload.chat.cause` and "
-            "refuses unless recall is\ncompleted; an arm unusable there has no "
-            "scores. A later failed rebuild is recorded\nin that later step's s"
-            "tate as described above. The arm is unusable if completed\nrecall "
-            "says so or any later step records a failed rebuild; the recall re"
-            "cord alone\nis not final once a later step has recorded one. If th"
-            "e run ends with no verdict\nbefore recall completes, the report pr"
-            'ints the chat arm as "not run" and labels\nany earlier chat record'
-            " with its step; it does not call that record final."
+            "Each step keeps at most one ending event, written once. Recall carries earl"
+            "ier\nending events forward unchanged and may add its own.\nThe earliest cause"
+            ", however detected, governs the arm's reported cause; once a\ncompleted step"
+            " records a cause, later steps retain it.\nCompleted state files remain uncha"
+            "nged; the recall state exposes all ending events.\nAn arm usable at the end "
+            "of `closed-loop` can become unusable during `recall`.\n`Guard.recall_chat_re"
+            "cord()` reads the status at the end of recall from `recall.json`\nfields `pa"
+            "yload.chat.status` and `payload.chat.cause` and refuses unless recall is\nco"
+            "mpleted; an arm unusable there has no scores. A later failed rebuild is rec"
+            "orded\nin that later step's state as described above. The arm is unusable if"
+            " completed\nrecall says so or any later step records a failed rebuild; the r"
+            "ecall record alone\nis not final once a later step has recorded one. If the "
+            "run ends with no verdict\nbefore recall completes, the report prints the cha"
+            't arm as "not run" and labels\nany earlier chat record with its step; it doe'
+            "s not call that record final."
         ),
         (
             "If the run cannot record either model's withdrawal, a later attem"

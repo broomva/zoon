@@ -749,9 +749,8 @@ the run lock. Do not delete or reset state or transcripts during the run, except
 restoring a guarded output does not change state or transcripts.
 A completed step that sends model requests is not repeated; `report` may be run again and must
 reproduce the same file. An interrupted step resumes with recorded
-answers and requests only those missing. A later calling step requires completed
-prerequisites; report records terminal outcomes without requiring later calling
-steps. The held-out prerequisite is completed simulation with recorded
+answers and requests only those missing. A later step that sends model requests requires completed prerequisites;
+report records terminal outcomes without requiring later steps that send model requests. The held-out prerequisite is completed simulation with recorded
 digests. A guarded output that is missing, is not a regular file (including a directory,
 named pipe, socket or device), has a non-directory parent, cannot be read for lack
 of permission, or differs from its recorded digest refuses
