@@ -789,7 +789,7 @@ def test_flag_on_recorded_ending_prints_the_record(
     assert runner.steps.chat_client.calls == 0
     output = capsys.readouterr().out
     assert output.count("ending already recorded") == 1 and "flag had no effect" not in output
-    assert json.dumps(events[-1], sort_keys=True, indent=2).decode().strip() in output
+    assert json.dumps(events[-1], sort_keys=True, indent=2) in output
 
 
 @pytest.mark.parametrize("flag", [False, True])

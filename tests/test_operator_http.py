@@ -455,7 +455,13 @@ def test_ending_counts_open_session_without_reopening(
     original = runner.steps.operator_ending
 
     def ending(reason: str | None, error: Any) -> None:
+        record = runner.steps.chat_record()
+
+        def chat_record() -> dict[str, Any]:
+            return record
+
         with monkeypatch.context() as patch:
+            patch.setattr(runner.steps, "chat_record", chat_record)
 
             def unexpected(**kwargs: Any) -> chat.Transcript:
                 pytest.fail("ending reopened the transcript")
