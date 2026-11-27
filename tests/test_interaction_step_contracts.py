@@ -120,12 +120,13 @@ def test_registration_incomplete_line_contract() -> None:
     )
     normal = " ".join(text.split())
     assert (
-        "Apart from a declared repair and the incomplete-line cut under Guard, repairs and "
-        "persistence, this is the only operator decision the run allows, "
+        "Apart from a declared repair, the incomplete-line cut and restoring a guarded output "
+        "under Guard, repairs and persistence, this is the only operator decision the run allows, "
         "and it cannot be taken once `held-out` has started."
     ) in normal
     assert (
-        "Do not delete or reset state or transcripts during the run, except for that cut."
+        "Do not delete or reset state or transcripts during the run, except for that cut; "
+        "restoring a guarded output does not change state or transcripts."
     ) in normal
 
 

@@ -167,19 +167,32 @@ def test_step_state_identity_outputs_and_exact_prior_states(root: Path) -> None:
     gate = Guard(root)
     with gate.lock():
         gate.before("calibrate")
-        first = gate.save("calibrate", {"value": 1}, status="completed")
+        first = gate.save(
+            "calibrate",
+            {"value": 1},
+            families=tuple(gate.transcripts),
+            status="completed",
+        )
         assert first["previous"] == {}
         gate.before("closed-loop")
         log = gate.storage / "simulation.jsonl"
         log.write_bytes(b"synthetic simulation\n")
         second = gate.save(
-            "closed-loop", {"digests": {log.name: digest(log.read_bytes())}}, status="completed"
+            "closed-loop",
+            {"digests": {log.name: digest(log.read_bytes())}},
+            families=tuple(gate.transcripts),
+            status="completed",
         )
         assert second["previous"] == {
             "calibrate": digest((gate.directory / "calibrate.json").read_bytes())
         }
         gate.before("recall")
-        gate.save("recall", {}, status="completed")
+        gate.save(
+            "recall",
+            {},
+            families=tuple(gate.transcripts),
+            status="completed",
+        )
         gate.before("held-out")
         assert isinstance(gate.permit(), guard.HeldOutPermit)
     assert first["registered_commit"] == git(root, "rev-parse", guard.TAG)
@@ -200,7 +213,12 @@ def test_foreign_state_refused_even_with_a_valid_digest(root: Path, field: str, 
     gate = Guard(root)
     with gate.lock():
         gate.before("calibrate")
-        state = gate.save("calibrate", {}, status="interrupted")
+        state = gate.save(
+            "calibrate",
+            {},
+            families=tuple(gate.transcripts),
+            status="interrupted",
+        )
     state[field] = value
     state.pop("digest")
     atomic(gate.directory / "calibrate.json", {**state, "digest": digest(encoded(state))})
@@ -217,18 +235,37 @@ def test_later_steps_require_completion_and_report_accepts_terminal_absence(root
         gate.save(
             "calibrate",
             {"outcome": {"H2": "no verdict", "H3": "no verdict", "reason": "FIT"}},
+            families=tuple(gate.transcripts),
             status="terminal",
             reason="fit failed",
         )
         with pytest.raises(clients.GuardRefusal, match="terminal"):
             gate.before("closed-loop")
         gate.before("report")
-        report = gate.save("report", {"result": "no verdict"}, status="completed")
+        report = gate.save(
+            "report",
+            {"result": "no verdict"},
+            families=tuple(gate.transcripts),
+            status="completed",
+        )
         assert report["previous"]["closed-loop"] is None
         gate.before("report")
-        assert gate.save("report", {"result": "no verdict"}, status="completed") == report
+        assert (
+            gate.save(
+                "report",
+                {"result": "no verdict"},
+                families=tuple(gate.transcripts),
+                status="completed",
+            )
+            == report
+        )
         with pytest.raises(clients.GuardRefusal, match="reproduce"):
-            gate.save("report", {"result": "changed"}, status="completed")
+            gate.save(
+                "report",
+                {"result": "changed"},
+                families=tuple(gate.transcripts),
+                status="completed",
+            )
         # An earlier absence is part of the report binding too.
         atomic(gate.directory / "closed-loop.json", {})
         with pytest.raises(clients.GuardRefusal, match="earlier-step"):
@@ -259,7 +296,12 @@ def test_state_replace_is_atomic_on_write_failure(
     gate = Guard(root)
     with gate.lock():
         gate.before("calibrate")
-        gate.save("calibrate", {"old": True}, status="interrupted")
+        gate.save(
+            "calibrate",
+            {"old": True},
+            families=tuple(gate.transcripts),
+            status="interrupted",
+        )
         path = gate.directory / "calibrate.json"
         before = path.read_bytes()
         replace = Path.replace
@@ -271,7 +313,12 @@ def test_state_replace_is_atomic_on_write_failure(
 
         monkeypatch.setattr(Path, "replace", fail)
         with pytest.raises(OSError):
-            gate.save("calibrate", {"old": False}, status="interrupted")
+            gate.save(
+                "calibrate",
+                {"old": False},
+                families=tuple(gate.transcripts),
+                status="interrupted",
+            )
         assert path.read_bytes() == before
 
 
@@ -305,7 +352,12 @@ def test_state_field_checks_are_independent_of_envelope_checksum(
     gate = Guard(root)
     with gate.lock():
         gate.before("calibrate")
-        state = gate.save("calibrate", {"value": 1}, status="interrupted")
+        state = gate.save(
+            "calibrate",
+            {"value": 1},
+            families=tuple(gate.transcripts),
+            status="interrupted",
+        )
     state[field] = value
     state.pop("digest")
     atomic(gate.directory / "calibrate.json", {**state, "digest": digest(encoded(state))})
@@ -328,7 +380,12 @@ def test_interrupted_prerequisite_is_not_completion(root: Path) -> None:
     gate = Guard(root)
     with gate.lock():
         gate.before("calibrate")
-        gate.save("calibrate", {}, status="interrupted")
+        gate.save(
+            "calibrate",
+            {},
+            families=tuple(gate.transcripts),
+            status="interrupted",
+        )
         with pytest.raises(clients.GuardRefusal, match="prerequisite"):
             gate.before("closed-loop")
         with pytest.raises(clients.GuardRefusal, match="report requires"):
@@ -401,7 +458,12 @@ def test_step_envelope_checksum_is_checked(root: Path) -> None:
     gate = Guard(root)
     with gate.lock():
         gate.before("calibrate")
-        state = gate.save("calibrate", {}, status="interrupted")
+        state = gate.save(
+            "calibrate",
+            {},
+            families=tuple(gate.transcripts),
+            status="interrupted",
+        )
     state["digest"] = "a" * 64
     atomic(gate.directory / "calibrate.json", state)
     with pytest.raises(clients.GuardRefusal, match="state digest"):
@@ -429,17 +491,31 @@ def test_report_repetition_keeps_its_original_commit_and_output(root: Path) -> N
         gate.save(
             "calibrate",
             {"outcome": {"H2": "no verdict", "H3": "no verdict", "reason": "FIT"}},
+            families=tuple(gate.transcripts),
             status="terminal",
             reason="fit failed",
         )
         gate.before("report")
-        report = gate.save("report", {"result": "no verdict"}, status="completed")
+        report = gate.save(
+            "report",
+            {"result": "no verdict"},
+            families=tuple(gate.transcripts),
+            status="completed",
+        )
     (root / "docs").mkdir()
     (root / "docs" / "result.md").write_text("no verdict")
     commit(root)
     with gate.lock():
         gate.before("report")
-        assert gate.save("report", {"result": "no verdict"}, status="completed") == report
+        assert (
+            gate.save(
+                "report",
+                {"result": "no verdict"},
+                families=tuple(gate.transcripts),
+                status="completed",
+            )
+            == report
+        )
 
 
 def test_live_state_cannot_be_redirected(root: Path, tmp_path: Path) -> None:
@@ -452,11 +528,17 @@ def test_terminal_state_requires_a_reason_and_both_outcomes(root: Path) -> None:
     with gate.lock():
         gate.before("calibrate")
         with pytest.raises(clients.GuardRefusal, match="both no-verdict"):
-            gate.save("calibrate", {}, status="terminal")
+            gate.save(
+                "calibrate",
+                {},
+                families=tuple(gate.transcripts),
+                status="terminal",
+            )
         with pytest.raises(clients.GuardRefusal, match="both no-verdict"):
             gate.save(
                 "calibrate",
                 {"outcome": {"H2": "no verdict", "H3": "no verdict", "reason": "FIT"}},
+                families=tuple(gate.transcripts),
                 status="terminal",
             )
         assert gate.state("calibrate") is None

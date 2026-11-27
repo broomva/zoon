@@ -498,7 +498,13 @@ class Guard:
         }
 
     def save(
-        self, step: str, payload: dict[str, Any], *, status: str, reason: str = ""
+        self,
+        step: str,
+        payload: dict[str, Any],
+        *,
+        families: tuple[str, ...],
+        status: str,
+        reason: str = "",
     ) -> dict[str, Any]:
         self._require_lock()
         if self.checked_step != step:
@@ -508,6 +514,8 @@ class Guard:
         old = self.state(step)
         if old and old["status"] in ("completed", "terminal") and step != "report":
             raise clients.GuardRefusal("a completed or terminal step cannot be rewritten")
+        if old and set(old["transcripts"]) != set(families):
+            raise clients.GuardRefusal("step transcript families changed")
         state = {
             **self.identity,
             "schema": SCHEMA,
@@ -519,10 +527,7 @@ class Guard:
             "previous": self.previous(step),
             "status": status,
             "reason": reason,
-            "transcripts": {
-                family: self.transcript_checkpoint(family)
-                for family in self.transcripts.keys() | self._readers.keys()
-            },
+            "transcripts": {family: self.transcript_checkpoint(family) for family in families},
             "payload": payload,
             "payload_digest": digest(encoded(payload)),
         }

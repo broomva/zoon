@@ -51,7 +51,7 @@ def prepared_states(
         saved = runner.guard.state("closed-loop")
         assert saved is not None
         payload = saved["payload"]
-        runner.guard.save("closed-loop", payload, status="running")
+        runner.guard.save("closed-loop", payload, families=("decision", "chat"), status="running")
     completed = directory / "closed-loop"
     shutil.copytree(bands, completed)
     run.Run(root, stub=True, storage=completed, simulation_groups=1).execute("closed-loop")

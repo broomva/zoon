@@ -31,12 +31,11 @@ class Steps:
         *,
         decision_cap: Decimal | None = None,
         chat_client: chat.Client | None = None,
-        chat_cap: Decimal | None = None,
         groups: int = score.SIMULATED_GROUPS,
     ) -> None:
         self.guard, self.client = guard, client
         self.decision_cap = budget.DECISION_CAP if decision_cap is None else decision_cap
-        self.chat_cap = budget.chat_cap() if chat_cap is None else chat_cap
+        self.chat_cap = budget.chat_cap()
         self.chat_client = chat_client
         if type(groups) is not int or not 1 <= groups <= score.SIMULATED_GROUPS:
             raise ValueError("simulation group count is outside the registered ensemble")
@@ -114,7 +113,9 @@ class Steps:
         self.payload["chat"] = self.chat_record()
         transcript = self.session.transcript if self.session else self.transcript()
         self.payload["recall"] = [asdict(reply) for reply in chat.read_recall(transcript)]
-        return self.guard.save(self.step, self.payload, status=status, reason=reason)
+        return self.guard.save(
+            self.step, self.payload, families=("decision", "chat"), status=status, reason=reason
+        )
 
     def open_chat(self) -> chat.Session:
         transcript = self.transcript(read_only=False)
@@ -199,7 +200,7 @@ class Steps:
     def recall(self, session: chat.Session) -> None:
         endings = self.payload["chat_endings"]
         for ending in endings:
-            if ending["cause"] == "WITHDRAWN" or ending["step"] == "recall":
+            if ending["cause"] == "WITHDRAWN":
                 self.payload["stopped_by"] = ending["cause"]
                 return
         result = chat.recall(session)

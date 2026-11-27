@@ -198,7 +198,7 @@ def protect(value: object, bearer: str = "") -> None:
             raise GuardRefusal("connection metadata refused; no record was written")
 
 
-def validate(response: Response) -> None:
+def validate(response: Response, bearer: str = "") -> None:
     if (
         not isinstance(cast(object, response.text), str)
         or not isinstance(cast(object, response.version), str)
@@ -208,7 +208,7 @@ def validate(response: Response) -> None:
         )
     ):
         raise ConsistencyInterruption("invalid chat response or token usage")
-    protect(asdict(response))
+    protect(asdict(response), bearer)
 
 
 def _http(
@@ -378,6 +378,28 @@ class VertexClient:
                 if status != 200:
                     raise ConfigurationInterruption("chat request refused")
                 protect(data, bearer)
+                texts: list[str] = []
+                candidates = data.get("candidates", [])
+                for item in cast(list[Any], candidates) if isinstance(candidates, list) else []:
+                    content = (
+                        cast(dict[str, Any], item).get("content")
+                        if isinstance(item, dict)
+                        else None
+                    )
+                    parts = (
+                        cast(dict[str, Any], content).get("parts")
+                        if isinstance(content, dict)
+                        else None
+                    )
+                    for part in cast(list[Any], parts) if isinstance(parts, list) else []:
+                        text = (
+                            cast(dict[str, Any], part).get("text")
+                            if isinstance(part, dict)
+                            else None
+                        )
+                        if isinstance(text, str):
+                            texts.append(text)
+                protect("".join(texts), bearer)
                 usage = data.get("usageMetadata", {})
                 candidates = data.get("candidates", [])
                 candidate: Any = candidates[0] if candidates else {}
@@ -409,7 +431,6 @@ class VertexClient:
                     usage.get("candidatesTokenCount", 0),
                     usage.get("thoughtsTokenCount", 0),
                 )
-                validate(response)
                 return response
             except (
                 TransientError,
