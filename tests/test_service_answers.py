@@ -78,7 +78,7 @@ def test_redirect_methods_follow_the_http_handler(stage: str, status: int, targe
         (Answer(200, "body timeout"), "transport interruption", (4, 5)),
         (Answer(302, "redirect to loop"), "configuration refusal", (5, 6)),
         (Answer(200, "non-finite number"), "transport interruption", (2, 5)),
-        (Answer(200, "non-finite number with secret"), "secret refusal", (2, 2)),
+        (Answer(200, "non-finite number with secret"), "transport interruption", (2, 5)),
         (Answer(401, "refreshed credential succeeds"), "reply accepted", (3, 3)),
         (Answer(401, "refreshed credential rejected"), "transport interruption", (4, 5)),
     ],

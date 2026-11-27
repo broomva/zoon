@@ -68,6 +68,6 @@ A metadata reply accepted here permits the generating request; it is not a chat 
 | generating request | 302 redirect loop | configuration refusal | 6 | yes |
 | generating request | 200 body timeout | transport interruption | 5 | yes |
 | generating request | 200 non-finite number | transport interruption | 5 | yes |
-| generating request | 200 non-finite number with secret | secret refusal | 2 | yes |
+| generating request | 200 non-finite number with secret | transport interruption | 5 | yes |
 | generating request | 401 refreshed credential succeeds | reply accepted | 3 | no |
 | generating request | 401 refreshed credential rejected | transport interruption | 5 | yes |

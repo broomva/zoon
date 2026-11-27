@@ -214,11 +214,10 @@ def retry(call: Callable[[], Response], pause: Callable[[float], None] = time.sl
 
 
 def protect(value: object, bearer: str = "") -> None:
-    encoded = json.dumps(value, ensure_ascii=False, allow_nan=True)
+    encoded = json.dumps(value, ensure_ascii=False, allow_nan=False)
     for secret in (os.environ.get("ZOON_VERTEX_PROJECT", ""), bearer):
         if secret and secret in encoded:
             raise GuardRefusal("connection metadata refused; no record was written")
-    json.dumps(value, ensure_ascii=False, allow_nan=False)
 
 
 def validate(response: Response) -> None:
@@ -659,8 +658,9 @@ class Transcript:
 
     def check(self, entry: Entry) -> None:
         self.usable()
-        protect(asdict(entry), self.bearer)
+        protect(entry.response.text, self.bearer)
         validate(entry.response)
+        protect(asdict(entry), self.bearer)
         if entry.run != self.identity:
             raise GuardRefusal("chat transcript entry run identity differs")
         if entry.request_digest != digest(entry.request) or entry.identity in self.entries:
