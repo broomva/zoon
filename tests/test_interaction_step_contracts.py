@@ -88,17 +88,20 @@ def test_registration_recall_contract() -> None:
     )[0]
     passage = "Recall questions with no recorded answer" + passage
     assert passage == (
-        "Recall questions with no recorded answer are sent unless the model is withdrawn,\n"
-        "its first reported version is invalid, its version has changed,\n"
-        "or the chat cap is reached. An arm made unusable by the three-reply rule, or ended\n"
-        "by the operator during `closed-loop`, is still asked. "
-        "If the operator ends the arm\n"
-        "during `recall`, answered questions are kept and judged and the questions not yet\n"
-        'answered are recorded "not asked". `closed-loop` and `recall` complete with the\n'
-        'chat status recorded and "not asked" for each recall question not sent, and later\n'
-        "steps proceed. This changes no hypothesis verdict. The chat reply rule is under\n"
-        'The chat arm. A paid reply with an invalid version is retained as "not judged: version",\n'
-        "without judging or flagging it. Recall reports separately what stopped it asking."
+        "Recall questions with no recorded answer are sent unless the mode"
+        "l is withdrawn,\nits first reported version is invalid, its versio"
+        "n has changed,\nor the chat cap is reached. An arm made unusable b"
+        "y the three-reply rule, or ended\nby the operator during `closed-l"
+        "oop`, is still asked; a service still failing\nthen needs its own "
+        "interrupted attempt and its own flagged attempt. If the operator "
+        "ends the arm\nduring `recall`, answered questions are kept and jud"
+        'ged and the questions not yet\nanswered are recorded "not asked". '
+        "`closed-loop` and `recall` complete with the\nchat status recorded"
+        ' and "not asked" for each recall question not sent, and later\nste'
+        "ps proceed. This changes no hypothesis verdict. The chat reply ru"
+        "le is under\nThe chat arm. A paid reply with an invalid version is"
+        ' retained as "not judged: version",\nwithout judging or flagging i'
+        "t. Recall reports separately what stopped it asking."
     )
 
 

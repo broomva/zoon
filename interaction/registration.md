@@ -140,8 +140,6 @@ If a flagged attempt raises after a generating request returned in that attempt,
 it prints "flag used up: a chat request succeeded in this attempt" before propagating the failure.
 An ending already saved in this unfinished step is retained without new chat requests
 and printed as "ending already recorded"; a completed or terminal step is still refused.
-An ending during closed-loop does not stop recall from asking, so a service still
-failing then needs its own interrupted attempt and its own flagged attempt.
 Apart from a declared repair, the incomplete-line cut and restoring a guarded output
 under Guard, repairs and persistence, this is the only operator decision the run
 allows, and it cannot be taken once `held-out` has started.
@@ -183,7 +181,8 @@ held-out group has been read.
 Recall questions with no recorded answer are sent unless the model is withdrawn,
 its first reported version is invalid, its version has changed,
 or the chat cap is reached. An arm made unusable by the three-reply rule, or ended
-by the operator during `closed-loop`, is still asked. If the operator ends the arm
+by the operator during `closed-loop`, is still asked; a service still failing
+then needs its own interrupted attempt and its own flagged attempt. If the operator ends the arm
 during `recall`, answered questions are kept and judged and the questions not yet
 answered are recorded "not asked". `closed-loop` and `recall` complete with the
 chat status recorded and "not asked" for each recall question not sent, and later
