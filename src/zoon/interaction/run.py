@@ -265,7 +265,13 @@ def main(arguments: Sequence[str] | None = None) -> int:
             **({"end_chat": args.end_chat} if args.end_chat is not None else {}),
         )
         if args.end_chat is not None and not runner.steps.ended:
-            print("[chat ending] flag had no effect")
+            endings = [
+                e for e in state["payload"].get("chat_endings", []) if e["step"] == args.step
+            ]
+            if endings:
+                print(f"[chat ending] ending already recorded: {encoded(endings[-1]).decode()}")
+            else:
+                print("[chat ending] flag had no effect")
         payload = state["payload"]
         print(f"[interaction {state['mode']}] {args.step} = {state['status']}")
         print(

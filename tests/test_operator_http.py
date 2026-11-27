@@ -227,7 +227,12 @@ def test_http_last_attempt_status_replaces_prior_answers(
 @pytest.mark.parametrize("status", ["running", "interrupted", "completed", "terminal"])
 @pytest.mark.parametrize("cause", ["OPERATOR", "WITHDRAWN"])
 def test_saved_ending_never_causes_another_service_request(
-    runs: Factory, monkeypatch: pytest.MonkeyPatch, step: str, status: str, cause: str
+    runs: Factory,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    step: str,
+    status: str,
+    cause: str,
 ) -> None:
     runner = runs(prepared="closed-loop" if step == "recall" else "bands")
     interrupted(runner, step)
@@ -264,6 +269,22 @@ def test_saved_ending_never_causes_another_service_request(
             done = runner.execute(step, end_chat="Unavailable")
             assert done["payload"]["chat_endings"] == saved["payload"]["chat_endings"]
             assert not runner.steps.ended
+            capsys.readouterr()
+
+            def local(**kwargs: Any) -> run.Run:
+                return runner
+
+            monkeypatch.setattr(run, "Run", local)
+            monkeypatch.setattr(runner, "execute", lambda *args, **kwargs: done)
+            assert run.main([step, "--stub", "--end-chat", "Unavailable"]) == 0
+            output = capsys.readouterr().out
+            assert "ending already recorded: " in output and "flag had no effect" not in output
+            assert (
+                json.dumps(
+                    done["payload"]["chat_endings"][-1], sort_keys=True, separators=(",", ":")
+                )
+                in output
+            )
         assert not requests
 
 
