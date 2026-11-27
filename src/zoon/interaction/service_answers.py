@@ -139,8 +139,17 @@ def observe(stage: str, answer: Answer) -> Outcome:
         else [answer]
     )
     with network(stage, answers) as requests:
+        observed = client()
+        tokens: list[str] = []
+
+        def token() -> str:
+            value = "dummy-bearer-" + str(len(tokens))
+            tokens.append(value)
+            return value
+
+        observed.token = token
         try:
-            PreflightClient(client()).ask("hello")
+            PreflightClient(observed).ask("hello")
             category = "reply accepted"
         except chat.Unusable as error:
             assert error.cause == chat.Cause.WITHDRAWN
