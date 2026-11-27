@@ -528,6 +528,9 @@ def test_each_step_can_end_chat_without_losing_the_first_event(runs: Factory) ->
             "answered_decisions": 44,
             "answered_recall": 2,
             "chat_request_failures": 2,
+            "failure_class": "transport",
+            "failure_stage": None,
+            "last_status": None,
         },
     ]
     assert first == {
@@ -536,6 +539,9 @@ def test_each_step_can_end_chat_without_losing_the_first_event(runs: Factory) ->
         "reason": "Requests unavailable",
         "answered_decisions": 44,
         "chat_request_failures": 2,
+        "failure_class": "transport",
+        "failure_stage": None,
+        "last_status": None,
     }
     assert completed["payload"]["chat"]["endings"] == events
     assert completed["payload"]["chat"]["cause"] == "OPERATOR"
