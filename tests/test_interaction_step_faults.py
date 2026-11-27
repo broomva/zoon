@@ -1,4 +1,4 @@
-"""Durable arm outcomes and recovery."""
+"""Durable arm outcomes, recovery and bounded operator authority."""
 
 import json
 import os
@@ -51,6 +51,7 @@ def prepared_states(
         saved = runner.guard.state("closed-loop")
         assert saved is not None
         payload = saved["payload"]
+        assert payload.pop("chat_transport_failures") == 1
         runner.guard.save("closed-loop", payload, families=("decision", "chat"), status="running")
     completed = directory / "closed-loop"
     shutil.copytree(bands, completed)
@@ -448,6 +449,26 @@ def test_arm_and_chat_game_checkpoints_precede_next_work(
     assert len(played) == 8
 
 
+def test_operator_cli_records_reason_and_completes_the_step(
+    runs: Factory, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    runner = runs(chat_client=ChatFault("transport", at=1))
+    interrupt_chat(runner, "closed-loop")
+
+    def local(**kwargs: Any) -> run.Run:
+        assert kwargs["stub"]
+        return runner
+
+    monkeypatch.setattr(run, "Run", local)
+    assert run.main(["closed-loop", "--end-chat", "Requests remain unavailable", "--stub"]) == 0
+    output = capsys.readouterr()
+    assert output.err == ""
+    assert "[interaction stub] closed-loop = completed" in output.out
+    assert "Requests remain unavailable" in output.out
+    assert state(runner)["status"] == "completed"
+    assert state(runner)["payload"]["chat_endings"][0]["reason"] == "Requests remain unavailable"
+
+
 def test_log_storage_failure_interrupts_and_recovers(
     runs: Factory, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -463,6 +484,67 @@ def test_log_storage_failure_interrupts_and_recovers(
     assert state(runner)["status"] == "interrupted"
     plain = runs("plain")
     assert runner.execute("closed-loop") == plain.execute("closed-loop")
+
+
+def ended_closed_loop(runs: Factory) -> run.Run:
+    runner = runs(chat_client=ChatFault("transport", at=45))
+    with pytest.raises(chat.TransportInterruption):
+        runner.execute("closed-loop")
+    runner.steps.chat_client = ChatFault("transport", at=1)
+    runner.execute("closed-loop", end_chat="Requests unavailable")
+    return runner
+
+
+def test_each_step_can_end_chat_without_losing_the_first_event(runs: Factory) -> None:
+    runner = ended_closed_loop(runs)
+    before = state(runner)
+    first = before["payload"]["chat_endings"][0]
+    runner.steps.chat_client = ChatFault("transport", at=3)
+    with pytest.raises(chat.TransportInterruption):
+        runner.execute("recall")
+    runner.steps.chat_client = ChatFault("transport", at=1)
+    completed = runner.execute("recall", end_chat="Recall unavailable")
+    events = completed["payload"]["chat_endings"]
+    assert events == [
+        first,
+        {
+            "cause": "OPERATOR",
+            "step": "recall",
+            "reason": "Recall unavailable",
+            "answered_decisions": 44,
+            "answered_recall": 2,
+            "chat_transport_failures": 2,
+        },
+    ]
+    assert first == {
+        "cause": "OPERATOR",
+        "step": "closed-loop",
+        "reason": "Requests unavailable",
+        "answered_decisions": 44,
+        "chat_transport_failures": 2,
+    }
+    assert completed["payload"]["chat"]["endings"] == events
+    assert completed["payload"]["chat"]["cause"] == "OPERATOR"
+    assert state(runner) == before
+    assert [r["status"] for r in completed["payload"]["recall"]] == ["judged"] * 2 + [
+        "not asked"
+    ] * 6
+
+
+def test_recall_keeps_the_first_cause_and_operator_details(runs: Factory) -> None:
+    runner = ended_closed_loop(runs)
+    first = state(runner)["payload"]["chat_endings"][0]
+    runner.steps.chat_client = ChatFault("withdrawn", at=1)
+    completed = runner.execute("recall")
+    assert completed["payload"]["chat_endings"] == [first, {"cause": "WITHDRAWN", "step": "recall"}]
+    assert completed["payload"]["chat"]["cause"] == "OPERATOR"
+
+
+def test_ending_leaves_chat_games_unscored(runs: Factory) -> None:
+    runner = ended_closed_loop(runs)
+    assert "chat_logs" not in state(runner)["payload"]
+    assert "chat" not in state(runner)["payload"]["simulations"]
+    assert state(runner)["payload"]["chat"]["calls"] == 44
 
 
 @pytest.mark.parametrize("damage", ["none", "unreadable", "partial"])
