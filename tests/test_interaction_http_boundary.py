@@ -130,7 +130,7 @@ def test_persistent_http_failure_interrupts_and_blocks_following_steps(
     error = (
         chat.ConfigurationInterruption
         if fault == "service"
-        else chat.GuardRefusal
+        else chat.SecretRefusal
         if fault == "secret"
         else chat.TransportInterruption
     )
@@ -254,7 +254,7 @@ def test_secret_refusal_precedes_response_validation_and_can_repeat(
         with pytest.raises(chat.GuardRefusal, match="no record was written"):
             runner.execute(step)
         saved = state(runner, step)
-        assert (saved["status"], saved["reason"]) == ("interrupted", "GuardRefusal")
+        assert (saved["status"], saved["reason"]) == ("interrupted", "SecretRefusal")
         assert saved["payload"]["chat"] == before
         assert not saved["payload"].get("chat_endings")
         with runner.guard.lock(), pytest.raises(clients.GuardRefusal, match="prerequisite"):

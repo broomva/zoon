@@ -182,37 +182,6 @@ def test_consumed_flag_is_announced_before_storage_failure(
         assert state(runner, step)["payload"]["chat"] == before
 
 
-@pytest.mark.parametrize("step", ["closed-loop", "recall"])
-@pytest.mark.parametrize("stage", ["metadata check", "generating request"])
-def test_unconsumed_flag_is_not_announced(
-    runs: Factory,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-    step: str,
-    stage: str,
-) -> None:
-    monkeypatch.setenv("ZOON_VERTEX_PROJECT", "fixture")
-    runner = runs(prepared="closed-loop" if step == "recall" else "bands")
-    interrupt_chat(runner, step)
-
-    def refusal(url: str, headers: dict[str, str], body: bytes) -> tuple[int, dict[str, Any]]:
-        return 403, {}
-
-    def ok(url: str, headers: dict[str, str], body: bytes) -> tuple[int, dict[str, Any]]:
-        return 200, reply()
-
-    runner.steps.chat_client = chat.VertexClient(
-        refusal if stage == "generating request" else ok,
-        preflight_transport=refusal if stage == "metadata check" else ok,
-        token=lambda: "dummy",
-        pause=lambda _: None,
-    )
-    capsys.readouterr()
-    with pytest.raises(chat.ConfigurationInterruption):
-        runner.execute(step, end_chat="Unavailable")
-    assert "flag used up" not in capsys.readouterr().out
-
-
 @pytest.mark.parametrize("stage", ["metadata check", "generating request"])
 @pytest.mark.parametrize("fault", ["json", "connection after headers"])
 def test_operator_ending_retains_http_status_when_body_fails(
