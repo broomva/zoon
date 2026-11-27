@@ -555,20 +555,21 @@ def test_guarded_storage_fault_interrupts_and_repeats(
     runs: Factory, monkeypatch: pytest.MonkeyPatch, number: int
 ) -> None:
     runner = runs()
-    path = runner.guard.storage / next(iter(state(runner)["payload"]["digests"]))
+    name = next(iter(state(runner)["payload"]["digests"]))
+    path = runner.guard.storage / name
     original = Path.read_bytes
 
     def read(current: Path) -> bytes:
         if current == path:
-            raise OSError(number, "storage unavailable")
+            raise OSError(number, "storage unavailable", str(current))
         return original(current)
 
     with monkeypatch.context() as patch:
         patch.setattr(Path, "read_bytes", read)
-        with pytest.raises(OSError) as caught:
+        with pytest.raises(chat.StorageInterruption) as caught:
             runner.execute("closed-loop")
-        assert caught.value.errno == number
-    assert state(runner)["reason"] == "OSError"
+        assert str(caught.value) == f"guarded output {name} storage failed"
+    assert state(runner)["reason"] == "StorageInterruption"
     assert state(runner)["status"] == "interrupted"
     assert runner.execute("closed-loop")["status"] == "completed"
 
@@ -581,8 +582,11 @@ def test_guarded_output_registration_sentences() -> None:
         "allows, and it cannot be taken once `held-out` has started.",
         "Do not delete or reset state or transcripts during the run, except for that cut; "
         "restoring a guarded output does not change state or transcripts.",
-        "A guarded output that is missing, unreadable or differs from its recorded "
-        "digest refuses the step.",
+        "A guarded output that is missing, is a directory or has a non-directory parent, "
+        "cannot be read for lack of permission, or differs from its recorded digest refuses "
+        "the step.",
+        "Other storage faults, including symlink loops, interrupt the step and "
+        "name only the recorded output.",
         "The operator may put back a copy of the file, and the step proceeds only if its bytes "
         "match the recorded digest; this is not a decision about any outcome.",
     ):

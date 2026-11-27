@@ -207,7 +207,7 @@ def protect(value: object, bearer: str = "") -> None:
             raise GuardRefusal("connection metadata refused; no record was written")
 
 
-def validate(response: Response, bearer: str = "") -> None:
+def validate(response: Response) -> None:
     if (
         not isinstance(cast(object, response.text), str)
         or not isinstance(cast(object, response.version), str)
@@ -217,7 +217,7 @@ def validate(response: Response, bearer: str = "") -> None:
         )
     ):
         raise ConsistencyInterruption("invalid chat response or token usage")
-    protect(asdict(response), bearer)
+    protect(asdict(response))
 
 
 def _http(

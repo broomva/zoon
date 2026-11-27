@@ -759,8 +759,10 @@ reproduce the same file. An interrupted step resumes with recorded
 answers and requests only those missing. A later calling step requires completed
 prerequisites; report records terminal outcomes without requiring later calling
 steps. The held-out prerequisite is completed simulation with recorded
-digests. A guarded output that is missing, unreadable or differs from its recorded
-digest refuses the step. The operator may put back a copy of the file, and the
+digests. A guarded output that is missing, is a directory or has a non-directory parent,
+cannot be read for lack of permission, or differs from its recorded digest refuses
+the step. Other storage faults, including symlink loops, interrupt the step and
+name only the recorded output. The operator may put back a copy of the file, and the
 step proceeds only if its bytes match the recorded digest; this is not a decision
 about any outcome. The report lists every repair's reason, commit and changed files, all
 files differing from the tag, and the registration and step commits.
