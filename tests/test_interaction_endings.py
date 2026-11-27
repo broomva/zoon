@@ -757,7 +757,7 @@ def test_ending_save_boundary(
 
 
 @pytest.mark.parametrize("step", ["closed-loop", "recall"])
-def test_flag_on_recorded_ending_does_nothing(
+def test_flag_on_recorded_ending_prints_the_record(
     runs: Factory, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], step: str
 ) -> None:
     runner = runs(prepared="closed-loop" if step == "recall" else "bands")
@@ -787,7 +787,9 @@ def test_flag_on_recorded_ending_does_nothing(
     assert not runner.steps.ended
     assert done["payload"]["chat_endings"] == events
     assert runner.steps.chat_client.calls == 0
-    assert capsys.readouterr().out.count("flag had no effect") == 1
+    output = capsys.readouterr().out
+    assert output.count("ending already recorded") == 1 and "flag had no effect" not in output
+    assert json.dumps(events[-1], sort_keys=True, indent=2).decode().strip() in output
 
 
 @pytest.mark.parametrize("flag", [False, True])
