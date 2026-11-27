@@ -116,9 +116,9 @@ may end the chat arm with a recorded reason before `held-out` begins. The comman
 is accepted only while `closed-loop` or `recall` is interrupted and its last
 failure was a chat transport failure. `chat` is then unusable, the step completes,
 the report prints the reason and the number of chat decisions already answered,
-and no verdict changes. Apart from a declared repair and the incomplete-line cut under Guard, repairs and
-persistence, this is the only operator decision the run allows, and it cannot be
-taken once `held-out` has started.
+and no verdict changes. Apart from a declared repair, the incomplete-line cut and restoring a guarded output
+under Guard, repairs and persistence, this is the only operator decision the run
+allows, and it cannot be taken once `held-out` has started.
 
 Each step keeps at most one ending event, written once. Recall carries earlier
 ending events forward unchanged and may add its own.
@@ -729,13 +729,17 @@ one change to a transcript the run allows; other damage is refused. State is sep
 cannot reuse the pilot's. Each step writes its output and digest atomically,
 bound to its step, mode, registered commit, code or declared repair snapshot,
 and exact earlier-step states, including absence. Only one command may hold
-the run lock. Do not delete or reset state or transcripts during the run, except for that cut.
+the run lock. Do not delete or reset state or transcripts during the run, except for that cut;
+restoring a guarded output does not change state or transcripts.
 A completed calling step is not repeated; `report` may be run again and must
 reproduce the same file. An interrupted step resumes with recorded
 answers and requests only those missing. A later calling step requires completed
 prerequisites; report records terminal outcomes without requiring later calling
 steps. The held-out prerequisite is completed simulation with recorded
-digests. The report lists every repair's reason, commit and changed files, all
+digests. A guarded output that is missing, unreadable or differs from its recorded
+digest refuses the step. The operator may put back a copy of the file, and the
+step proceeds only if its bytes match the recorded digest; this is not a decision
+about any outcome. The report lists every repair's reason, commit and changed files, all
 files differing from the tag, and the registration and step commits.
 
 **Replay and null checks.** Replay is checked by `report`. Replay is

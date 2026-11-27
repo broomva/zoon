@@ -278,7 +278,7 @@ def test_guarded_output_restoration(runs: Factory, damage: str) -> None:
         with pytest.raises(clients.GuardRefusal) as caught:
             runner.execute("closed-loop")
         if damage == "missing":
-            assert name in str(caught.value) and "restore" in str(caught.value)
+            assert str(caught.value) == f"missing guarded output {name}"
             assert str(runner.guard.storage) not in str(caught.value)
 
 
@@ -495,7 +495,12 @@ def test_unreadable_guarded_output_command_uses_relative_name(
     assert run.main(["closed-loop", "--stub"]) == 1
     output = capsys.readouterr()
     assert output.out == ""
-    assert output.err == f"GuardRefusal: missing guarded output {name}; it must be restored\n"
+    message = (
+        f"missing guarded output {name}"
+        if damage == "missing"
+        else f"guarded output {name} cannot be read"
+    )
+    assert output.err == f"GuardRefusal: {message}\n"
     assert str(runner.guard.storage) not in output.err
     assert state(runner)["status"] == "interrupted"
     assert state(runner)["reason"] == "GuardRefusal"
@@ -512,3 +517,73 @@ def test_chat_cap_cannot_be_passed_to_constructor(runs: Factory, constructor: st
             run.Run(runner.guard.root, stub=True, storage=runner.guard.storage, **options)
         else:
             steps.Steps(runner.guard, runner.steps.client, **options)
+
+
+@pytest.mark.parametrize("damage", ["missing", "altered", "dangling"])
+def test_guarded_copy_restores_same_result(runs: Factory, damage: str) -> None:
+    baseline = runs("baseline").execute("closed-loop")["payload"]
+    runner = runs("damaged")
+    name = next(iter(state(runner)["payload"]["digests"]))
+    path = runner.guard.storage / name
+    raw = path.read_bytes()
+    if damage == "altered":
+        path.write_bytes(b"wrong")
+    else:
+        path.unlink()
+        if damage == "dangling":
+            path.symlink_to(runner.guard.storage / "absent.jsonl")
+    for _ in range(2):
+        with pytest.raises(clients.GuardRefusal) as caught:
+            runner.execute("closed-loop")
+        expected = (
+            "recorded simulation digest differs from its output"
+            if damage == "altered"
+            else f"missing guarded output {name}"
+        )
+        assert str(caught.value) == expected
+    if path.is_symlink():
+        path.unlink()
+    path.write_bytes(b"wrong copy")
+    with pytest.raises(clients.GuardRefusal, match="digest differs"):
+        runner.execute("closed-loop")
+    path.write_bytes(raw)
+    assert runner.execute("closed-loop")["payload"] == baseline
+
+
+@pytest.mark.parametrize("number", [5, 24])
+def test_guarded_storage_fault_interrupts_and_repeats(
+    runs: Factory, monkeypatch: pytest.MonkeyPatch, number: int
+) -> None:
+    runner = runs()
+    path = runner.guard.storage / next(iter(state(runner)["payload"]["digests"]))
+    original = Path.read_bytes
+
+    def read(current: Path) -> bytes:
+        if current == path:
+            raise OSError(number, "storage unavailable")
+        return original(current)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(Path, "read_bytes", read)
+        with pytest.raises(OSError) as caught:
+            runner.execute("closed-loop")
+        assert caught.value.errno == number
+    assert state(runner)["reason"] == "OSError"
+    assert state(runner)["status"] == "interrupted"
+    assert runner.execute("closed-loop")["status"] == "completed"
+
+
+def test_guarded_output_registration_sentences() -> None:
+    text = " ".join((Path(__file__).parents[1] / "interaction/registration.md").read_text().split())
+    for sentence in (
+        "Apart from a declared repair, the incomplete-line cut and restoring a guarded output "
+        "under Guard, repairs and persistence, this is the only operator decision the run "
+        "allows, and it cannot be taken once `held-out` has started.",
+        "Do not delete or reset state or transcripts during the run, except for that cut; "
+        "restoring a guarded output does not change state or transcripts.",
+        "A guarded output that is missing, unreadable or differs from its recorded "
+        "digest refuses the step.",
+        "The operator may put back a copy of the file, and the step proceeds only if its bytes "
+        "match the recorded digest; this is not a decision about any outcome.",
+    ):
+        assert sentence in text
