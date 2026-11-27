@@ -246,7 +246,7 @@ def main(arguments: Sequence[str] | None = None) -> int:
     parser = Parser(description=__doc__)
     parser.add_argument("step", choices=("calibrate", "closed-loop", "recall"))
     parser.add_argument("--stub", action="store_true")
-    parser.add_argument("--end-chat", metavar="REASON", help="end chat if its transport fails")
+    parser.add_argument("--end-chat", metavar="REASON", help="end chat if its request fails")
     parser.add_argument("--repair", help="reason for the committed repair snapshot")
     try:
         args = parser.parse_args(arguments)
