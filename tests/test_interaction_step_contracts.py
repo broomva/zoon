@@ -53,8 +53,8 @@ def test_registration_chat_contract_has_only_the_registered_rules() -> None:
         "The arm's status is derived from the transcript and the cap, in file order: the\n"
         "first invalid or changed version, third unusable reply for one decision, or\n"
         "the chat cap reached under Spending. At the same entry, that is the order of precedence.\n"
-        "The transcript cannot show a withdrawal; the run\n"
-        "step records it, and that record governs later steps.\n"
+        "The transcript cannot show a withdrawal or an operator ending; the run\n"
+        "step records them, and that record governs later steps.\n"
         'Each recall question is labelled "judged", "not judged: version", or "not asked".\n'
         "The accepted points bypass recalibration and the band-to-points step.\n"
         "Run closed loop only, with the H3 simulation count. Score against `zoon` by the\n"
@@ -136,12 +136,10 @@ def test_available_step_modules_and_remaining_work_are_explicit() -> None:
     normal = " ".join(registration.split())
     assert (
         "Calibration, closed-loop and recall "
-        "are implemented today; the operator's ending of the chat arm, "
-        "held-out and report remain requirements."
+        "are implemented today; held-out and report remain requirements."
     ) in normal
     assert (
-        "calibration, closed-loop and recall are implemented; the "
-        "operator's ending of the chat arm, held-out and report remain open work."
+        "calibration, closed-loop and recall are implemented; held-out and report remain open work."
     ) in normal
     assert (
         "- The held-out step and report, including the path marked as added above," in registration
@@ -232,7 +230,10 @@ def test_registration_resume_order_retries_and_files() -> None:
             "| `src/zoon/interaction/run.py` | Existing today | Calibration and step "
             "command dispatch |"
         ),
-        ("| `src/zoon/interaction/steps.py` | Existing today | Closed-loop and recall |"),
+        (
+            "| `src/zoon/interaction/steps.py` | Existing today | "
+            "Closed-loop, recall and operator chat endings |"
+        ),
         (
             "| `src/zoon/interaction/simulation.py` | Existing today | Committed-arm "
             "simulation and game log persistence |"
@@ -254,6 +255,14 @@ def test_registration_resume_order_retries_and_files() -> None:
             "report, outside the registered directory |"
         ),
         ("| `interaction/chat-requests/` | Existing today | Committed chat request fixtures |"),
+        (
+            "| `src/zoon/interaction/service_answers.py` | Existing today | "
+            "Service-answer table regeneration |"
+        ),
+        (
+            "| `interaction/service-answers.md` | Existing today | "
+            "Generated service-answer outcomes |"
+        ),
     ):
         assert passage in text
 
@@ -262,20 +271,18 @@ def test_registration_step_state_and_http_contracts() -> None:
     text = (NOTE.parents[2] / "interaction" / "registration.md").read_text()
     for passage in (
         (
-            "The `chat` arm decides nothing. A chat request that fails in transport after the\n"
-            "bounded attempts, is refused by the service without establishing withdrawal, or\n"
-            "whose reply is refused by the secret check interrupts the step; repeat the step's\n"
-            "command. Until the operator's ending of the chat arm is implemented, a failure\n"
-            "that never clears and is not a withdrawal prevents `closed-loop` or `recall` from\n"
-            "completing, so `held-out` cannot start."
+            "For a resumable step, the flag is accepted only after a saved chat transport\n"
+            "interruption of that step, or when that step already has a saved ending.\n"
+            "Otherwise repeat the step without the flag; a later chat transport interruption\n"
+            "makes the flag acceptable on the next attempt."
         ),
         (
             "A transport failure does not count toward the three attempts. An unusable\n"
             "reply is a recorded response whose text fails the reply rule, or is empty or\n"
             "blocked. Three unusable replies for one decision, the model's withdrawal, a\n"
             "version change, reaching the chat cap, a failed replay of a chat game, or a first\n"
-            "reported version that does not begin with the model name make `chat` unusable,\n"
-            "with no scores.\n"
+            "reported version that does not begin with the model name, or an operator ending,\n"
+            "make `chat` unusable with no scores.\n"
             "Chat game logs are written from the chat transcript when `closed-loop` completes,\n"
             "if the arm is still usable then, and are not read back by any run step. A later\n"
             "step that scores them first rebuilds them from the transcript, checked against\n"
@@ -330,26 +337,22 @@ def test_registration_step_state_and_http_contracts() -> None:
             "paid but unrecorded spending across repeated storage failures."
         ),
         (
-            "When bounded attempts mix not-found answers with a transport fault (for example\n"
-            "three not-found answers followed by a transport fault), the result is a transport\n"
-            "failure, not a withdrawal."
+            "The client has five outcome classes: an accepted generating reply is returned\n"
+            "for recording and uses up the flag; withdrawal counted on every bounded generating\n"
+            "attempt makes chat unusable; a transport interruption leaves the request unrecorded\n"
+            "and interrupts the step unless the eligible flag ends the arm; configuration and\n"
+            "guard refusals leave the request unrecorded and interrupt the step "
+            "without ending the arm."
         ),
         (
-            "Before the first missing chat request in each attempt, check model metadata without\n"
-            "generating text; missing metadata\n"
-            "does not establish withdrawal. A metadata check answered not "
-            "found (404 or 410) permits the generating request;\n"
-            "only that request's bounded attempts decide withdrawal.\n"
-            "For the generating request, an HTTP 200 answer that cannot be processed, whose\n"
-            "modelVersion is not a non-blank string or whose promptTokenCount is not a\n"
-            "non-negative integer is unrecorded and retried within the bounded attempts,\n"
-            "unless the secret check refuses it. An answer refused by the secret check is\n"
-            "unrecorded, interrupts the step with GuardRefusal, and is requested again on the\n"
-            "next attempt.\n"
-            "Missing candidatesTokenCount or thoughtsTokenCount means zero,\n"
-            "with or without candidate text; a present count that is not a non-negative integer,\n"
-            "including a boolean, is the same transient fault.\n"
-            "The outcomes for withdrawal and version change are under Data."
+            "The generated [service-answer table](service-answers.md) records which answers fall\n"
+            "in each class, their request counts, and whether a persistent answer leaves the flag\n"
+            "acceptable on the next attempt."
+        ),
+        (
+            "For a JSON-object generating answer entering response processing, the secret check\n"
+            "runs first on all readable text parts joined together: a secret refuses the reply\n"
+            "even if processing would otherwise fail, with no record or use of the flag."
         ),
     ):
         assert passage in text

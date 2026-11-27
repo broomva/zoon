@@ -540,9 +540,9 @@ guard refusals leave the request unrecorded and interrupt the step without endin
 The generated [service-answer table](service-answers.md) records which answers fall
 in each class, their request counts, and whether a persistent answer leaves the flag
 acceptable on the next attempt.
-The request format is checked against the live service before the registration is
-tagged, so a persistent generating refusal in the transport-interruption class is
-treated during the registered run as a service change on which the operator may end the arm.
+Under the required check of the request format against the live service before
+tagging, a persistent generating refusal in the transport-interruption class is
+treated as a service change on which the operator may end the arm.
 
 An uncorrectable configuration refusal, an unavailable credential, or a persistent
 guard refusal from a service putting the project identifier in every processable

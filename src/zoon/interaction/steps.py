@@ -156,7 +156,7 @@ class Steps:
             ):
                 raise clients.GuardRefusal(
                     "flag is accepted only after an attempt of this step "
-                    "that chat transport interrupted"
+                    "that chat transport interrupted; repeat this step without --end-chat"
                 )
             self.ended = False
             self.payload = old["payload"] if old else {}
