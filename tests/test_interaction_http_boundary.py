@@ -209,32 +209,47 @@ def test_credentials_refuse_at_once_without_recording(
 @pytest.mark.parametrize("step", ["closed-loop", "recall"])
 @pytest.mark.parametrize("secret", ["fixture-project", "dummy-bearer"])
 @pytest.mark.parametrize(
-    "shape", ["valid", "split", "missing version", "invalid tokens", "unprocessable body"]
+    "shape", ["valid", "blocked", "missing version", "invalid tokens", "unprocessable body"]
 )
+@pytest.mark.parametrize("parts", [1, 2, 3])
+@pytest.mark.parametrize("candidate", [0, 1])
 def test_secret_refusal_precedes_response_validation_and_can_repeat(
-    runs: Factory, monkeypatch: pytest.MonkeyPatch, step: str, secret: str, shape: str
+    runs: Factory,
+    monkeypatch: pytest.MonkeyPatch,
+    step: str,
+    secret: str,
+    shape: str,
+    parts: int,
+    candidate: int,
 ) -> None:
     def wire(method: str, count: int) -> tuple[int, bytes]:
         if method == "GET":
             return 200, b"{}"
-        result = json.loads(answer(secret))
-        if shape == "split":
-            result["candidates"][0]["content"]["parts"] = [
-                {"text": secret[:5]},
-                {"text": secret[5:]},
-            ]
+        result = json.loads(answer())
+        chunks = [
+            secret[i * len(secret) // parts : (i + 1) * len(secret) // parts] for i in range(parts)
+        ]
+        content = [{"text": chunk} for chunk in chunks]
+        if shape == "unprocessable body":
+            content.insert(1, None)
+        if candidate:
+            result["candidates"].append({"content": {"parts": content}})
+        else:
+            result["candidates"][0]["content"]["parts"] = content
+        if shape == "blocked":
+            result["candidates"][0]["finishReason"] = "SAFETY"
         elif shape == "missing version":
             del result["modelVersion"]
         elif shape == "invalid tokens":
             result["usageMetadata"]["promptTokenCount"] = -1
-        elif shape == "unprocessable body":
-            result["candidates"][0]["content"]["parts"].append(None)
         return 200, json.dumps(result).encode()
 
     client, methods, pauses = connection(monkeypatch, wire)
     runner = runs(prepared="closed-loop" if step == "recall" else "bands")
     runner.steps.chat_client = client
     before = state(runner)["payload"]["chat"]
+    path = runner.guard.transcript_directory / "chat.jsonl"
+    raw = path.read_bytes() if path.exists() else b""
     for _ in range(2):
         with pytest.raises(chat.GuardRefusal, match="no record was written"):
             runner.execute(step)
@@ -244,6 +259,7 @@ def test_secret_refusal_precedes_response_validation_and_can_repeat(
         assert not saved["payload"].get("chat_endings")
         with runner.guard.lock(), pytest.raises(clients.GuardRefusal, match="prerequisite"):
             runner.guard.before("held-out")
+    assert (path.read_bytes() if path.exists() else b"") == raw
     assert methods == ["GET", "POST"] * 2 and not pauses
 
 

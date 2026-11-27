@@ -378,6 +378,16 @@ class VertexClient:
                 if status != 200:
                     raise ConfigurationInterruption("chat request refused")
                 protect(data, bearer)
+                texts = []
+                candidates = data.get("candidates", [])
+                for item in candidates if isinstance(candidates, list) else []:
+                    content = item.get("content") if isinstance(item, dict) else None
+                    parts = content.get("parts") if isinstance(content, dict) else None
+                    for part in parts if isinstance(parts, list) else []:
+                        text = part.get("text") if isinstance(part, dict) else None
+                        if isinstance(text, str):
+                            texts.append(text)
+                protect("".join(texts), bearer)
                 usage = data.get("usageMetadata", {})
                 candidates = data.get("candidates", [])
                 candidate: Any = candidates[0] if candidates else {}
@@ -409,7 +419,6 @@ class VertexClient:
                     usage.get("candidatesTokenCount", 0),
                     usage.get("thoughtsTokenCount", 0),
                 )
-                validate(response, bearer)
                 return response
             except (
                 TransientError,
