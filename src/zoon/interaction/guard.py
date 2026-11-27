@@ -486,12 +486,6 @@ class Guard:
         if state["previous"] != self.previous(step):
             raise clients.GuardRefusal("exact earlier-step states changed, including absence")
         for family, expected in state["transcripts"].items():
-            if (
-                step == "calibrate"
-                and family == "chat"
-                and expected == {"keys": [], "digest": digest(encoded([]))}
-            ):
-                continue
             if self.transcript_checkpoint(family, expected["keys"]) != expected:
                 raise clients.GuardRefusal("recorded transcript checkpoint changed")
         return state
