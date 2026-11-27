@@ -58,7 +58,8 @@ def test_first_request_can_end_after_chat_interruption(
     answer: Answer,
 ) -> None:
     runner = runs(prepared="closed-loop" if step == "recall" else "bands")
-    interrupted(runner, step)
+    with connected(runner, stage, (answer,)), pytest.raises(chat.CHAT_REQUEST_FAILURES):
+        runner.execute(step)
     before = state(runner, step)["payload"]["chat"]
     capsys.readouterr()
     with connected(runner, stage, (answer,)) as requests:
@@ -102,8 +103,7 @@ def test_first_request_can_end_after_chat_interruption(
 def test_success_and_replayed_replies_control_attempt_authority(
     runs: Factory, capsys: pytest.CaptureFixture[str], step: str, flag: bool
 ) -> None:
-    runner = runs(prepared="closed-loop" if step == "recall" else "bands")
-    interrupted(runner, step)
+    runner = runs(prepared="interrupted-" + step)
     capsys.readouterr()
     with (
         connected(runner, answers=(Answer(200), Answer(503))) as requests,
@@ -140,8 +140,7 @@ def test_http_ending_survives_only_successful_saves(
     step: str,
     handler_fails: bool,
 ) -> None:
-    runner = runs(prepared="closed-loop" if step == "recall" else "bands")
-    interrupted(runner, step)
+    runner = runs(prepared="interrupted-" + step)
     original = runner.steps.save
     failed = False
 
@@ -176,6 +175,11 @@ def test_http_ending_survives_only_successful_saves(
             assert (
                 not requests and done["payload"]["chat_endings"] == saved["payload"]["chat_endings"]
             )
+            plain = runs("plain", prepared="interrupted-" + step)
+            with connected(plain):
+                expected = plain.execute(step, end_chat="Unavailable")
+            assert done == expected
+            capsys.readouterr()
 
     assert not capsys.readouterr().out
     if handler_fails:
@@ -216,8 +220,7 @@ def test_operator_endings_in_both_steps_preserve_the_first(
 def test_http_last_attempt_status_replaces_prior_answers(
     runs: Factory, step: str, last: int | None
 ) -> None:
-    runner = runs(prepared="closed-loop" if step == "recall" else "bands")
-    interrupted(runner, step)
+    runner = runs(prepared="interrupted-" + step)
     with connected(runner, answers=(Answer(200, "empty body"),) * 3 + (Answer(last),)):
         done = runner.execute(step, end_chat="Unavailable")
     assert done["payload"]["chat_endings"][-1]["last_status"] == last
@@ -234,8 +237,7 @@ def test_saved_ending_never_causes_another_service_request(
     status: str,
     cause: str,
 ) -> None:
-    runner = runs(prepared="closed-loop" if step == "recall" else "bands")
-    interrupted(runner, step)
+    runner = runs(prepared="interrupted-" + step)
     original = runner.steps.save
 
     def stop(status: str = "running", reason: str = "") -> dict[str, Any]:
@@ -291,8 +293,7 @@ def test_saved_ending_never_causes_another_service_request(
 @pytest.mark.parametrize("step", ["closed-loop", "recall"])
 @pytest.mark.parametrize("stage", service_answers.STAGES)
 def test_redirect_target_failure_has_no_final_status(runs: Factory, step: str, stage: str) -> None:
-    runner = runs(prepared="closed-loop" if step == "recall" else "bands")
-    interrupted(runner, step)
+    runner = runs(prepared="interrupted-" + step)
     with connected(runner, stage, (Answer(302, "redirect to unreachable"),)):
         done = runner.execute(step, end_chat="Unavailable")
     event = done["payload"]["chat_endings"][-1]
@@ -431,8 +432,7 @@ def test_cli_project_reason_refuses_before_work(
 def test_cli_held_bearer_reason_is_not_recorded(
     runs: Factory, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], step: str
 ) -> None:
-    runner = runs(prepared="closed-loop" if step == "recall" else "bands")
-    interrupted(runner, step)
+    runner = runs(prepared="interrupted-" + step)
 
     def local(**kwargs: Any) -> run.Run:
         return runner

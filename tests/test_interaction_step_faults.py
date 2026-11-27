@@ -56,7 +56,21 @@ def prepared_states(
     completed = directory / "closed-loop"
     shutil.copytree(bands, completed)
     run.Run(root, stub=True, storage=completed, simulation_groups=1).execute("closed-loop")
-    yield {"calibrated": initial, "bands": bands, "closed-loop": completed}
+    states = {"calibrated": initial, "bands": bands, "closed-loop": completed}
+    for step, source in (("closed-loop", bands), ("recall", completed)):
+        destination = directory / ("interrupted-" + step)
+        shutil.copytree(source, destination)
+        runner = run.Run(
+            root,
+            stub=True,
+            storage=destination,
+            simulation_groups=1,
+            chat_client=ChatFault("transport", at=1),
+        )
+        with pytest.raises(chat.TransportInterruption):
+            runner.execute(step)
+        states["interrupted-" + step] = destination
+    yield states
     shutil.rmtree(directory)
 
 
