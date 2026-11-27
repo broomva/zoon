@@ -31,12 +31,11 @@ class Steps:
         *,
         decision_cap: Decimal | None = None,
         chat_client: chat.Client | None = None,
-        chat_cap: Decimal | None = None,
         groups: int = score.SIMULATED_GROUPS,
     ) -> None:
         self.guard, self.client = guard, client
         self.decision_cap = budget.DECISION_CAP if decision_cap is None else decision_cap
-        self.chat_cap = budget.chat_cap() if chat_cap is None else chat_cap
+        self.chat_cap = budget.chat_cap()
         self.chat_client = chat_client
         if type(groups) is not int or not 1 <= groups <= score.SIMULATED_GROUPS:
             raise ValueError("simulation group count is outside the registered ensemble")

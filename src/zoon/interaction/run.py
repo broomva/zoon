@@ -35,7 +35,6 @@ class Run:
         client: clients.Client | None = None,
         cap: Decimal | None = None,
         chat_client: chat.Client | None = None,
-        chat_cap: Decimal | None = None,
         simulation_groups: int = score.SIMULATED_GROUPS,
     ) -> None:
         self.guard = Guard(root, stub=stub, storage=storage)
@@ -47,7 +46,6 @@ class Run:
             self.client,
             decision_cap=cap,
             chat_client=chat_client,
-            chat_cap=chat_cap,
             groups=simulation_groups,
         )
         self.session: decisions.Session | None = None

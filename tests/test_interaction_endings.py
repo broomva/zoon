@@ -8,7 +8,7 @@ from typing import Any
 import pytest
 
 from tests.test_interaction_step_faults import ChatFault, Factory, state
-from zoon.interaction import chat, guard, run
+from zoon.interaction import budget, chat, guard, run, steps
 from zoon.pilot import clients
 
 pytest_plugins = ("tests.test_interaction_step_faults",)
@@ -282,11 +282,14 @@ def test_guarded_output_restoration(runs: Factory, damage: str) -> None:
             assert str(runner.guard.storage) not in str(caught.value)
 
 
-def test_injected_chat_cap_stops_before_first_call(runs: Factory) -> None:
+def test_injected_chat_cap_stops_before_first_call(
+    runs: Factory, monkeypatch: pytest.MonkeyPatch
+) -> None:
     from decimal import Decimal
 
     client = ChatFault("transport", at=1)
-    runner = runs(chat_client=client, chat_cap=Decimal(0))
+    monkeypatch.setattr(budget, "chat_cap", lambda: Decimal(0))
+    runner = runs(chat_client=client)
     done = runner.execute("closed-loop")
     assert done["payload"]["chat"]["cause"] == "CAP"
     assert client.calls == 0
@@ -496,3 +499,16 @@ def test_unreadable_guarded_output_command_uses_relative_name(
     assert str(runner.guard.storage) not in output.err
     assert state(runner)["status"] == "interrupted"
     assert state(runner)["reason"] == "GuardRefusal"
+
+
+@pytest.mark.parametrize("constructor", ["run", "steps"])
+def test_chat_cap_cannot_be_passed_to_constructor(runs: Factory, constructor: str) -> None:
+    from decimal import Decimal
+
+    runner = runs()
+    options: dict[str, Any] = {"chat_cap": Decimal(0)}
+    with pytest.raises(TypeError, match="chat_cap"):
+        if constructor == "run":
+            run.Run(runner.guard.root, stub=True, storage=runner.guard.storage, **options)
+        else:
+            steps.Steps(runner.guard, runner.steps.client, **options)
