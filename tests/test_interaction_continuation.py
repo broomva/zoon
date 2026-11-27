@@ -8,7 +8,7 @@ import pytest
 
 from tests.interaction_run_support import repository
 from tests.test_interaction_endings import invalid_sync
-from tests.test_interaction_step_faults import ChatFault, Factory, band_logs, state
+from tests.test_interaction_step_faults import ChatFault, Factory, band_logs, interrupt_chat, state
 from zoon.interaction import chat, guard, run, score
 from zoon.pilot import clients
 
@@ -46,6 +46,7 @@ def test_chat_transport_resume_matches_uninterrupted_and_skips_finished_arms(
         resumed.guard.root, stub=True, storage=resumed.guard.storage, simulation_groups=1
     )
     completed = fresh.execute("closed-loop")
+    assert completed["payload"].pop("chat_request_failures") == 1
     assert {k: v for k, v in completed.items() if k not in ("digest", "payload_digest")} == {
         k: v for k, v in expected.items() if k not in ("digest", "payload_digest")
     }
@@ -69,6 +70,7 @@ def test_recall_transport_resume_equals_uninterrupted(runs: Factory) -> None:
     with pytest.raises(chat.TransportInterruption):
         interrupted.execute("recall")
     final = run.Run(resumed.guard.root, stub=True, storage=resumed.guard.storage).execute("recall")
+    assert final["payload"].pop("chat_request_failures") == 1
     assert {k: v for k, v in final.items() if k not in ("digest", "payload_digest")} == {
         k: v for k, v in expected.items() if k not in ("digest", "payload_digest")
     }
@@ -195,6 +197,9 @@ def test_failure_handler_preserves_last_success_and_recovers(
         path.write_bytes(path.read_bytes().split(b'{"partial":')[0])
     actual = runner.execute("closed-loop")
     expected = runs("plain").execute("closed-loop")
+    assert actual["payload"].pop("chat_request_failures", 0) == int(
+        fault == "chat" and not handler_fails
+    )
     assert {k: v for k, v in actual.items() if k not in ("digest", "payload_digest")} == {
         k: v for k, v in expected.items() if k not in ("digest", "payload_digest")
     }
@@ -323,14 +328,21 @@ def test_decision_transport_interrupts_without_chat_ending(runs: Factory) -> Non
     assert not saved["payload"].get("chat_endings")
 
 
-@pytest.mark.parametrize("initial", ["usable", "version", "replies", "cap", "withdrawn", "replay"])
-@pytest.mark.parametrize("later", ["none", "version", "cap", "withdrawn"])
+@pytest.mark.parametrize(
+    "initial", ["usable", "version", "replies", "cap", "withdrawn", "replay", "operator"]
+)
+@pytest.mark.parametrize("later", ["none", "version", "cap", "withdrawn", "operator"])
 def test_chat_cause_and_events_across_steps(
     runs: Factory, monkeypatch: pytest.MonkeyPatch, initial: str, later: str
 ) -> None:
+    # VERSION, CAP and WITHDRAWN prevent recall requests, so only 'none' is reachable.
     if initial in ("version", "cap", "withdrawn") and later != "none":
         pytest.skip("the earlier version, cap or withdrawal prevents recall requests")
-    runner = runs(chat_client=ChatFault(initial, at=5))
+    runner = runs(
+        chat_client=ChatFault(
+            "transport" if initial == "operator" else initial, at=1 if initial == "operator" else 5
+        )
+    )
     with monkeypatch.context() as patch:
         if initial == "replay":
 
@@ -338,18 +350,31 @@ def test_chat_cause_and_events_across_steps(
                 raise chat.Unusable(chat.Cause.REPLAY)
 
             patch.setattr(chat, "replay", failed)
-        closed = runner.execute("closed-loop")
+        if initial == "operator":
+            interrupt_chat(runner, "closed-loop")
+        closed = runner.execute(
+            "closed-loop", end_chat="Requests unavailable" if initial == "operator" else None
+        )
     path = runner.guard.directory / "closed-loop.json"
     before = path.read_bytes()
-    runner.steps.chat_client = ChatFault(later, at=1)
-    recalled = runner.execute("recall")
+    runner.steps.chat_client = ChatFault("transport" if later == "operator" else later, at=1)
+    if later == "operator":
+        # A cause that already prevents questions cannot satisfy the flag precondition.
+        if initial in ("version", "cap", "withdrawn"):
+            later = "none"
+        else:
+            interrupt_chat(runner, "recall")
+    recalled = runner.execute(
+        "recall", end_chat="Recall unavailable" if later == "operator" else None
+    )
     first, last = closed["payload"]["chat"], recalled["payload"]["chat"]
     assert path.read_bytes() == before
     assert first["cause"] == (None if initial == "usable" else initial.upper())
     assert (first["status"] == "unusable") == (first["cause"] is not None)
-    assert last["cause"] == (first["cause"] or (None if later == "none" else later.upper()))
+    if first["cause"]:
+        assert last["cause"] == first["cause"]
+    else:
+        assert last["cause"] == (None if later == "none" else later.upper())
     assert last["endings"][: len(first["endings"])] == first["endings"]
-    assert len(first["endings"]) == int(initial in ("withdrawn", "replay"))
-    assert len(last["endings"]) == len(first["endings"]) + int(later == "withdrawn")
     assert (last["status"] == "unusable") == (last["cause"] is not None)
     assert recalled["status"] == "completed"

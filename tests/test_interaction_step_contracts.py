@@ -53,8 +53,8 @@ def test_registration_chat_contract_has_only_the_registered_rules() -> None:
         "The arm's status is derived from the transcript and the cap, in file order: the\n"
         "first invalid or changed version, third unusable reply for one decision, or\n"
         "the chat cap reached under Spending. At the same entry, that is the order of precedence.\n"
-        "The transcript cannot show a withdrawal; the run\n"
-        "step records it, and that record governs later steps.\n"
+        "The transcript cannot show a withdrawal or an operator ending; the run\n"
+        "step records them, and that record governs later steps.\n"
         'Each recall question is labelled "judged", "not judged: version", or "not asked".\n'
         "The accepted points bypass recalibration and the band-to-points step.\n"
         "Run closed loop only, with the H3 simulation count. Score against `zoon` by the\n"
@@ -88,17 +88,19 @@ def test_registration_recall_contract() -> None:
     )[0]
     passage = "Recall questions with no recorded answer" + passage
     assert passage == (
-        "Recall questions with no recorded answer are sent unless the model is withdrawn,\n"
-        "its first reported version is invalid, its version has changed,\n"
-        "or the chat cap is reached. An arm made unusable by the three-reply rule, or ended\n"
-        "by the operator during `closed-loop`, is still asked. "
-        "If the operator ends the arm\n"
-        "during `recall`, answered questions are kept and judged and the questions not yet\n"
-        'answered are recorded "not asked". `closed-loop` and `recall` complete with the\n'
-        'chat status recorded and "not asked" for each recall question not sent, and later\n'
-        "steps proceed. This changes no hypothesis verdict. The chat reply rule is under\n"
-        'The chat arm. A paid reply with an invalid version is retained as "not judged: version",\n'
-        "without judging or flagging it. Recall reports separately what stopped it asking."
+        "Recall questions with no recorded answer are sent unless the model is withd"
+        "rawn,\nan ending is already saved in recall, its first reported version is i"
+        "nvalid,\nits version has changed, or the chat cap is reached. An arm made un"
+        "usable by the three-reply rule, or ended\nby the operator during `closed-loo"
+        "p`, is still asked; a service still failing\nthen needs its own interrupted "
+        "attempt and its own flagged attempt. If the operator ends the arm\nduring `r"
+        "ecall`, answered questions are kept and judged and the questions not yet\nan"
+        'swered are recorded "not asked". `closed-loop` and `recall` complete with t'
+        'he\nchat status recorded and "not asked" for each recall question not sent, '
+        "and later\nsteps proceed. This changes no hypothesis verdict. The chat reply"
+        " rule is under\nThe chat arm. A paid reply with an invalid version is retain"
+        'ed as "not judged: version",\nwithout judging or flagging it. Recall reports'
+        " separately what stopped it asking."
     )
 
 
@@ -136,12 +138,10 @@ def test_available_step_modules_and_remaining_work_are_explicit() -> None:
     normal = " ".join(registration.split())
     assert (
         "Calibration, closed-loop and recall "
-        "are implemented today; the operator's ending of the chat arm, "
-        "held-out and report remain requirements."
+        "are implemented today; held-out and report remain requirements."
     ) in normal
     assert (
-        "calibration, closed-loop and recall are implemented; the "
-        "operator's ending of the chat arm, held-out and report remain open work."
+        "calibration, closed-loop and recall are implemented; held-out and report remain open work."
     ) in normal
     assert (
         "- The held-out step and report, including the path marked as added above," in registration
@@ -190,12 +190,12 @@ def test_registration_resume_order_retries_and_files() -> None:
             "   open-loop calls and score H2 and H3. An unusable chat arm does not block it."
         ),
         (
-            "A completed calling step is not repeated; `report` may be run again and must\n"
-            "reproduce the same file. An interrupted step resumes with recorded\n"
-            "answers and requests only those missing. A later calling step requires completed\n"
-            "prerequisites; report records terminal outcomes without requiring later calling\n"
-            "steps. The held-out prerequisite is completed simulation with recorded\n"
-            "digests."
+            "A completed step that sends model requests is not repeated; `report` may be"
+            " run again and must\nreproduce the same file. An interrupted step resumes wi"
+            "th recorded\nanswers and requests only those missing. A later step that send"
+            "s model requests requires completed prerequisites;\nreport records terminal "
+            "outcomes without requiring later steps that send model requests. The held-o"
+            "ut prerequisite is completed simulation with recorded\ndigests."
         ),
         (
             "Each model has its own cap, so exhausting the chat cap cannot end the run;\n"
@@ -232,7 +232,10 @@ def test_registration_resume_order_retries_and_files() -> None:
             "| `src/zoon/interaction/run.py` | Existing today | Calibration and step "
             "command dispatch |"
         ),
-        ("| `src/zoon/interaction/steps.py` | Existing today | Closed-loop and recall |"),
+        (
+            "| `src/zoon/interaction/steps.py` | Existing today | "
+            "Closed-loop, recall and operator chat endings |"
+        ),
         (
             "| `src/zoon/interaction/simulation.py` | Existing today | Committed-arm "
             "simulation and game log persistence |"
@@ -254,6 +257,14 @@ def test_registration_resume_order_retries_and_files() -> None:
             "report, outside the registered directory |"
         ),
         ("| `interaction/chat-requests/` | Existing today | Committed chat request fixtures |"),
+        (
+            "| `src/zoon/interaction/service_answers.py` | Existing today | "
+            "Service-answer table regeneration |"
+        ),
+        (
+            "| `interaction/service-answers.md` | Existing today | "
+            "Generated service-answer outcomes |"
+        ),
     ):
         assert passage in text
 
@@ -262,94 +273,67 @@ def test_registration_step_state_and_http_contracts() -> None:
     text = (NOTE.parents[2] / "interaction" / "registration.md").read_text()
     for passage in (
         (
-            "The `chat` arm decides nothing. A chat request that fails in transport after the\n"
-            "bounded attempts, is refused by the service without establishing withdrawal, or\n"
-            "whose reply is refused by the secret check interrupts the step; repeat the step's\n"
-            "command. Until the operator's ending of the chat arm is implemented, a failure\n"
-            "that never clears and is not a withdrawal prevents `closed-loop` or `recall` from\n"
-            "completing, so `held-out` cannot start."
+            "A transport failure does not count toward the three attempts. An "
+            "unusable\nreply is a recorded response whose text fails the reply "
+            "rule, or is empty or\nblocked. Three unusable replies for one deci"
+            "sion, the model's withdrawal, a\nversion change, reaching the chat"
+            " cap, a failed replay of a chat game, or a first\nreported version"
+            " that does not begin with the model name, or an operator ending,\n"
+            "make `chat` unusable with no scores.\nChat game logs are written f"
+            "rom the chat transcript when `closed-loop` completes,\nif the arm "
+            "is still usable then, and are not read back by any run step. A la"
+            "ter\nstep that scores them first rebuilds them from the transcript"
+            ", checked against\n`recall.json` `payload.chat.transcript.digest`,"
+            " and requires the rebuilt bytes to\nmatch `closed-loop.json` `payl"
+            "oad.chat_logs`. A failed rebuild makes `chat`\nunusable; that step"
+            " records REPLAY in its own state if recall records no earlier\ncau"
+            "se, and the report prints both the recall record and the later st"
+            "ep's record."
         ),
         (
-            "A transport failure does not count toward the three attempts. An unusable\n"
-            "reply is a recorded response whose text fails the reply rule, or is empty or\n"
-            "blocked. Three unusable replies for one decision, the model's withdrawal, a\n"
-            "version change, reaching the chat cap, a failed replay of a chat game, or a first\n"
-            "reported version that does not begin with the model name make `chat` unusable,\n"
-            "with no scores.\n"
-            "Chat game logs are written from the chat transcript when `closed-loop` completes,\n"
-            "if the arm is still usable then, and are not read back by any run step. A later\n"
-            "step that scores them first rebuilds them from the transcript, checked against\n"
-            "`recall.json` `payload.chat.transcript.digest`, and requires the rebuilt bytes to\n"
-            "match `closed-loop.json` `payload.chat_logs`. A failed rebuild makes `chat`\n"
-            "unusable; that step records REPLAY in its own state if recall records no earlier\n"
-            "cause, and the report prints both the recall record and the later step's record."
+            "Chat game logs are written from the chat transcript when `closed-"
+            "loop` completes,\nif the arm is still usable then, and are not rea"
+            "d back by any run step. A later\nstep that scores them first rebui"
+            "lds them from the transcript, checked against\n`recall.json` `payl"
+            "oad.chat.transcript.digest`, and requires the rebuilt bytes to\nma"
+            "tch `closed-loop.json` `payload.chat_logs`. A failed rebuild make"
+            "s `chat`\nunusable; that step records REPLAY in its own state if r"
+            "ecall records no earlier\ncause, and the report prints both the re"
+            "call record and the later step's record."
         ),
         (
-            "Chat game logs are written from the chat transcript when `closed-loop` completes,\n"
-            "if the arm is still usable then, and are not read back by any run step. A later\n"
-            "step that scores them first rebuilds them from the transcript, checked against\n"
-            "`recall.json` `payload.chat.transcript.digest`, and requires the rebuilt bytes to\n"
-            "match `closed-loop.json` `payload.chat_logs`. A failed rebuild makes `chat`\n"
-            "unusable; that step records REPLAY in its own state if recall records no earlier\n"
-            "cause, and the report prints both the recall record and the later step's record."
+            "Each step keeps at most one ending event, written once. Recall carries earl"
+            "ier\nending events forward unchanged and may add its own.\nThe earliest cause"
+            ", however detected, governs the arm's reported cause; once a\ncompleted step"
+            " records a cause, later steps retain it.\nCompleted state files remain uncha"
+            "nged; the recall state exposes all ending events.\nAn arm usable at the end "
+            "of `closed-loop` can become unusable during `recall`.\n`Guard.recall_chat_re"
+            "cord()` reads the status at the end of recall from `recall.json`\nfields `pa"
+            "yload.chat.status` and `payload.chat.cause` and refuses unless recall is\nco"
+            "mpleted; an arm unusable there has no scores. A later failed rebuild is rec"
+            "orded\nin that later step's state as described above. The arm is unusable if"
+            " completed\nrecall says so or any later step records a failed rebuild; the r"
+            "ecall record alone\nis not final once a later step has recorded one. If the "
+            "run ends with no verdict\nbefore recall completes, the report prints the cha"
+            't arm as "not run" and labels\nany earlier chat record with its step; it doe'
+            "s not call that record final."
         ),
         (
-            "Each step keeps at most one ending event, written once. Recall carries earlier\n"
-            "ending events forward unchanged and may add its own.\n"
-            "The earliest cause, however detected, governs the arm's reported cause; once a\n"
-            "completed step records a cause, later steps retain it. A "
-            "withdrawal or an ending event in `recall` stops further\n"
-            "recall questions. A withdrawal, an ending already in the current step, the cap,\n"
-            "a version change or an invalid first version prevents further recall questions.\n"
-            "Completed state files remain unchanged; the recall state exposes all ending events.\n"
-            "An arm usable at the end of `closed-loop` can become unusable during `recall`.\n"
-            "`Guard.recall_chat_record()` reads the status at the end of "
-            "recall from `recall.json`\n"
-            "fields `payload.chat.status` and `payload.chat.cause` and refuses unless recall is\n"
-            "completed; an arm unusable there has no scores. A later failed rebuild is recorded\n"
-            "in that later step's state as described above. The arm is unusable if completed\n"
-            "recall says so or any later step records a failed rebuild; the recall record alone\n"
-            "is not final once a later step has recorded one. If the run ends with no verdict\n"
-            'before recall completes, the report prints the chat arm as "not run" and labels\n'
-            "any earlier chat record with its step; it does not call that record final."
+            "If the run cannot record either model's withdrawal, a later attem"
+            "pt records a\nwithdrawal only if that model is still withdrawn. A "
+            "failed ending save is carried\nby the handler's one normal save; i"
+            "f that also fails, the last successful state\nstands. REPLAY is de"
+            "rived again on retry. A decision version change or cap is detecte"
+            "d again\nfrom the decision transcript. Unreadable or incomplete ch"
+            "at transcripts prevent\nthe handler's save; the next attempt refus"
+            "es with the cut-back instruction for an\nincomplete line."
         ),
         (
-            "If the run cannot record either model's withdrawal, a later attempt records a\n"
-            "withdrawal only if that model is still withdrawn. A failed ending save is carried\n"
-            "by the handler's one normal save; if that also fails, the last successful state\n"
-            "stands. REPLAY is derived again on retry. A decision version "
-            "change or cap is detected again\n"
-            "from the decision transcript. Unreadable or incomplete chat transcripts prevent\n"
-            "the handler's save; the next attempt refuses with the cut-back instruction for an\n"
-            "incomplete line."
-        ),
-        (
-            "A reply whose append fails before any byte is written is not recorded, is not\n"
-            "counted toward the cap, and is requested again; actual spending can exceed\n"
-            "recorded spending by such replies. No bound is claimed on\n"
-            "paid but unrecorded spending across repeated storage failures."
-        ),
-        (
-            "When bounded attempts mix not-found answers with a transport fault (for example\n"
-            "three not-found answers followed by a transport fault), the result is a transport\n"
-            "failure, not a withdrawal."
-        ),
-        (
-            "Before the first missing chat request in each attempt, check model metadata without\n"
-            "generating text; missing metadata\n"
-            "does not establish withdrawal. A metadata check answered not "
-            "found (404 or 410) permits the generating request;\n"
-            "only that request's bounded attempts decide withdrawal.\n"
-            "For the generating request, an HTTP 200 answer that cannot be processed, whose\n"
-            "modelVersion is not a non-blank string or whose promptTokenCount is not a\n"
-            "non-negative integer is unrecorded and retried within the bounded attempts,\n"
-            "unless the secret check refuses it. An answer refused by the secret check is\n"
-            "unrecorded, interrupts the step with GuardRefusal, and is requested again on the\n"
-            "next attempt.\n"
-            "Missing candidatesTokenCount or thoughtsTokenCount means zero,\n"
-            "with or without candidate text; a present count that is not a non-negative integer,\n"
-            "including a boolean, is the same transient fault.\n"
-            "The outcomes for withdrawal and version change are under Data."
+            "A reply whose append fails before any byte is written is not reco"
+            "rded, is not\ncounted toward the cap, and is requested again; actu"
+            "al spending can exceed\nrecorded spending by such replies. No boun"
+            "d is claimed on\npaid but unrecorded spending across repeated stor"
+            "age failures."
         ),
     ):
         assert passage in text

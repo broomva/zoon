@@ -11,7 +11,7 @@ import numpy as np
 
 from zoon.interaction import chat, compare, decisions, kernel, prompted, registered, score
 from zoon.interaction.games import GAMES, Game
-from zoon.interaction.guard import Guard, digest
+from zoon.interaction.guard import Guard, digest, guarded_output
 from zoon.interaction.measure import Floats
 from zoon.pilot import clients
 
@@ -57,18 +57,7 @@ class Store:
         payload.setdefault("simulations", {})
 
     def read(self, name: str, expected: str) -> bytes:
-        path = (self.guard.storage / name).resolve()
-        if not path.is_relative_to(self.guard.storage):
-            raise clients.GuardRefusal("simulation path is outside run storage")
-        try:
-            raw = path.read_bytes()
-        except FileNotFoundError:
-            raise clients.GuardRefusal(f"missing guarded output {name}") from None
-        except (IsADirectoryError, NotADirectoryError, PermissionError):
-            raise clients.GuardRefusal(f"guarded output {name} cannot be read") from None
-        if digest(raw) != expected:
-            raise clients.GuardRefusal("recorded simulation digest differs from its output")
-        return raw
+        return guarded_output(self.guard.storage, name, expected)
 
     def verify(self) -> None:
         for name, expected in self.payload["digests"].items():

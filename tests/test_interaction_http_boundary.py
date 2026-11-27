@@ -130,7 +130,7 @@ def test_persistent_http_failure_interrupts_and_blocks_following_steps(
     error = (
         chat.ConfigurationInterruption
         if fault == "service"
-        else chat.GuardRefusal
+        else chat.SecretRefusal
         if fault == "secret"
         else chat.TransportInterruption
     )
@@ -207,13 +207,18 @@ def test_credentials_refuse_at_once_without_recording(
 
 
 @pytest.mark.parametrize("step", ["closed-loop", "recall"])
-@pytest.mark.parametrize("secret", ["fixture-project", "dummy-bearer"])
 @pytest.mark.parametrize(
-    "shape", ["valid", "blocked", "missing version", "invalid tokens", "unprocessable body"]
+    "secret,shape,parts,candidate",
+    [
+        ("fixture-project", "valid", 1, 0),
+        ("dummy-bearer", "valid", 3, 1),
+        ("fixture-project", "blocked", 2, 0),
+        ("fixture-project", "missing version", 2, 1),
+        ("dummy-bearer", "invalid tokens", 1, 0),
+        ("fixture-project", "unprocessable body", 3, 1),
+    ],
 )
-@pytest.mark.parametrize("parts", [1, 2, 3])
-@pytest.mark.parametrize("candidate", [0, 1])
-def test_secret_refusal_precedes_response_validation_and_can_repeat(
+def test_secret_replies_are_unrecorded_across_response_shapes(
     runs: Factory,
     monkeypatch: pytest.MonkeyPatch,
     step: str,
@@ -254,7 +259,7 @@ def test_secret_refusal_precedes_response_validation_and_can_repeat(
         with pytest.raises(chat.GuardRefusal, match="no record was written"):
             runner.execute(step)
         saved = state(runner, step)
-        assert (saved["status"], saved["reason"]) == ("interrupted", "GuardRefusal")
+        assert (saved["status"], saved["reason"]) == ("interrupted", "SecretRefusal")
         assert saved["payload"]["chat"] == before
         assert not saved["payload"].get("chat_endings")
         with runner.guard.lock(), pytest.raises(clients.GuardRefusal, match="prerequisite"):

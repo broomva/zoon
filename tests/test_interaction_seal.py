@@ -305,7 +305,15 @@ def test_simulation_digest_paths_cannot_leave_storage(
                 status="completed",
             )
         gate.before("held-out")
-        with pytest.raises(clients.GuardRefusal, match="simulation digest"):
+        original_read = Path.read_bytes
+
+        def read(path: Path) -> bytes:
+            if path == outside:
+                pytest.fail("permit read an output outside storage")
+            return original_read(path)
+
+        monkeypatch.setattr(Path, "read_bytes", read)
+        with pytest.raises(clients.GuardRefusal, match="outside run storage"):
             gate.permit()
 
 

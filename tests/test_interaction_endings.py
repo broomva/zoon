@@ -7,7 +7,7 @@ from typing import Any
 
 import pytest
 
-from tests.test_interaction_step_faults import ChatFault, Factory, state
+from tests.test_interaction_step_faults import ChatFault, Factory, interrupt_chat, state
 from zoon.interaction import budget, chat, guard, run, steps
 from zoon.pilot import clients
 
@@ -555,20 +555,21 @@ def test_guarded_storage_fault_interrupts_and_repeats(
     runs: Factory, monkeypatch: pytest.MonkeyPatch, number: int
 ) -> None:
     runner = runs()
-    path = runner.guard.storage / next(iter(state(runner)["payload"]["digests"]))
+    name = next(iter(state(runner)["payload"]["digests"]))
+    path = runner.guard.storage / name
     original = Path.read_bytes
 
     def read(current: Path) -> bytes:
         if current == path:
-            raise OSError(number, "storage unavailable")
+            raise OSError(number, "storage unavailable", str(current))
         return original(current)
 
     with monkeypatch.context() as patch:
         patch.setattr(Path, "read_bytes", read)
-        with pytest.raises(OSError) as caught:
+        with pytest.raises(chat.StorageInterruption) as caught:
             runner.execute("closed-loop")
-        assert caught.value.errno == number
-    assert state(runner)["reason"] == "OSError"
+        assert str(caught.value) == f"guarded output {name} storage failed"
+    assert state(runner)["reason"] == "StorageInterruption"
     assert state(runner)["status"] == "interrupted"
     assert runner.execute("closed-loop")["status"] == "completed"
 
@@ -581,8 +582,12 @@ def test_guarded_output_registration_sentences() -> None:
         "allows, and it cannot be taken once `held-out` has started.",
         "Do not delete or reset state or transcripts during the run, except for that cut; "
         "restoring a guarded output does not change state or transcripts.",
-        "A guarded output that is missing, unreadable or differs from its recorded "
-        "digest refuses the step.",
+        "A guarded output that is missing, is not a regular file (including a directory, "
+        "named pipe, socket or device), has a non-directory parent, cannot be read for lack "
+        "of permission, or differs from its recorded digest refuses "
+        "the step.",
+        "Other storage faults, including symlink loops, interrupt the step and "
+        "name only the recorded output.",
         "The operator may put back a copy of the file, and the step proceeds only if its bytes "
         "match the recorded digest; this is not a decision about any outcome.",
     ):
@@ -620,3 +625,474 @@ def test_save_declared_family_requires_reader(runs: Factory) -> None:
         runner.guard.before("closed-loop")
         with pytest.raises(clients.GuardRefusal, match="transcript reader"):
             runner.guard.save("closed-loop", {}, families=("unknown",), status="running")
+
+
+@pytest.mark.parametrize("step", ["closed-loop", "recall"])
+@pytest.mark.parametrize("point", ["first", "middle", "metadata", "none"])
+@pytest.mark.parametrize("flag", [False, True])
+def test_operator_flag_tracks_chat_request_progress(
+    runs: Factory, step: str, point: str, flag: bool
+) -> None:
+    runner = runs(prepared="closed-loop" if step == "recall" else "bands")
+
+    class Fault(ChatFault):
+        def preflight(self) -> None:
+            if point == "metadata":
+                raise chat.TransportInterruption("metadata transport unavailable")
+            super().preflight()
+
+    if flag:
+        interrupt_chat(runner, step)
+    runner.steps.chat_client = Fault(
+        "none" if point == "none" else "transport", at=3 if point == "middle" else 1
+    )
+    if point != "none" and (not flag or point == "middle"):
+        with pytest.raises(chat.TransportInterruption):
+            runner.execute(step, end_chat="Unavailable" if flag else None)
+        saved = state(runner, step)
+        assert saved["status"] == "interrupted"
+        assert saved["reason"] == "TransportInterruption"
+        assert not saved["payload"].get("chat_endings")
+        assert saved["payload"]["chat_request_failures"] == (2 if flag else 1)
+        if flag:
+            runner.steps.chat_client = Fault("transport", at=1)
+            done = runner.execute(step, end_chat="Unavailable")
+            ending = done["payload"]["chat_endings"][-1]
+            assert ending["chat_request_failures"] == 3
+            assert ending["answered_decisions"] == (440 if step == "recall" else 2)
+            if step == "recall":
+                assert ending["answered_recall"] == 2
+        return
+    result = runner.execute(step, end_chat="Unavailable" if flag else None)
+    assert result["status"] == "completed"
+    events = result["payload"].get("chat_endings", [])
+    if point == "none":
+        assert not events
+    else:
+        assert events == [
+            {
+                "chat_request_failures": 2,
+                "failure_class": "transport",
+                "failure_stage": None,
+                "last_status": None,
+                **({"answered_recall": 2 if point == "middle" else 0} if step == "recall" else {}),
+                "cause": "OPERATOR",
+                "reason": "Unavailable",
+                "step": step,
+                "answered_decisions": (440 if step == "recall" else 2 if point == "middle" else 0),
+            }
+        ]
+        if step == "recall":
+            assert result["payload"]["stopped_by"] == "OPERATOR"
+            asked = 2 if point == "middle" else 0
+            assert [r["status"] for r in result["payload"]["recall"]] == (
+                ["judged"] * asked + ["not asked"] * (8 - asked)
+            )
+        else:
+            assert "chat_logs" not in result["payload"]
+
+
+@pytest.mark.parametrize("step", ["closed-loop", "recall"])
+@pytest.mark.parametrize("cause", ["withdrawn", "operator"])
+@pytest.mark.parametrize("handler_fails", [False, True])
+@pytest.mark.parametrize("repeat_flag", [False, True])
+def test_ending_save_boundary(
+    runs: Factory,
+    monkeypatch: pytest.MonkeyPatch,
+    step: str,
+    cause: str,
+    handler_fails: bool,
+    repeat_flag: bool,
+) -> None:
+    runner = runs(prepared="closed-loop" if step == "recall" else "bands")
+    runner.steps.chat_client = ChatFault("transport" if cause == "operator" else "withdrawn", at=1)
+    if cause == "operator":
+        interrupt_chat(runner, step)
+    original = runner.steps.save
+    failed = False
+
+    def save(status: str = "running", reason: str = "") -> dict[str, Any]:
+        nonlocal failed
+        events = runner.steps.payload.get("chat_endings", [])
+        if (
+            events
+            and events[-1]["step"] == step
+            and (
+                (status == "running" and not failed) or (status == "interrupted" and handler_fails)
+            )
+        ):
+            failed = True
+            real_fsync = os.fsync
+
+            def invalid_fsync(fd: int) -> None:
+                real_fsync(999999)
+
+            with monkeypatch.context() as inner:
+                inner.setattr(os, "fsync", invalid_fsync)
+                return original(status, reason)
+        return original(status, reason)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(runner.steps, "save", save)
+        with pytest.raises(OSError):
+            runner.execute(step, **({"end_chat": "Unavailable"} if cause == "operator" else {}))
+    saved = state(runner, step)
+    assert saved["status"] == ("running" if handler_fails else "interrupted")
+    assert bool(saved["payload"].get("chat_endings")) == (not handler_fails)
+    runner.steps.chat_client = None
+    if repeat_flag and not handler_fails:
+        done = runner.execute(step, end_chat="Unavailable")
+        assert done["status"] == "completed"
+        assert done["payload"]["chat_endings"] == saved["payload"]["chat_endings"]
+        assert not runner.steps.ended
+        assert done["payload"]["chat"]["cause"] == cause.upper()
+        return
+    if repeat_flag:
+        with pytest.raises(clients.GuardRefusal, match="only after an attempt"):
+            runner.execute(step, end_chat="Unavailable")
+    done = runner.execute(step)
+    assert done["status"] == "completed"
+    assert bool(done["payload"].get("chat_endings")) == (not handler_fails)
+    if not handler_fails:
+        assert done["payload"]["chat"]["cause"] == cause.upper()
+
+
+@pytest.mark.parametrize("step", ["closed-loop", "recall"])
+def test_flag_on_recorded_ending_prints_the_record(
+    runs: Factory, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], step: str
+) -> None:
+    runner = runs(prepared="closed-loop" if step == "recall" else "bands")
+    runner.steps.chat_client = ChatFault("transport", at=1)
+    interrupt_chat(runner, step)
+    original = runner.steps.save
+
+    def save(status: str = "running", reason: str = "") -> dict[str, Any]:
+        if status == "completed":
+            raise OSError("completion unavailable")
+        return original(status, reason)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(runner.steps, "save", save)
+        with pytest.raises(OSError):
+            runner.execute(step, end_chat="First reason")
+    events = state(runner, step)["payload"]["chat_endings"]
+    capsys.readouterr()
+    runner.steps.chat_client = ChatFault("transport", at=1)
+
+    def local(**kwargs: Any) -> run.Run:
+        return runner
+
+    monkeypatch.setattr(run, "Run", local)
+    assert run.main([step, "--stub", "--end-chat", "Second reason"]) == 0
+    done = state(runner, step)
+    assert not runner.steps.ended
+    assert done["payload"]["chat_endings"] == events
+    assert runner.steps.chat_client.calls == 0
+    output = capsys.readouterr().out
+    assert output.count("ending already recorded") == 1 and "flag had no effect" not in output
+    assert json.dumps(events[-1], sort_keys=True, indent=2) in output
+
+
+@pytest.mark.parametrize("flag", [False, True])
+def test_decision_transport_cannot_end_chat(
+    runs: Factory, monkeypatch: pytest.MonkeyPatch, flag: bool
+) -> None:
+    class Decision(clients.StubClient):
+        def ask(self, request: clients.Request) -> clients.Response:
+            raise clients.StepFailure("decision transport unavailable")
+
+    runner = runs(client=Decision("decision"))
+    if flag:
+        interrupt_chat(runner, "closed-loop")
+        from zoon.interaction import simulation
+
+        def bands(*args: Any, **kwargs: Any) -> None:
+            raise clients.StepFailure("decision transport unavailable")
+
+        monkeypatch.setattr(simulation.Store, "bands", bands)
+    with pytest.raises(clients.StepFailure):
+        runner.execute("closed-loop", end_chat="Unavailable" if flag else None)
+    assert state(runner)["status"] == "interrupted"
+    assert state(runner)["reason"] == "StepFailure"
+    assert not state(runner)["payload"].get("chat_endings")
+
+
+@pytest.mark.parametrize("step", ["closed-loop", "recall"])
+@pytest.mark.parametrize("reason", ["", " \t\n"])
+def test_blank_operator_reason_runs_nothing(runs: Factory, step: str, reason: str) -> None:
+    runner = runs(prepared="calibrated")
+    with pytest.raises(clients.GuardRefusal, match="nonempty reason"):
+        runner.execute(step, end_chat=reason)
+    assert not (runner.guard.directory / f"{step}.json").exists()
+
+
+@pytest.mark.parametrize("stub", [False, True])
+@pytest.mark.parametrize("step", ["closed-loop", "recall"])
+def test_cli_routes_operator_flag_in_either_mode(
+    runs: Factory,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    stub: bool,
+    step: str,
+) -> None:
+    runner = runs()
+    result = runner.execute("closed-loop")
+    if step == "recall":
+        result = runner.execute("recall")
+
+    def execute(
+        command: str, *, repair: str | None = None, end_chat: str | None = None
+    ) -> dict[str, Any]:
+        assert command == step and end_chat == "Unavailable"
+        return result
+
+    def local(**kwargs: Any) -> run.Run:
+        assert kwargs["stub"] == stub
+        return runner
+
+    monkeypatch.setattr(runner, "execute", execute)
+    monkeypatch.setattr(run, "Run", local)
+    assert run.main([step, "--end-chat", "Unavailable", *(["--stub"] if stub else [])]) == 0
+    assert capsys.readouterr().err == ""
+
+
+@pytest.mark.parametrize("step", ["closed-loop", "recall"])
+@pytest.mark.parametrize(
+    "failure",
+    [
+        chat.StorageInterruption,
+        chat.ConsistencyInterruption,
+        chat.GuardRefusal,
+        OSError,
+    ],
+)
+def test_operator_flag_preserves_other_failures(
+    runs: Factory, step: str, failure: type[Exception]
+) -> None:
+    runner = runs(prepared="closed-loop" if step == "recall" else "bands")
+    interrupt_chat(runner, step)
+
+    class Fault(ChatFault):
+        def ask(self, text: str) -> chat.Response:
+            raise failure("unavailable")
+
+    runner.steps.chat_client = Fault("none")
+    with pytest.raises((failure, chat.ConsistencyInterruption)):
+        runner.execute(step, end_chat="Unavailable")
+    saved = state(runner, step)
+    assert saved["status"] == "interrupted"
+    assert not saved["payload"].get("chat_endings")
+    assert saved["payload"]["chat_request_failures"] == 1
+
+
+@pytest.mark.parametrize("step", ["closed-loop", "recall"])
+def test_flag_requires_a_saved_chat_request_failure(runs: Factory, step: str) -> None:
+    runner = runs(prepared="closed-loop" if step == "recall" else "calibrated")
+    with pytest.raises(clients.GuardRefusal, match="only after an attempt"):
+        runner.execute(step, end_chat="Unavailable")
+    assert not (runner.guard.directory / f"{step}.json").exists()
+
+
+def test_calibration_refuses_operator_flag(runs: Factory) -> None:
+    with pytest.raises(clients.GuardRefusal, match="only for closed-loop or recall"):
+        runs().execute("calibrate", end_chat="Unavailable")
+
+
+@pytest.mark.parametrize("step", ["closed-loop", "recall"])
+@pytest.mark.parametrize("fault", ["none", "version", "cap", "replies"])
+def test_command_prints_no_effect_once_after_completion(
+    runs: Factory,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    step: str,
+    fault: str,
+) -> None:
+    runner = runs(prepared="closed-loop" if step == "recall" else "bands")
+    interrupt_chat(runner, step)
+    runner.steps.chat_client = ChatFault(fault, at=1)
+
+    def local(**kwargs: Any) -> run.Run:
+        return runner
+
+    monkeypatch.setattr(run, "Run", local)
+    capsys.readouterr()
+    assert run.main([step, "--stub", "--end-chat", "Unavailable"]) == 0
+    assert capsys.readouterr().out.count("flag had no effect") == 1
+
+
+def test_numeric_recall_replies_do_not_count_as_decisions(runs: Factory) -> None:
+    from dataclasses import replace
+
+    class Numeric(ChatFault):
+        def ask(self, text: str) -> chat.Response:
+            return replace(super().ask(text), text="3")
+
+    runner = runs(prepared="closed-loop")
+    runner.steps.chat_client = Numeric("transport", at=3)
+    with pytest.raises(chat.TransportInterruption):
+        runner.execute("recall")
+    runner.steps.chat_client = Numeric("transport", at=1)
+    done = runner.execute("recall", end_chat="Unavailable")
+    ending = done["payload"]["chat_endings"][-1]
+    assert ending["answered_decisions"] == 440
+    assert ending["answered_recall"] == 2
+    assert ending["chat_request_failures"] == 2
+    assert done["payload"]["stopped_by"] == "OPERATOR"
+
+
+@pytest.mark.parametrize("step", ["closed-loop", "recall"])
+@pytest.mark.parametrize("other", ["storage"])
+def test_storage_failure_does_not_allow_the_flag(runs: Factory, step: str, other: str) -> None:
+    runner = runs(prepared="closed-loop" if step == "recall" else "bands")
+    interrupt_chat(runner, step)
+
+    class Fault(ChatFault):
+        def ask(self, text: str) -> chat.Response:
+            if other == "configuration":
+                raise chat.ConfigurationInterruption("permission refused")
+            raise chat.StorageInterruption("storage failed")
+
+    runner.steps.chat_client = Fault("none")
+    with pytest.raises(chat.Interruption):
+        runner.execute(step)
+    assert state(runner, step)["payload"]["chat_request_failures"] == 1
+    with pytest.raises(clients.GuardRefusal, match="only after an attempt"):
+        runner.execute(step, end_chat="Unavailable")
+
+
+@pytest.mark.parametrize("step", ["closed-loop", "recall"])
+def test_two_interruptions_before_operator_ending(runs: Factory, step: str) -> None:
+    runner = runs(prepared="closed-loop" if step == "recall" else "bands")
+    interrupt_chat(runner, step)
+    interrupt_chat(runner, step)
+    assert state(runner, step)["payload"]["chat_request_failures"] == 2
+    runner.steps.chat_client = ChatFault("transport", at=1)
+    done = runner.execute(step, end_chat="Unavailable")
+    assert done["payload"]["chat_request_failures"] == 3
+    assert done["payload"]["chat_endings"][-1]["chat_request_failures"] == 3
+
+
+@pytest.mark.parametrize("step", ["closed-loop", "recall"])
+def test_effective_flag_prints_only_ending(
+    runs: Factory, step: str, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    runner = runs(prepared="closed-loop" if step == "recall" else "bands")
+    interrupt_chat(runner, step)
+    runner.steps.chat_client = ChatFault("transport", at=1)
+
+    def local(**kwargs: Any) -> run.Run:
+        return runner
+
+    monkeypatch.setattr(run, "Run", local)
+    capsys.readouterr()
+    assert run.main([step, "--stub", "--end-chat", "Unavailable"]) == 0
+    output = capsys.readouterr().out
+    assert '"cause": "OPERATOR"' in output
+    assert "flag had no effect" not in output
+
+
+@pytest.mark.parametrize("step", ["closed-loop", "recall"])
+def test_reused_replies_do_not_use_up_flag(runs: Factory, step: str) -> None:
+    runner = runs(prepared="closed-loop" if step == "recall" else "bands")
+    runner.steps.chat_client = ChatFault("transport", at=3)
+    with pytest.raises(chat.TransportInterruption):
+        runner.execute(step)
+    before = state(runner, step)["payload"]["chat"]
+    runner.steps.chat_client = ChatFault("transport", at=1)
+    done = runner.execute(step, end_chat="Unavailable")
+    ending = done["payload"]["chat_endings"][-1]
+    assert ending["answered_decisions"] == before["answered_decisions"]
+    assert done["payload"]["chat"]["transcript"] == before["transcript"]
+    if step == "recall":
+        assert ending["answered_recall"] == 2
+
+
+@pytest.mark.parametrize("step", ["closed-loop", "recall"])
+def test_kill_after_saved_ending_accepts_same_flag(
+    runs: Factory, step: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runner = runs(prepared="closed-loop" if step == "recall" else "bands")
+    interrupt_chat(runner, step)
+    original = runner.steps.save
+
+    def killed(status: str = "running", reason: str = "") -> dict[str, Any]:
+        if status in ("completed", "interrupted"):
+            raise SystemExit("killed")
+        return original(status, reason)
+
+    runner.steps.chat_client = ChatFault("transport", at=1)
+    with monkeypatch.context() as patch:
+        patch.setattr(runner.steps, "save", killed)
+        with pytest.raises(SystemExit):
+            runner.execute(step, end_chat="Unavailable")
+    saved = state(runner, step)
+    assert saved["status"] == "running"
+    assert saved["payload"]["chat_endings"][-1]["cause"] == "OPERATOR"
+    done = runner.execute(step, end_chat="Unavailable")
+    assert done["status"] == "completed"
+    assert done["payload"]["chat_endings"] == saved["payload"]["chat_endings"]
+    assert not runner.steps.ended
+
+
+@pytest.mark.parametrize("step", ["closed-loop", "recall"])
+def test_recovery_and_persistent_outage_have_different_outcomes(runs: Factory, step: str) -> None:
+    prepared = "closed-loop" if step == "recall" else "bands"
+    recovered = runs("recovered", prepared=prepared)
+    interrupt_chat(recovered, step)
+    recovered.steps.chat_client = ChatFault("transport", at=3)
+    with pytest.raises(chat.TransportInterruption):
+        recovered.execute(step, end_chat="Unavailable")
+    interrupted = state(recovered, step)
+    assert interrupted["status"] == "interrupted"
+    assert interrupted["reason"] == "TransportInterruption"
+    assert not interrupted["payload"].get("chat_endings")
+
+    persistent = runs("persistent", prepared=prepared)
+    persistent.steps.chat_client = ChatFault("transport", at=3)
+    with pytest.raises(chat.TransportInterruption):
+        persistent.execute(step)
+    persistent.steps.chat_client = ChatFault("transport", at=1)
+    completed = persistent.execute(step, end_chat="Unavailable")
+    assert completed["status"] == "completed"
+    assert completed["payload"]["chat_endings"][-1]["cause"] == "OPERATOR"
+    assert (
+        interrupted["payload"]["chat"]["transcript"] == completed["payload"]["chat"]["transcript"]
+    )
+    assert interrupted["payload"]["chat"] != completed["payload"]["chat"]
+
+
+@pytest.mark.parametrize("step", ["closed-loop", "recall"])
+def test_running_state_refuses_flag_without_ending(runs: Factory, step: str) -> None:
+    runner = runs(prepared="closed-loop" if step == "recall" else "bands")
+    if step == "recall":
+        with runner.guard.lock():
+            runner.guard.before(step)
+            runner.guard.save(step, {}, families=("decision", "chat"), status="running")
+    before = state(runner, step)
+    assert before["status"] == "running"
+    assert before["reason"] == ""
+    with pytest.raises(clients.GuardRefusal, match="only after an attempt"):
+        runner.execute(step, end_chat="Unavailable")
+    assert state(runner, step) == before
+
+
+def test_closed_loop_ending_does_not_license_recall_flag(runs: Factory) -> None:
+    runner = runs(prepared="bands")
+    interrupt_chat(runner, "closed-loop")
+    runner.steps.chat_client = ChatFault("transport", at=1)
+    runner.execute("closed-loop", end_chat="Down")
+    assert state(runner, "closed-loop")["payload"]["chat_endings"][-1]["cause"] == "OPERATOR"
+
+    class Storage(ChatFault):
+        def ask(self, text: str) -> chat.Response:
+            raise chat.StorageInterruption("storage failed")
+
+    runner.steps.chat_client = Storage("none")
+    with pytest.raises(chat.StorageInterruption):
+        runner.execute("recall")
+    saved = state(runner, "recall")
+    assert saved["reason"] == "StorageInterruption"
+    assert [e["step"] for e in saved["payload"]["chat_endings"]] == ["closed-loop"]
+    runner.steps.chat_client = ChatFault("transport", at=1)
+    with pytest.raises(clients.GuardRefusal, match="only after an attempt"):
+        runner.execute("recall", end_chat="Down")

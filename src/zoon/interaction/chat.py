@@ -142,13 +142,23 @@ class Interruption(Exception):
 class TransportInterruption(Interruption):
     """A transient transport fault; repeating the step may succeed."""
 
+    def __init__(
+        self, message: str, *, stage: str | None = None, last_status: int | None = None
+    ) -> None:
+        super().__init__(message)
+        self.stage = stage
+        self.last_status = last_status
+
 
 class StorageInterruption(Interruption):
     """Storage failed; repeat the command to reopen the transcript."""
 
 
 class ConfigurationInterruption(Interruption):
-    """Credentials or configuration must be corrected before repeating."""
+    """Credentials or configuration prevented a chat request."""
+
+    stage: str | None = None
+    last_status: int | None = None
 
 
 class ConsistencyInterruption(Interruption):
@@ -159,8 +169,30 @@ class GuardRefusal(Exception):
     pass
 
 
+class SecretRefusal(GuardRefusal):
+    """A generating reply contains connection secrets."""
+
+    stage: str | None = None
+    last_status: int | None = None
+
+
+CHAT_REQUEST_FAILURES = (TransportInterruption, ConfigurationInterruption, SecretRefusal)
+
+
+def failure_class(error: BaseException | str) -> str | None:
+    """Use the same canonical class for saved interruptions and operator endings."""
+    for kind, label in zip(
+        CHAT_REQUEST_FAILURES, ("transport", "configuration", "secret refusal"), strict=True
+    ):
+        if (isinstance(error, str) and error == kind.__name__) or isinstance(error, kind):
+            return label
+    return None
+
+
 class TransientError(Exception):
-    pass
+    def __init__(self, message: str = "", *, last_status: int | None = None) -> None:
+        super().__init__(message)
+        self.last_status = last_status
 
 
 class ModelMissing(TransientError):
@@ -198,7 +230,7 @@ def protect(value: object, bearer: str = "") -> None:
             raise GuardRefusal("connection metadata refused; no record was written")
 
 
-def validate(response: Response, bearer: str = "") -> None:
+def validate(response: Response) -> None:
     if (
         not isinstance(cast(object, response.text), str)
         or not isinstance(cast(object, response.version), str)
@@ -208,17 +240,19 @@ def validate(response: Response, bearer: str = "") -> None:
         )
     ):
         raise ConsistencyInterruption("invalid chat response or token usage")
-    protect(asdict(response), bearer)
+    protect(asdict(response))
 
 
 def _http(
     url: str, headers: dict[str, str], body: bytes, method: str
 ) -> tuple[int, dict[str, Any]]:
+    status: int | None = None
     try:
         outgoing = urllib.request.Request(
             url, data=body if method == "POST" else None, headers=headers, method=method
         )
         with urllib.request.urlopen(outgoing, timeout=30) as reply:
+            status = getattr(reply, "status", None)
             value = json.loads(reply.read())
             if not isinstance(value, dict):
                 raise ValueError
@@ -227,7 +261,10 @@ def _http(
         return error.code, {}
     except (ValueError, TypeError):
         pass
-    raise TransientError("invalid chat JSON response")
+    except (OSError, http.client.HTTPException):
+        if status is None:
+            raise
+    raise TransientError("invalid chat JSON response", last_status=status)
 
 
 def post(url: str, headers: dict[str, str], body: bytes) -> tuple[int, dict[str, Any]]:
@@ -280,6 +317,7 @@ class VertexClient:
         self.preflight_transport = preflight_transport
         self._preflight_pid: int | None = None
         self._bearer: str | None = None
+        self._sent_bearers: set[str] = set()
         self._lock = Lock()
 
     def bearer(self, rejected: str | None = None) -> str:
@@ -300,9 +338,16 @@ class VertexClient:
         if not os.environ.get("ZOON_VERTEX_PROJECT", ""):
             raise ConfigurationInterruption("ZOON_VERTEX_PROJECT is required")
 
+        last_status: int | None = None
+        sent = False
+
         def probe() -> Response:
+            nonlocal last_status, sent
             try:
                 bearer = self.bearer()
+                last_status = None
+                sent = True
+                self._sent_bearers.add(bearer)
                 status, _ = self.preflight_transport(
                     "https://aiplatform.googleapis.com/v1/publishers/google/models/" + MODEL,
                     {
@@ -312,6 +357,7 @@ class VertexClient:
                     },
                     b"",
                 )
+                last_status = status
                 if status == 401:
                     self.bearer(rejected=bearer)
                     raise TransientError
@@ -320,13 +366,21 @@ class VertexClient:
                 if status not in (200, 404, 410):
                     raise ConfigurationInterruption("chat metadata request refused")
                 return Response("", MODEL, 0, 0)
-            except (TransientError, Interruption, GuardRefusal, OSError, http.client.HTTPException):
+            except TransientError as error:
+                if error.last_status is not None:
+                    last_status = error.last_status
+                raise
+            except (Interruption, GuardRefusal, OSError, http.client.HTTPException):
                 raise
             except Exception:
                 pass
             raise TransientError("chat metadata processing failed")
 
-        retry(probe, self.pause)
+        try:
+            retry(probe, self.pause)
+        except CHAT_REQUEST_FAILURES as error:
+            error.stage, error.last_status = "metadata check" if sent else None, last_status
+            raise
         self._preflight_pid = os.getpid()
 
     def ask(self, text: str) -> Response:
@@ -357,9 +411,14 @@ class VertexClient:
             }
         ).encode()
 
+        last_status: int | None = None
+
         def call() -> Response:
+            nonlocal last_status
             try:
                 bearer = self.bearer()
+                last_status = None
+                self._sent_bearers.add(bearer)
                 status, data = self.transport(
                     endpoint,
                     {
@@ -369,6 +428,7 @@ class VertexClient:
                     },
                     body,
                 )
+                last_status = status
                 if status == 401:
                     self.bearer(rejected=bearer)
                 if status in (404, 410):
@@ -377,7 +437,13 @@ class VertexClient:
                     raise TransientError
                 if status != 200:
                     raise ConfigurationInterruption("chat request refused")
-                protect(data, bearer)
+                try:
+                    for sent in self._sent_bearers:
+                        protect(data, sent)
+                except GuardRefusal:
+                    raise SecretRefusal(
+                        "connection metadata refused; no record was written"
+                    ) from None
                 texts: list[str] = []
                 candidates = data.get("candidates", [])
                 for item in cast(list[Any], candidates) if isinstance(candidates, list) else []:
@@ -399,7 +465,13 @@ class VertexClient:
                         )
                         if isinstance(text, str):
                             texts.append(text)
-                protect("".join(texts), bearer)
+                try:
+                    for sent in self._sent_bearers:
+                        protect("".join(texts), sent)
+                except GuardRefusal:
+                    raise SecretRefusal(
+                        "connection metadata refused; no record was written"
+                    ) from None
                 usage = data.get("usageMetadata", {})
                 candidates = data.get("candidates", [])
                 candidate: Any = candidates[0] if candidates else {}
@@ -432,8 +504,11 @@ class VertexClient:
                     usage.get("thoughtsTokenCount", 0),
                 )
                 return response
+            except TransientError as error:
+                if error.last_status is not None:
+                    last_status = error.last_status
+                raise
             except (
-                TransientError,
                 Interruption,
                 GuardRefusal,
                 OSError,
@@ -444,7 +519,11 @@ class VertexClient:
                 pass
             raise TransientError("chat response processing failed")
 
-        return retry(call, self.pause)
+        try:
+            return retry(call, self.pause)
+        except CHAT_REQUEST_FAILURES as error:
+            error.stage, error.last_status = "generating request", last_status
+            raise
 
 
 class StubClient:
@@ -592,6 +671,7 @@ class Transcript:
 
     def check(self, entry: Entry) -> None:
         self.usable()
+        protect(entry.response.text, self.bearer)
         validate(entry.response)
         protect(asdict(entry), self.bearer)
         if entry.run != self.identity:

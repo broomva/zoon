@@ -23,12 +23,7 @@ requirements for registration, not descriptions of an implemented run.
 If both comparisons were computed and either does not meet the rule, the hypothesis
 is failed; if a comparison could not be computed, there is no verdict. The
 completion and run-ending rules under Data govern whether a hypothesis can be judged.
-The `chat` arm decides nothing. A chat request that fails in transport after the
-bounded attempts, is refused by the service without establishing withdrawal, or
-whose reply is refused by the secret check interrupts the step; repeat the step's
-command. Until the operator's ending of the chat arm is implemented, a failure
-that never clears and is not a withdrawal prevents `closed-loop` or `recall` from
-completing, so `held-out` cannot start.
+The `chat` arm decides nothing.
 
 **What a pass means.** H2 shows better next-move prediction by this law using the
 others' history than by the chosen law without it and this prompt to this model.
@@ -101,8 +96,8 @@ A transport failure does not count toward the three attempts. An unusable
 reply is a recorded response whose text fails the reply rule, or is empty or
 blocked. Three unusable replies for one decision, the model's withdrawal, a
 version change, reaching the chat cap, a failed replay of a chat game, or a first
-reported version that does not begin with the model name make `chat` unusable,
-with no scores.
+reported version that does not begin with the model name, or an operator ending,
+make `chat` unusable with no scores.
 Chat game logs are written from the chat transcript when `closed-loop` completes,
 if the arm is still usable then, and are not read back by any run step. A later
 step that scores them first rebuilds them from the transcript, checked against
@@ -111,21 +106,51 @@ match `closed-loop.json` `payload.chat_logs`. A failed rebuild makes `chat`
 unusable; that step records REPLAY in its own state if recall records no earlier
 cause, and the report prints both the recall record and the later step's record.
 
-If chat requests alone keep `closed-loop` or `recall` from completing, the operator
-may end the chat arm with a recorded reason before `held-out` begins. The command
-is accepted only while `closed-loop` or `recall` is interrupted and its last
-failure was a chat transport failure. `chat` is then unusable, the step completes,
-the report prints the reason and the number of chat decisions already answered,
-and no verdict changes. Apart from a declared repair, the incomplete-line cut and restoring a guarded output
+The operator may use `python -m zoon.interaction.run closed-loop --end-chat REASON`
+or `python -m zoon.interaction.run recall --end-chat REASON`.
+A blank reason is refused before any work.
+A reason for `--end-chat` or `--repair` that contains the project identifier is
+refused before any work; the run does not otherwise inspect the operator's text.
+The metadata check is the model metadata HTTP request made before generation.
+A chat request failure is a transport interruption, a configuration refusal
+(including an unavailable credential), or a secret refusal of a reply from the
+metadata check or a generating request, leaving no recorded reply and no counted withdrawal;
+the flag applies to all three classes.
+For an unfinished closed-loop or recall step, the flag is accepted only after
+that step saved an interruption by a chat request failure, or an ending of that
+step is already saved; otherwise repeat the step without the flag.
+It ends the arm only if a chat request fails in this attempt before any generating
+request returns a reply; a returned reply uses up the flag before transcript append,
+while replies reused from the transcript do not use it up.
+Decision-model and storage failures, three unusable replies, the cap, a version
+change and withdrawal never create an operator ending.
+
+The run cannot distinguish a service failure from an operator-side fault such as
+a broken network or a rejected or missing credential.
+The ending records OPERATOR, the class, stage, last HTTP status, reason, step,
+this step's count of recorded chat request failures including this one, and answered
+chat decisions (and answered recall questions in recall); it removes chat scores
+and changes no verdict.
+The stage is null if failure precedes a request, and the last status is the final
+HTTP status of the last attempt after redirects, or null if that attempt received
+no final HTTP answer.
+An operator ending completes this step; recall retains and judges its answers
+and marks the rest "not asked".
+On completion the command prints the chat status and ending records, and prints
+"flag had no effect" once if this flagged attempt neither uses the flag nor retains
+an ending saved before the attempt.
+If a flagged attempt raises after a generating request returned in that attempt,
+it prints "flag used up: a chat request succeeded in this attempt" before propagating the failure.
+An ending already saved in this unfinished step is retained without new chat requests
+and printed as "ending already recorded"; a completed or terminal step is still refused.
+Apart from a declared repair, the incomplete-line cut and restoring a guarded output
 under Guard, repairs and persistence, this is the only operator decision the run
 allows, and it cannot be taken once `held-out` has started.
 
 Each step keeps at most one ending event, written once. Recall carries earlier
 ending events forward unchanged and may add its own.
 The earliest cause, however detected, governs the arm's reported cause; once a
-completed step records a cause, later steps retain it. A withdrawal or an ending event in `recall` stops further
-recall questions. A withdrawal, an ending already in the current step, the cap,
-a version change or an invalid first version prevents further recall questions.
+completed step records a cause, later steps retain it.
 Completed state files remain unchanged; the recall state exposes all ending events.
 An arm usable at the end of `closed-loop` can become unusable during `recall`.
 `Guard.recall_chat_record()` reads the status at the end of recall from `recall.json`
@@ -156,9 +181,10 @@ computed. Before `held-out` starts, an interruption has no time limit: no
 held-out group has been read.
 
 Recall questions with no recorded answer are sent unless the model is withdrawn,
-its first reported version is invalid, its version has changed,
-or the chat cap is reached. An arm made unusable by the three-reply rule, or ended
-by the operator during `closed-loop`, is still asked. If the operator ends the arm
+an ending is already saved in recall, its first reported version is invalid,
+its version has changed, or the chat cap is reached. An arm made unusable by the three-reply rule, or ended
+by the operator during `closed-loop`, is still asked; a service still failing
+then needs its own interrupted attempt and its own flagged attempt. If the operator ends the arm
 during `recall`, answered questions are kept and judged and the questions not yet
 answered are recorded "not asked". `closed-loop` and `recall` complete with the
 chat status recorded and "not asked" for each recall question not sent, and later
@@ -481,13 +507,15 @@ lists the report's output path outside the registered inputs.
 | `src/zoon/interaction/power.py` | Existing today | Training power and coverage calculation |
 | `docs/interaction/power.md` | Existing today | Power assumptions and one recorded run |
 | `src/zoon/interaction/run.py` | Existing today | Calibration and step command dispatch |
-| `src/zoon/interaction/steps.py` | Existing today | Closed-loop and recall |
+| `src/zoon/interaction/steps.py` | Existing today | Closed-loop, recall and operator chat endings |
 | `src/zoon/interaction/simulation.py` | Existing today | Committed-arm simulation and game log persistence |
 | `src/zoon/interaction/guard.py` | Existing today | Run guards, repairs, state and lock |
 | `src/zoon/interaction/decisions.py` | Existing today | Budgeted decision calls and append-only records |
 | `src/zoon/interaction/chat.py` | Existing today | Chat requests, client, transcript, replay and recall |
 | `docs/interaction/result.md` | Added by the analysis code | The report, outside the registered directory |
 | `interaction/chat-requests/` | Existing today | Committed chat request fixtures |
+| `src/zoon/interaction/service_answers.py` | Existing today | Service-answer table regeneration |
+| `interaction/service-answers.md` | Existing today | Generated service-answer outcomes |
 
 ### Paths to be added by the analysis code
 
@@ -497,7 +525,7 @@ These paths do not exist today and are exempt from the existing-path check:
 
 The run module dispatches calibration, closed-loop and recall today. The existing spending script
 `src/zoon/interaction/budget.py` produces both bounds. The second sealing step,
-scoring and intervals, run guards, step state, calibration, closed-loop and recall are implemented; the operator's ending of the chat arm, held-out and report remain
+scoring and intervals, run guards, step state, calibration, closed-loop and recall are implemented; held-out and report remain
 open work. A material-regeneration test must compare registered instructions,
 fixtures and the amount table with their committed bytes; the fit test uses the
 probability tolerance above.
@@ -513,22 +541,10 @@ Record the version each response reports. The decision model must report exactly
 its name above. For chat, fix the version to the first response's reported version,
 which must begin with its model name, as in the pilot. Withdrawal means the
 service says the model does not exist on every bounded attempt at a request.
-When bounded attempts mix not-found answers with a transport fault (for example
-three not-found answers followed by a transport fault), the result is a transport
-failure, not a withdrawal.
-Before the first missing chat request in each attempt, check model metadata without
-generating text; missing metadata
-does not establish withdrawal. A metadata check answered not found (404 or 410) permits the generating request;
-only that request's bounded attempts decide withdrawal.
-For the generating request, an HTTP 200 answer that cannot be processed, whose
-modelVersion is not a non-blank string or whose promptTokenCount is not a
-non-negative integer is unrecorded and retried within the bounded attempts,
-unless the secret check refuses it. An answer refused by the secret check is
-unrecorded, interrupts the step with GuardRefusal, and is requested again on the
-next attempt.
-Missing candidatesTokenCount or thoughtsTokenCount means zero,
-with or without candidate text; a present count that is not a non-negative integer,
-including a boolean, is the same transient fault.
+A reply whose text holds a secret is never recorded; a secret is the project
+identifier or a bearer this process has sent.
+The generated [service-answer table](service-answers.md) records the outcome class,
+request count and eligibility of the flag on the next attempt for each answer.
 The outcomes for withdrawal and version change are under Data.
 
 ### Calls made before registration
@@ -613,8 +629,8 @@ when the arm is unusable; its whole transcript can still pass replay.
 The arm's status is derived from the transcript and the cap, in file order: the
 first invalid or changed version, third unusable reply for one decision, or
 the chat cap reached under Spending. At the same entry, that is the order of precedence.
-The transcript cannot show a withdrawal; the run
-step records it, and that record governs later steps.
+The transcript cannot show a withdrawal or an operator ending; the run
+step records them, and that record governs later steps.
 Each recall question is labelled "judged", "not judged: version", or "not asked".
 The accepted points bypass recalibration and the band-to-points step.
 Run closed loop only, with the H3 simulation count. Score against `zoon` by the
@@ -675,7 +691,7 @@ The current script's proposed ceiling and pilot cap do not fix this run's caps.
 ## Order of work
 
 Merge the registration, analysis code and registered materials, then create the
-tag as specified above. Calibration, closed-loop and recall are implemented today; the operator's ending of the chat arm, held-out and report remain requirements.
+tag as specified above. Calibration, closed-loop and recall are implemented today; held-out and report remain requirements.
 Run them in this order:
 
 1. `python -m zoon.interaction.run calibrate`: make the recalibration calls and the
@@ -731,13 +747,15 @@ bound to its step, mode, registered commit, code or declared repair snapshot,
 and exact earlier-step states, including absence. Only one command may hold
 the run lock. Do not delete or reset state or transcripts during the run, except for that cut;
 restoring a guarded output does not change state or transcripts.
-A completed calling step is not repeated; `report` may be run again and must
+A completed step that sends model requests is not repeated; `report` may be run again and must
 reproduce the same file. An interrupted step resumes with recorded
-answers and requests only those missing. A later calling step requires completed
-prerequisites; report records terminal outcomes without requiring later calling
-steps. The held-out prerequisite is completed simulation with recorded
-digests. A guarded output that is missing, unreadable or differs from its recorded
-digest refuses the step. The operator may put back a copy of the file, and the
+answers and requests only those missing. A later step that sends model requests requires completed prerequisites;
+report records terminal outcomes without requiring later steps that send model requests. The held-out prerequisite is completed simulation with recorded
+digests. A guarded output that is missing, is not a regular file (including a directory,
+named pipe, socket or device), has a non-directory parent, cannot be read for lack
+of permission, or differs from its recorded digest refuses
+the step. Other storage faults, including symlink loops, interrupt the step and
+name only the recorded output. The operator may put back a copy of the file, and the
 step proceeds only if its bytes match the recorded digest; this is not a decision
 about any outcome. The report lists every repair's reason, commit and changed files, all
 files differing from the tag, and the registration and step commits.

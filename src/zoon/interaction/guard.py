@@ -12,6 +12,7 @@ import fcntl
 import io
 import json
 import os
+import stat
 import subprocess
 from collections.abc import Callable, Generator
 from contextlib import contextmanager
@@ -135,6 +136,35 @@ def require_permit(permit: object) -> Guard:
     return permit.guard
 
 
+def operator_reason(reason: str | None) -> None:
+    """Keep operator-supplied reasons out of connection metadata."""
+    if reason is not None:
+        try:
+            chat.protect(reason)
+        except chat.GuardRefusal:
+            raise clients.GuardRefusal("operator reason contains connection metadata") from None
+
+
+def guarded_output(storage: Path, name: str, expected: object) -> bytes:
+    """Read one recorded output; messages expose only its recorded name."""
+    try:
+        path = (storage / name).resolve()
+        if not path.is_relative_to(storage):
+            raise clients.GuardRefusal("simulation path is outside run storage")
+        if not stat.S_ISREG(path.stat().st_mode):
+            raise clients.GuardRefusal(f"guarded output {name} cannot be read")
+        raw = path.read_bytes()
+    except FileNotFoundError:
+        raise clients.GuardRefusal(f"missing guarded output {name}") from None
+    except (IsADirectoryError, NotADirectoryError, PermissionError):
+        raise clients.GuardRefusal(f"guarded output {name} cannot be read") from None
+    except (OSError, RuntimeError):
+        raise chat.StorageInterruption(f"guarded output {name} storage failed") from None
+    if not isinstance(expected, str) or len(expected) != 64 or digest(raw) != expected:
+        raise clients.GuardRefusal("recorded simulation digest differs from its output")
+    return raw
+
+
 class Guard:
     def __init__(self, root: Path, *, stub: bool = False, storage: Path | None = None) -> None:
         self.root = root.resolve()
@@ -236,6 +266,7 @@ class Guard:
         return checkpoint(self.transcripts[family], keys)
 
     def before(self, step: str, repair: str | None = None) -> None:
+        operator_reason(repair)
         self._require_lock()
         self.activation += 1
         self.checked_step = None
@@ -561,13 +592,5 @@ class Guard:
         if not isinstance(outputs, dict) or not outputs:
             raise clients.GuardRefusal("simulation digests must name recorded files")
         for name, expected in cast(dict[str, object], outputs).items():
-            path = (self.storage / str(name)).resolve()
-            if (
-                not path.is_relative_to(self.storage)
-                or not isinstance(expected, str)
-                or len(expected) != 64
-                or not path.is_file()
-                or digest(path.read_bytes()) != expected
-            ):
-                raise clients.GuardRefusal("recorded simulation digest differs from its output")
+            guarded_output(self.storage, name, expected)
         return HeldOutPermit(_AUTHORITY, self)

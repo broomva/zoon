@@ -11,7 +11,7 @@ def test_ci_shards_partition_all_test_files() -> None:
     groups = ci_shards.groups()
     files = sorted(path.as_posix() for path in Path("tests").rglob("test_*.py"))
     ci_shards.validate(groups, files)
-    assert set(groups) == {"steps", "remaining"}
+    assert set(groups) == {"steps", "service", "remaining"}
     assert all(groups.values())
     assert ci_shards.main(["--check"]) == 0
 
@@ -24,7 +24,7 @@ def test_ci_shards_refuse_missing_or_duplicate_files(assignments: dict[str, list
 
 def test_ci_runs_matrix_and_checks_once() -> None:
     workflow = Path(".github/workflows/ci.yml").read_text()
-    assert "shard: [steps, remaining]" in workflow
+    assert "shard: [steps, service, remaining]" in workflow
     assert "fail-fast: false" in workflow
     assert workflow.count("timeout-minutes: 45") == 2
     for command in ("ruff check", "ruff format --check", "pyright"):
@@ -35,7 +35,7 @@ def test_ci_runs_matrix_and_checks_once() -> None:
     )
 
 
-@pytest.mark.parametrize("shard", ["steps", "remaining"])
+@pytest.mark.parametrize("shard", ["steps", "service", "remaining"])
 def test_ci_shard_invokes_its_files_only(monkeypatch: pytest.MonkeyPatch, shard: str) -> None:
     commands: list[list[str]] = []
 
@@ -98,3 +98,11 @@ def test_ci_shards_refuse_files_outside_the_collection_pattern(
     monkeypatch.chdir(tmp_path)
     with pytest.raises(ValueError, match="naming pattern"):
         ci_shards.main(["--check"])
+
+
+def test_ci_distributes_full_run_and_terminal_cases() -> None:
+    shards = ci_shards.groups()
+    assert "tests/test_run.py" in shards["steps"]
+    assert {"tests/test_terminal_contracts.py", "tests/test_fault_matrix.py"} <= set(
+        shards["service"]
+    )

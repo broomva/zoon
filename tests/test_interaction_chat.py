@@ -782,3 +782,18 @@ def test_request_refuses_closed_or_incomplete_history() -> None:
     wrong = kernel.Observation(((0, 1), (1, 1)), ())
     with pytest.raises(ValueError, match="payoffs differ"):
         chat.request(replace(view(), history=(wrong,)))
+
+
+@pytest.mark.parametrize("nonfinite", [False, True])
+@pytest.mark.parametrize("secret", ["connection-location-sentinel", "dummy-bearer"])
+def test_secret_reply_never_crosses_transcript_boundary(
+    tmp_path: Path, nonfinite: bool, secret: str
+) -> None:
+    transcript = chat.Transcript(tmp_path, BINDING, bearer="dummy-bearer", read_only=False)
+    reply = response(secret)
+    if nonfinite:
+        reply = replace(reply, input_tokens=float("nan"))  # type: ignore[arg-type]
+    before = transcript.read_bytes()
+    with pytest.raises(chat.GuardRefusal, match="no record was written"):
+        transcript.append(key(), "request", reply)
+    assert transcript.read_bytes() == before and not transcript.entries
