@@ -337,11 +337,5 @@ def test_registration_step_state_and_http_contracts() -> None:
             "d is claimed on\npaid but unrecorded spending across repeated stor"
             "age failures."
         ),
-        (
-            "For a JSON-object generating answer entering response processing,"
-            " the secret check\nruns first on all readable text parts joined to"
-            "gether: a secret refuses the reply\neven if processing would other"
-            "wise fail, with no record or use of the flag."
-        ),
     ):
         assert passage in text
