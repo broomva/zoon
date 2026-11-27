@@ -307,11 +307,8 @@ class VertexClient:
         self.preflight_transport = preflight_transport
         self._preflight_pid: int | None = None
         self._bearer: str | None = None
+        self._sent_bearers: set[str] = set()
         self._lock = Lock()
-
-    @property
-    def held_bearer(self) -> str:
-        return self._bearer or ""
 
     def bearer(self, rejected: str | None = None) -> str:
         with self._lock:
@@ -338,6 +335,7 @@ class VertexClient:
             try:
                 bearer = self.bearer()
                 last_status = None
+                self._sent_bearers.add(bearer)
                 status, _ = self.preflight_transport(
                     "https://aiplatform.googleapis.com/v1/publishers/google/models/" + MODEL,
                     {
@@ -408,6 +406,7 @@ class VertexClient:
             try:
                 bearer = self.bearer()
                 last_status = None
+                self._sent_bearers.add(bearer)
                 status, data = self.transport(
                     endpoint,
                     {
@@ -427,7 +426,8 @@ class VertexClient:
                 if status != 200:
                     raise ConfigurationInterruption("chat request refused")
                 try:
-                    protect(data, bearer)
+                    for sent in self._sent_bearers:
+                        protect(data, sent)
                 except GuardRefusal:
                     raise SecretRefusal(
                         "connection metadata refused; no record was written"
@@ -454,7 +454,8 @@ class VertexClient:
                         if isinstance(text, str):
                             texts.append(text)
                 try:
-                    protect("".join(texts), bearer)
+                    for sent in self._sent_bearers:
+                        protect("".join(texts), sent)
                 except GuardRefusal:
                     raise SecretRefusal(
                         "connection metadata refused; no record was written"

@@ -82,6 +82,13 @@ def network(stage: str, answers: Sequence[Answer]) -> Generator[list[str]]:
             assert mode == "rb"
             line = self.sent.split(b"\r\n", 1)[0].decode()
             requests.append(line)
+            headers_text = self.sent.split(b"\r\n\r\n", 1)[0].decode()
+            authorization = next(
+                line
+                for line in headers_text.split("\r\n")
+                if line.lower().startswith("authorization:")
+            )
+            requests[-1] += " " + authorization
             target = line.split()[1]
             current = "generating request" if ":generateContent" in target else "metadata check"
             if target == "/unreachable":
@@ -90,6 +97,13 @@ def network(stage: str, answers: Sequence[Answer]) -> Generator[list[str]]:
             if current == stage and target != "/reachable":
                 answer = answers[min(selected, len(answers) - 1)]
                 selected += 1
+                if answer.kind.startswith("refreshed credential"):
+                    rotated = "Bearer dummy-bearer-0" not in authorization
+                    answer = (
+                        Answer(200 if rotated else 401)
+                        if answer.kind.endswith("succeeds")
+                        else Answer(401 if rotated or selected == 1 else 403)
+                    )
             if target == "/loop":
                 answer = Answer(302, "redirect to loop")
             if answer.status is None:
@@ -133,11 +147,7 @@ def client() -> chat.VertexClient:
 
 
 def observe(stage: str, answer: Answer) -> Outcome:
-    answers = (
-        [Answer(401), Answer(200 if answer.kind == "refreshed credential succeeds" else 401)]
-        if answer.kind.startswith("refreshed credential")
-        else [answer]
-    )
+    answers = [answer]
     with network(stage, answers) as requests:
         observed = client()
         tokens: list[str] = []

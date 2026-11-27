@@ -539,7 +539,8 @@ Record the version each response reports. The decision model must report exactly
 its name above. For chat, fix the version to the first response's reported version,
 which must begin with its model name, as in the pilot. Withdrawal means the
 service says the model does not exist on every bounded attempt at a request.
-A reply whose text holds a secret is never recorded.
+A reply whose text holds a secret is never recorded; a secret is the project
+identifier or a bearer this process has sent.
 The generated [service-answer table](service-answers.md) records the outcome class,
 request count and eligibility of the flag on the next attempt for each answer.
 The outcomes for withdrawal and version change are under Data.

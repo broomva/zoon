@@ -482,3 +482,58 @@ def test_ending_counts_open_session_without_reopening(
     with connected(runner):
         done = runner.execute("recall", end_chat="Unavailable")
     assert done["payload"]["chat_endings"][-1]["answered_recall"] == 1
+
+
+@pytest.mark.parametrize("split", [False, True])
+def test_replaced_bearer_reply_is_never_recorded(
+    runs: Factory, monkeypatch: pytest.MonkeyPatch, split: bool
+) -> None:
+    runner = runs(prepared="interrupted-recall")
+    original = Answer.body
+
+    def body(answer: Answer) -> bytes:
+        if answer.kind != "old bearer":
+            return original(answer)
+        value = service_answers.reply()
+        parts = ["dummy-", "bearer-0"] if split else ["dummy-bearer-0"]
+        value["candidates"][0]["content"]["parts"] = [{"text": text} for text in parts]
+        return json.dumps(value).encode()
+
+    monkeypatch.setattr(Answer, "body", body)
+    with connected(runner, answers=(Answer(401), Answer(200, "old bearer"))) as requests:
+        client = runner.steps.chat_client
+        assert isinstance(client, chat.VertexClient)
+        tokens = iter(["dummy-bearer-0", "dummy-bearer-1"])
+        client.token = lambda: next(tokens)
+        done = runner.execute("recall", end_chat="Unavailable")
+    assert done["payload"]["chat_endings"][-1]["failure_class"] == "secret refusal"
+    assert done["payload"]["chat"]["calls"] == state(runner)["payload"]["chat"]["calls"]
+    assert "dummy-bearer-0" not in runner.steps.transcript().read_bytes().decode()
+    assert "Bearer dummy-bearer-0" in requests[-2]
+    assert "Bearer dummy-bearer-1" in requests[-1]
+
+
+@pytest.mark.parametrize("stage", service_answers.STAGES)
+def test_each_unauthorized_retry_sends_a_new_bearer(stage: str) -> None:
+    with service_answers.network(stage, [Answer(401)]) as requests:
+        client = service_answers.client()
+        tokens: list[str] = []
+
+        def token() -> str:
+            value = "dummy-bearer-" + str(len(tokens))
+            tokens.append(value)
+            return value
+
+        client.token = token
+        with pytest.raises(chat.TransportInterruption):
+            from zoon.interaction.steps import PreflightClient
+
+            PreflightClient(client).ask("hello")
+    selected = [
+        request
+        for request in requests
+        if (":generateContent" in request) == (stage == "generating request")
+    ]
+    assert len(selected) == 4 and len(tokens) == 5
+    for index, request in enumerate(selected):
+        assert request.endswith("Bearer dummy-bearer-" + str(index))

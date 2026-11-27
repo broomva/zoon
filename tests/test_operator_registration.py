@@ -50,7 +50,8 @@ PINNED = (
         'orded"; a completed or terminal step is still refused.\n'
     ),
     (
-        "A reply whose text holds a secret is never recorded.\nThe generated [se"
+        "A reply whose text holds a secret is never recorded; a secret is the project\n"
+        "identifier or a bearer this process has sent.\nThe generated [se"
         "rvice-answer table](service-answers.md) records the outcome class,\nreq"
         "uest count and eligibility of the flag on the next attempt for each an"
         "swer.\n"
