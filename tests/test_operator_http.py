@@ -550,12 +550,12 @@ def test_unrelated_interruption_refuses_flag(
     runner = runs(prepared="closed-loop" if step == "recall" else "bands")
 
     def refused() -> None:
-        raise clients.GuardRefusal("unrelated interruption")
+        raise chat.GuardRefusal("unrelated interruption")
 
     with connected(runner):
         assert isinstance(runner.steps.chat_client, chat.VertexClient)
         monkeypatch.setattr(runner.steps.chat_client, "preflight", refused)
-        with pytest.raises(clients.GuardRefusal):
+        with pytest.raises(chat.GuardRefusal):
             runner.execute(step)
     assert state(runner, step)["reason"] == "GuardRefusal"
     with connected(runner) as requests, pytest.raises(clients.GuardRefusal, match="only after"):
