@@ -55,6 +55,7 @@ class Steps:
         self.payload: dict[str, Any] = {}
         self.step = ""
         self.ended = False
+        self.previous_ending: dict[str, Any] | None = None
         self.decision: decisions.Session | None = None
         self.session: chat.Session | None = None
         guard.register_transcripts("decision")
@@ -160,7 +161,7 @@ class Steps:
                 and (
                     (
                         old["status"] == "interrupted"
-                        and old["reason"] in {kind.__name__ for kind in chat.CHAT_REQUEST_FAILURES}
+                        and chat.failure_class(old["reason"]) is not None
                     )
                     or any(e["step"] == step for e in old["payload"].get("chat_endings", []))
                 )
@@ -169,6 +170,11 @@ class Steps:
                     "flag is accepted only after an attempt of this step "
                     "that a chat request failure interrupted; repeat this step without --end-chat"
                 )
+            self.previous_ending = (
+                next((e for e in old["payload"].get("chat_endings", []) if e["step"] == step), None)
+                if old
+                else None
+            )
             self.ended = False
             self.payload = old["payload"] if old else {}
             self.session = None
@@ -215,11 +221,21 @@ class Steps:
                         "reason": error.reason.name,
                     }
                     return self.save("terminal", error.reason.value)
-                if isinstance(error, chat.CHAT_REQUEST_FAILURES):
+                if chat.failure_class(error) is not None:
                     self.payload["chat_request_failures"] = (
                         self.payload.get("chat_request_failures", 0) + 1
                     )
-                self.save("interrupted", type(error).__name__)
+                self.save(
+                    "interrupted",
+                    next(
+                        (
+                            kind.__name__
+                            for kind in chat.CHAT_REQUEST_FAILURES
+                            if chat.failure_class(error) == chat.failure_class(kind.__name__)
+                        ),
+                        type(error).__name__,
+                    ),
+                )
                 if isinstance(error, decisions.StorageFault):
                     raise clients.StepFailure("could not persist decision transcript") from None
                 raise
@@ -278,11 +294,7 @@ class Steps:
         self.ended = True
         self.payload["chat_request_failures"] = self.payload.get("chat_request_failures", 0) + 1
         details: dict[str, Any] = {
-            "failure_class": {
-                chat.TransportInterruption: "transport",
-                chat.ConfigurationInterruption: "configuration",
-                chat.SecretRefusal: "secret refusal",
-            }[type(error)],
+            "failure_class": chat.failure_class(error),
             "failure_stage": getattr(error, "stage", None),
             "last_status": getattr(error, "last_status", None),
         }

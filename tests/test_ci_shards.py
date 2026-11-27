@@ -98,3 +98,11 @@ def test_ci_shards_refuse_files_outside_the_collection_pattern(
     monkeypatch.chdir(tmp_path)
     with pytest.raises(ValueError, match="naming pattern"):
         ci_shards.main(["--check"])
+
+
+def test_ci_distributes_full_run_and_terminal_cases() -> None:
+    shards = ci_shards.groups()
+    assert "tests/test_run.py" in shards["steps"]
+    assert {"tests/test_terminal_contracts.py", "tests/test_fault_matrix.py"} <= set(
+        shards["service"]
+    )

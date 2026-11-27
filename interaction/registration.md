@@ -111,6 +111,7 @@ or `python -m zoon.interaction.run recall --end-chat REASON`.
 A blank reason is refused before any work.
 A reason for `--end-chat` or `--repair` that contains the project identifier is
 refused before any work; the run does not otherwise inspect the operator's text.
+The metadata check is the model metadata HTTP request made before generation.
 A chat request failure is a transport interruption, a configuration refusal
 (including an unavailable credential), or a secret refusal of a reply from the
 metadata check or a generating request, leaving no recorded reply and no counted withdrawal;
@@ -124,18 +125,20 @@ while replies reused from the transcript do not use it up.
 Decision-model and storage failures, three unusable replies, the cap, a version
 change and withdrawal never create an operator ending.
 
-The run cannot check the operator's reason or distinguish a service failure from
-an operator-side fault such as a broken network or a rejected or missing credential.
+The run cannot distinguish a service failure from an operator-side fault such as
+a broken network or a rejected or missing credential.
 The ending records OPERATOR, the class, stage, last HTTP status, reason, step,
 this step's count of recorded chat request failures including this one, and answered
 chat decisions (and answered recall questions in recall); it removes chat scores
 and changes no verdict.
-The last status is the final HTTP status of the last attempt after redirects,
-or null if that attempt received no final HTTP answer.
+The stage is null if failure precedes a request, and the last status is the final
+HTTP status of the last attempt after redirects, or null if that attempt received
+no final HTTP answer.
 An operator ending completes this step; recall retains and judges its answers
 and marks the rest "not asked".
 On completion the command prints the chat status and ending records, and prints
-"flag had no effect" once if this flagged attempt has no ending.
+"flag had no effect" once if this flagged attempt neither uses the flag nor retains
+an ending saved before the attempt.
 If a flagged attempt raises after a generating request returned in that attempt,
 it prints "flag used up: a chat request succeeded in this attempt" before propagating the failure.
 An ending already saved in this unfinished step is retained without new chat requests
@@ -147,8 +150,7 @@ allows, and it cannot be taken once `held-out` has started.
 Each step keeps at most one ending event, written once. Recall carries earlier
 ending events forward unchanged and may add its own.
 The earliest cause, however detected, governs the arm's reported cause; once a
-completed step records a cause, later steps retain it. A withdrawal, an ending already in the current step, the cap,
-a version change or an invalid first version prevents further recall questions.
+completed step records a cause, later steps retain it.
 Completed state files remain unchanged; the recall state exposes all ending events.
 An arm usable at the end of `closed-loop` can become unusable during `recall`.
 `Guard.recall_chat_record()` reads the status at the end of recall from `recall.json`
@@ -179,8 +181,8 @@ computed. Before `held-out` starts, an interruption has no time limit: no
 held-out group has been read.
 
 Recall questions with no recorded answer are sent unless the model is withdrawn,
-its first reported version is invalid, its version has changed,
-or the chat cap is reached. An arm made unusable by the three-reply rule, or ended
+an ending is already saved in recall, its first reported version is invalid,
+its version has changed, or the chat cap is reached. An arm made unusable by the three-reply rule, or ended
 by the operator during `closed-loop`, is still asked; a service still failing
 then needs its own interrupted attempt and its own flagged attempt. If the operator ends the arm
 during `recall`, answered questions are kept and judged and the questions not yet
@@ -745,13 +747,14 @@ bound to its step, mode, registered commit, code or declared repair snapshot,
 and exact earlier-step states, including absence. Only one command may hold
 the run lock. Do not delete or reset state or transcripts during the run, except for that cut;
 restoring a guarded output does not change state or transcripts.
-A completed calling step is not repeated; `report` may be run again and must
+A completed step that sends model requests is not repeated; `report` may be run again and must
 reproduce the same file. An interrupted step resumes with recorded
 answers and requests only those missing. A later calling step requires completed
 prerequisites; report records terminal outcomes without requiring later calling
 steps. The held-out prerequisite is completed simulation with recorded
-digests. A guarded output that is missing, is a directory or has a non-directory parent,
-cannot be read for lack of permission, or differs from its recorded digest refuses
+digests. A guarded output that is missing, is not a regular file (including a directory,
+named pipe, socket or device), has a non-directory parent, cannot be read for lack
+of permission, or differs from its recorded digest refuses
 the step. Other storage faults, including symlink loops, interrupt the step and
 name only the recorded output. The operator may put back a copy of the file, and the
 step proceeds only if its bytes match the recorded digest; this is not a decision

@@ -1,6 +1,9 @@
 """Both guarded-output consumers use the same named refusal and storage boundary."""
 
 import errno
+import os
+import socket
+import stat
 from pathlib import Path
 from typing import Any
 
@@ -15,7 +18,19 @@ pytest_plugins = ("tests.test_interaction_step_faults",)
 
 @pytest.mark.parametrize("consumer", ["store", "permit"])
 @pytest.mark.parametrize(
-    "damage", ["missing", "directory", "parent file", "permission", "loop", "storage"]
+    "damage",
+    [
+        "missing",
+        "directory",
+        "parent file",
+        "permission",
+        "loop",
+        "storage",
+        "named pipe",
+        "socket",
+        "device",
+        "digest",
+    ],
 )
 def test_guarded_output_faults_share_the_read_boundary(
     runs: Factory, monkeypatch: pytest.MonkeyPatch, consumer: str, damage: str
@@ -25,10 +40,30 @@ def test_guarded_output_faults_share_the_read_boundary(
     name = next(iter(saved["payload"]["digests"]))
     path = runner.guard.storage / name
     raw = path.read_bytes()
-    if damage in ("missing", "directory", "loop"):
+    if damage == "digest":
+        path.write_bytes(b"changed")
+    elif damage == "device":
+        original_stat = Path.stat
+
+        def device(current: Path, *, follow_symlinks: bool = True) -> os.stat_result:
+            result = original_stat(current, follow_symlinks=follow_symlinks)
+            if current == path:
+                values = list(result)
+                values[0] = stat.S_IFCHR | 0o600
+                return os.stat_result(values)
+            return result
+
+        monkeypatch.setattr(Path, "stat", device)
+    elif damage in ("missing", "directory", "loop", "named pipe", "socket"):
         path.unlink()
         if damage == "directory":
             path.mkdir()
+        elif damage == "named pipe":
+            os.mkfifo(path)
+        elif damage == "socket":
+            with monkeypatch.context() as patch, socket.socket(socket.AF_UNIX) as server:
+                patch.chdir(path.parent)
+                server.bind(path.name)
         elif damage == "loop":
             path.symlink_to(path.name)
     elif damage == "parent file":
@@ -50,12 +85,20 @@ def test_guarded_output_faults_share_the_read_boundary(
             return original(current)
 
         monkeypatch.setattr(Path, "read_bytes", read)
+    if damage in ("named pipe", "socket", "device"):
+
+        def unexpected(current: Path) -> bytes:
+            pytest.fail("nonregular output was opened")
+
+        monkeypatch.setattr(Path, "read_bytes", unexpected)
     storage_fault = damage in ("loop", "storage")
     message = (
         f"guarded output {name} storage failed"
         if storage_fault
         else f"missing guarded output {name}"
         if damage == "missing"
+        else "recorded simulation digest differs from its output"
+        if damage == "digest"
         else f"guarded output {name} cannot be read"
     )
     with runner.guard.lock():

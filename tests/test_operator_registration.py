@@ -7,85 +7,94 @@ import pytest
 PINNED = (
     ("The `chat` arm decides nothing."),
     (
-        "Three unusable replies for one decision, the model's withdrawal, a\nver"
-        "sion change, reaching the chat cap, a failed replay of a chat game, or"
-        " a first\nreported version that does not begin with the model name, or "
-        "an operator ending,\nmake `chat` unusable with no scores."
+        "Three unusable replies for one decision, the model's withdrawal, a\nversion "
+        "change, reaching the chat cap, a failed replay of a chat game, or a first\nr"
+        "eported version that does not begin with the model name, or an operator end"
+        "ing,\nmake `chat` unusable with no scores."
     ),
     (
-        "A blank reason is refused before any work.\n"
-        "A reason for `--end-chat` or `--repair` that contains the project identifier is\n"
-        "refused before any work; the run does not otherwise inspect the operator's text.\n"
-        "A chat request failure is a transport interrupti"
-        "on, a configuration refusal\n(including an unavailable credential)"
-        ", or a secret refusal of a reply from the\nmetadata check or a gen"
-        "erating request, leaving no recorded reply and no counted withdra"
-        "wal;\nthe flag applies to all three classes.\nFor an unfinished clo"
-        "sed-loop or recall step, the flag is accepted only after\nthat ste"
-        "p saved an interruption by a chat request failure, or an ending o"
-        "f that\nstep is already saved; otherwise repeat the step without t"
-        "he flag.\nIt ends the arm only if a chat request fails in this att"
-        "empt before any generating\nrequest returns a reply; a returned re"
-        "ply uses up the flag before transcript append,\nwhile replies reus"
-        "ed from the transcript do not use it up.\nDecision-model and stora"
-        "ge failures, three unusable replies, the cap, a version\nchange an"
-        "d withdrawal never create an operator ending.\n\nThe run cannot che"
-        "ck the operator's reason or distinguish a service failure from\nan"
-        " operator-side fault such as a broken network or a rejected or mi"
-        "ssing credential.\nThe ending records OPERATOR, the class, stage, "
-        "last HTTP status, reason, step,\nthis step's count of recorded cha"
-        "t request failures including this one, and answered\nchat decision"
-        "s (and answered recall questions in recall); it removes chat scor"
-        "es\nand changes no verdict.\nThe last status is the final HTTP stat"
-        "us of the last attempt after redirects,\nor null if that attempt r"
-        "eceived no final HTTP answer.\nAn operator ending completes this s"
-        'tep; recall retains and judges its answers\nand marks the rest "no'
-        't asked".\nOn completion the command prints the chat status and en'
-        'ding records, and prints\n"flag had no effect" once if this flagge'
-        "d attempt has no ending.\nIf a flagged attempt raises after a gene"
-        'rating request returned in that attempt,\nit prints "flag used up:'
-        ' a chat request succeeded in this attempt" before propagating the'
-        " failure.\nAn ending already saved in this unfinished step is reta"
-        'ined without new chat requests\nand printed as "ending already rec'
-        'orded"; a completed or terminal step is still refused.\n'
+        "A blank reason is refused before any work.\nA reason for `--end-chat` or `--"
+        "repair` that contains the project identifier is\nrefused before any work; th"
+        "e run does not otherwise inspect the operator's text.\nThe metadata check is"
+        " the model metadata HTTP request made before generation.\nA chat request fai"
+        "lure is a transport interruption, a configuration refusal\n(including an una"
+        "vailable credential), or a secret refusal of a reply from the\nmetadata chec"
+        "k or a generating request, leaving no recorded reply and no counted withdra"
+        "wal;\nthe flag applies to all three classes.\nFor an unfinished closed-loop o"
+        "r recall step, the flag is accepted only after\nthat step saved an interrupt"
+        "ion by a chat request failure, or an ending of that\nstep is already saved; "
+        "otherwise repeat the step without the flag.\nIt ends the arm only if a chat "
+        "request fails in this attempt before any generating\nrequest returns a reply"
+        "; a returned reply uses up the flag before transcript append,\nwhile replies"
+        " reused from the transcript do not use it up.\nDecision-model and storage fa"
+        "ilures, three unusable replies, the cap, a version\nchange and withdrawal ne"
+        "ver create an operator ending.\n\nThe run cannot distinguish a service failur"
+        "e from an operator-side fault such as\na broken network or a rejected or mis"
+        "sing credential.\nThe ending records OPERATOR, the class, stage, last HTTP s"
+        "tatus, reason, step,\nthis step's count of recorded chat request failures in"
+        "cluding this one, and answered\nchat decisions (and answered recall question"
+        "s in recall); it removes chat scores\nand changes no verdict.\nThe stage is n"
+        "ull if failure precedes a request, and the last status is the final\nHTTP st"
+        "atus of the last attempt after redirects, or null if that attempt received\n"
+        "no final HTTP answer.\nAn operator ending completes this step; recall retain"
+        's and judges its answers\nand marks the rest "not asked".\nOn completion the '
+        'command prints the chat status and ending records, and prints\n"flag had no '
+        'effect" once if this flagged attempt neither uses the flag nor retains\nan e'
+        "nding saved before the attempt.\nIf a flagged attempt raises after a generat"
+        'ing request returned in that attempt,\nit prints "flag used up: a chat reque'
+        'st succeeded in this attempt" before propagating the failure.\nAn ending alr'
+        "eady saved in this unfinished step is retained without new chat requests\nan"
+        'd printed as "ending already recorded"; a completed or terminal step is sti'
+        "ll refused.\n"
     ),
     (
-        "A reply whose text holds a secret is never recorded; a secret is the project\n"
-        "identifier or a bearer this process has sent.\nThe generated [se"
-        "rvice-answer table](service-answers.md) records the outcome class,\nreq"
-        "uest count and eligibility of the flag on the next attempt for each an"
-        "swer.\n"
+        "A reply whose text holds a secret is never recorded; a secret is the projec"
+        "t\nidentifier or a bearer this process has sent.\nThe generated [service-answ"
+        "er table](service-answers.md) records the outcome class,\nrequest count and "
+        "eligibility of the flag on the next attempt for each answer.\n"
     ),
     (
-        "| `src/zoon/interaction/steps.py` | Existing today | Closed-loop, reca"
-        "ll and operator chat endings |"
+        "| `src/zoon/interaction/steps.py` | Existing today | Closed-loop, recall an"
+        "d operator chat endings |"
     ),
     (
-        "| `interaction/chat-requests/` | Existing today | Committed chat reque"
-        "st fixtures |\n| `src/zoon/interaction/service_answers.py` | Existing t"
-        "oday | Service-answer table regeneration |\n| `interaction/service-answ"
-        "ers.md` | Existing today | Generated service-answer outcomes |"
+        "| `interaction/chat-requests/` | Existing today | Committed chat request fi"
+        "xtures |\n| `src/zoon/interaction/service_answers.py` | Existing today | Ser"
+        "vice-answer table regeneration |\n| `interaction/service-answers.md` | Exist"
+        "ing today | Generated service-answer outcomes |"
     ),
     (
-        "The run module dispatches calibration, closed-loop and recall today. T"
-        "he existing spending script\n`src/zoon/interaction/budget.py` produces "
-        "both bounds. The second sealing step,\nscoring and intervals, run guard"
-        "s, step state, calibration, closed-loop and recall are implemented; he"
-        "ld-out and report remain\nopen work. A material-regeneration test must "
-        "compare registered instructions,\nfixtures and the amount table with th"
-        "eir committed bytes; the fit test uses the\nprobability tolerance above"
-        "."
+        "The run module dispatches calibration, closed-loop and recall today. The ex"
+        "isting spending script\n`src/zoon/interaction/budget.py` produces both bound"
+        "s. The second sealing step,\nscoring and intervals, run guards, step state, "
+        "calibration, closed-loop and recall are implemented; held-out and report re"
+        "main\nopen work. A material-regeneration test must compare registered instru"
+        "ctions,\nfixtures and the amount table with their committed bytes; the fit t"
+        "est uses the\nprobability tolerance above."
     ),
     (
-        "Merge the registration, analysis code and registered materials, then c"
-        "reate the\ntag as specified above. Calibration, closed-loop and recall "
-        "are implemented today; held-out and report remain requirements.\nRun th"
-        "em in this order:"
+        "Merge the registration, analysis code and registered materials, then create"
+        " the\ntag as specified above. Calibration, closed-loop and recall are implem"
+        "ented today; held-out and report remain requirements.\nRun them in this orde"
+        "r:"
     ),
     (
-        "The transcript cannot show a withdrawal or an operator ending; the run"
-        "\nstep records them, and that record governs later steps."
+        "The transcript cannot show a withdrawal or an operator ending; the run\nstep"
+        " records them, and that record governs later steps."
     ),
+    ("completed step records a cause, later steps retain it."),
+    (
+        "Recall questions with no recorded answer are sent unless the model is withd"
+        "rawn,\nan ending is already saved in recall, its first reported version is i"
+        "nvalid,\nits version has changed, or the chat cap is reached."
+    ),
+    ("A completed step that sends model requests is not repeated;"),
+    (
+        "A guarded output that is missing, is not a regular file (including a direct"
+        "ory,\nnamed pipe, socket or device), has a non-directory parent, cannot be r"
+        "ead for lack\nof permission, or differs from its recorded digest refuses"
+    ),
+    ("The metadata check is the model metadata HTTP request made before generation."),
 )
 
 

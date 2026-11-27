@@ -179,6 +179,16 @@ class SecretRefusal(GuardRefusal):
 CHAT_REQUEST_FAILURES = (TransportInterruption, ConfigurationInterruption, SecretRefusal)
 
 
+def failure_class(error: BaseException | str) -> str | None:
+    """Use the same canonical class for saved interruptions and operator endings."""
+    for kind, label in zip(
+        CHAT_REQUEST_FAILURES, ("transport", "configuration", "secret refusal"), strict=True
+    ):
+        if (isinstance(error, str) and error == kind.__name__) or isinstance(error, kind):
+            return label
+    return None
+
+
 class TransientError(Exception):
     def __init__(self, message: str = "", *, last_status: int | None = None) -> None:
         super().__init__(message)
@@ -329,12 +339,14 @@ class VertexClient:
             raise ConfigurationInterruption("ZOON_VERTEX_PROJECT is required")
 
         last_status: int | None = None
+        sent = False
 
         def probe() -> Response:
-            nonlocal last_status
+            nonlocal last_status, sent
             try:
                 bearer = self.bearer()
                 last_status = None
+                sent = True
                 self._sent_bearers.add(bearer)
                 status, _ = self.preflight_transport(
                     "https://aiplatform.googleapis.com/v1/publishers/google/models/" + MODEL,
@@ -367,7 +379,7 @@ class VertexClient:
         try:
             retry(probe, self.pause)
         except CHAT_REQUEST_FAILURES as error:
-            error.stage, error.last_status = "metadata check", last_status
+            error.stage, error.last_status = "metadata check" if sent else None, last_status
             raise
         self._preflight_pid = os.getpid()
 

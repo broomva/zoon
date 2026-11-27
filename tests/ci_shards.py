@@ -6,6 +6,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 STEP_FILES = (
+    "tests/test_run.py",
     "tests/test_interaction_steps.py",
     "tests/test_interaction_step_faults.py",
     "tests/test_interaction_recovery.py",
@@ -15,6 +16,8 @@ STEP_FILES = (
 
 
 SERVICE_FILES = (
+    "tests/test_terminal_contracts.py",
+    "tests/test_fault_matrix.py",
     "tests/test_interaction_endings.py",
     "tests/test_operator_http.py",
     "tests/test_interaction_service_boundary.py",

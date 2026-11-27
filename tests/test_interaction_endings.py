@@ -582,8 +582,9 @@ def test_guarded_output_registration_sentences() -> None:
         "allows, and it cannot be taken once `held-out` has started.",
         "Do not delete or reset state or transcripts during the run, except for that cut; "
         "restoring a guarded output does not change state or transcripts.",
-        "A guarded output that is missing, is a directory or has a non-directory parent, "
-        "cannot be read for lack of permission, or differs from its recorded digest refuses "
+        "A guarded output that is missing, is not a regular file (including a directory, "
+        "named pipe, socket or device), has a non-directory parent, cannot be read for lack "
+        "of permission, or differs from its recorded digest refuses "
         "the step.",
         "Other storage faults, including symlink loops, interrupt the step and "
         "name only the recorded output.",

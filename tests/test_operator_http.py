@@ -316,11 +316,7 @@ def test_http_command_prints_the_attempt_result(
         return runner
 
     monkeypatch.setattr(run, "Run", local)
-    answers = (
-        (Answer(200), Answer(503))
-        if fault == "consumed"
-        else (Answer(403 if fault == "configuration" else 503),)
-    )
+    answers = (Answer(200), Answer(503)) if fault == "consumed" else (Answer(503),)
     capsys.readouterr()
     with connected(runner, answers=answers) as requests:
         result = run.main([step, "--stub", "--end-chat", "Unavailable"])
@@ -338,8 +334,6 @@ def test_http_command_prints_the_attempt_result(
             output.out == "[chat ending] flag used up: a chat request succeeded in this attempt\n"
         )
         assert output.err == "TransportInterruption: chat transport failure after bounded retries\n"
-    else:
-        assert not output.out and output.err == "ConfigurationInterruption: chat request refused\n"
 
 
 @pytest.mark.parametrize("step", ["closed-loop", "recall"])
@@ -395,12 +389,18 @@ def test_decision_failure_with_flag_prints_no_chat_ending(
 
 
 @pytest.mark.parametrize("step", ["closed-loop", "recall"])
-def test_missing_credential_failure_allows_ending(runs: Factory, step: str) -> None:
+@pytest.mark.parametrize("missing", ["credential", "project"])
+def test_missing_credential_failure_allows_ending(
+    runs: Factory, monkeypatch: pytest.MonkeyPatch, step: str, missing: str
+) -> None:
     runner = runs(prepared="closed-loop" if step == "recall" else "bands")
     with connected(runner) as requests:
         client = runner.steps.chat_client
         assert isinstance(client, chat.VertexClient)
-        client.token = lambda: ""
+        if missing == "project":
+            monkeypatch.delenv("ZOON_VERTEX_PROJECT")
+        else:
+            client.token = lambda: ""
         with pytest.raises(chat.ConfigurationInterruption):
             runner.execute(step)
         assert not requests
@@ -408,6 +408,7 @@ def test_missing_credential_failure_allows_ending(runs: Factory, step: str) -> N
         assert not requests
     event = done["payload"]["chat_endings"][-1]
     assert event["failure_class"] == "configuration" and event["chat_request_failures"] == 2
+    assert event["failure_stage"] is None and event["last_status"] is None
 
 
 @pytest.mark.parametrize(
@@ -484,9 +485,9 @@ def test_ending_counts_open_session_without_reopening(
     assert done["payload"]["chat_endings"][-1]["answered_recall"] == 1
 
 
-@pytest.mark.parametrize("split", [False, True])
+@pytest.mark.parametrize("split", ["whole", "joined", "metadata"])
 def test_replaced_bearer_reply_is_never_recorded(
-    runs: Factory, monkeypatch: pytest.MonkeyPatch, split: bool
+    runs: Factory, monkeypatch: pytest.MonkeyPatch, split: str
 ) -> None:
     runner = runs(prepared="interrupted-recall")
     original = Answer.body
@@ -495,7 +496,10 @@ def test_replaced_bearer_reply_is_never_recorded(
         if answer.kind != "old bearer":
             return original(answer)
         value = service_answers.reply()
-        parts = ["dummy-", "bearer-0"] if split else ["dummy-bearer-0"]
+        parts = ["dummy-", "bearer-0"] if split == "joined" else ["dummy-bearer-0"]
+        if split == "metadata":
+            value["unused"] = "dummy-bearer-0"
+            parts = ["3"]
         value["candidates"][0]["content"]["parts"] = [{"text": text} for text in parts]
         return json.dumps(value).encode()
 
@@ -537,3 +541,68 @@ def test_each_unauthorized_retry_sends_a_new_bearer(stage: str) -> None:
     assert len(selected) == 4 and len(tokens) == 5
     for index, request in enumerate(selected):
         assert request.endswith("Bearer dummy-bearer-" + str(index))
+
+
+@pytest.mark.parametrize("step", ["closed-loop", "recall"])
+def test_unrelated_interruption_refuses_flag(
+    runs: Factory, monkeypatch: pytest.MonkeyPatch, step: str
+) -> None:
+    runner = runs(prepared="closed-loop" if step == "recall" else "bands")
+
+    def refused() -> None:
+        raise clients.GuardRefusal("unrelated interruption")
+
+    with connected(runner):
+        assert isinstance(runner.steps.chat_client, chat.VertexClient)
+        monkeypatch.setattr(runner.steps.chat_client, "preflight", refused)
+        with pytest.raises(clients.GuardRefusal):
+            runner.execute(step)
+    assert state(runner, step)["reason"] == "GuardRefusal"
+    with connected(runner) as requests, pytest.raises(clients.GuardRefusal, match="only after"):
+        runner.execute(step, end_chat="Unavailable")
+    assert not requests
+
+
+def test_failure_subclass_has_one_classification(
+    runs: Factory, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class Unavailable(chat.TransportInterruption):
+        pass
+
+    runner = runs(prepared="closed-loop")
+
+    def fail() -> None:
+        raise Unavailable("unavailable")
+
+    with connected(runner):
+        assert isinstance(runner.steps.chat_client, chat.VertexClient)
+        monkeypatch.setattr(runner.steps.chat_client, "preflight", fail)
+        with pytest.raises(Unavailable):
+            runner.execute("recall")
+        assert state(runner, "recall")["reason"] == "TransportInterruption"
+        done = runner.execute("recall", end_chat="Unavailable")
+    event = done["payload"]["chat_endings"][-1]
+    assert event["failure_class"] == "transport" and event["chat_request_failures"] == 2
+
+
+@pytest.mark.parametrize("cause", ["WITHDRAWN", "REPLAY"])
+def test_new_nonoperator_ending_prints_flag_had_no_effect(
+    runs: Factory, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], cause: str
+) -> None:
+    runner = runs(prepared="interrupted-closed-loop")
+
+    def local(**kwargs: Any) -> run.Run:
+        return runner
+
+    monkeypatch.setattr(run, "Run", local)
+    if cause == "REPLAY":
+
+        def replay(*args: Any, **kwargs: Any) -> None:
+            raise chat.Unusable(chat.Cause.REPLAY)
+
+        monkeypatch.setattr(simulation.Store, "chat", replay)
+    with connected(runner, answers=(Answer(404),)):
+        assert run.main(["closed-loop", "--stub", "--end-chat", "Unavailable"]) == 0
+    output = capsys.readouterr().out
+    assert output.count("flag had no effect") == 1 and "ending already recorded" not in output
+    assert state(runner)["payload"]["chat_endings"][-1]["cause"] == cause
