@@ -378,13 +378,25 @@ class VertexClient:
                 if status != 200:
                     raise ConfigurationInterruption("chat request refused")
                 protect(data, bearer)
-                texts = []
+                texts: list[str] = []
                 candidates = data.get("candidates", [])
-                for item in candidates if isinstance(candidates, list) else []:
-                    content = item.get("content") if isinstance(item, dict) else None
-                    parts = content.get("parts") if isinstance(content, dict) else None
-                    for part in parts if isinstance(parts, list) else []:
-                        text = part.get("text") if isinstance(part, dict) else None
+                for item in cast(list[Any], candidates) if isinstance(candidates, list) else []:
+                    content = (
+                        cast(dict[str, Any], item).get("content")
+                        if isinstance(item, dict)
+                        else None
+                    )
+                    parts = (
+                        cast(dict[str, Any], content).get("parts")
+                        if isinstance(content, dict)
+                        else None
+                    )
+                    for part in cast(list[Any], parts) if isinstance(parts, list) else []:
+                        text = (
+                            cast(dict[str, Any], part).get("text")
+                            if isinstance(part, dict)
+                            else None
+                        )
                         if isinstance(text, str):
                             texts.append(text)
                 protect("".join(texts), bearer)

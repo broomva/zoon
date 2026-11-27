@@ -170,7 +170,7 @@ def test_step_state_identity_outputs_and_exact_prior_states(root: Path) -> None:
         first = gate.save(
             "calibrate",
             {"value": 1},
-            families=tuple(gate.transcripts.keys() | gate._readers.keys()),
+            families=tuple(gate.transcripts),
             status="completed",
         )
         assert first["previous"] == {}
@@ -180,7 +180,7 @@ def test_step_state_identity_outputs_and_exact_prior_states(root: Path) -> None:
         second = gate.save(
             "closed-loop",
             {"digests": {log.name: digest(log.read_bytes())}},
-            families=tuple(gate.transcripts.keys() | gate._readers.keys()),
+            families=tuple(gate.transcripts),
             status="completed",
         )
         assert second["previous"] == {
@@ -190,7 +190,7 @@ def test_step_state_identity_outputs_and_exact_prior_states(root: Path) -> None:
         gate.save(
             "recall",
             {},
-            families=tuple(gate.transcripts.keys() | gate._readers.keys()),
+            families=tuple(gate.transcripts),
             status="completed",
         )
         gate.before("held-out")
@@ -216,7 +216,7 @@ def test_foreign_state_refused_even_with_a_valid_digest(root: Path, field: str, 
         state = gate.save(
             "calibrate",
             {},
-            families=tuple(gate.transcripts.keys() | gate._readers.keys()),
+            families=tuple(gate.transcripts),
             status="interrupted",
         )
     state[field] = value
@@ -235,7 +235,7 @@ def test_later_steps_require_completion_and_report_accepts_terminal_absence(root
         gate.save(
             "calibrate",
             {"outcome": {"H2": "no verdict", "H3": "no verdict", "reason": "FIT"}},
-            families=tuple(gate.transcripts.keys() | gate._readers.keys()),
+            families=tuple(gate.transcripts),
             status="terminal",
             reason="fit failed",
         )
@@ -245,7 +245,7 @@ def test_later_steps_require_completion_and_report_accepts_terminal_absence(root
         report = gate.save(
             "report",
             {"result": "no verdict"},
-            families=tuple(gate.transcripts.keys() | gate._readers.keys()),
+            families=tuple(gate.transcripts),
             status="completed",
         )
         assert report["previous"]["closed-loop"] is None
@@ -254,7 +254,7 @@ def test_later_steps_require_completion_and_report_accepts_terminal_absence(root
             gate.save(
                 "report",
                 {"result": "no verdict"},
-                families=tuple(gate.transcripts.keys() | gate._readers.keys()),
+                families=tuple(gate.transcripts),
                 status="completed",
             )
             == report
@@ -263,7 +263,7 @@ def test_later_steps_require_completion_and_report_accepts_terminal_absence(root
             gate.save(
                 "report",
                 {"result": "changed"},
-                families=tuple(gate.transcripts.keys() | gate._readers.keys()),
+                families=tuple(gate.transcripts),
                 status="completed",
             )
         # An earlier absence is part of the report binding too.
@@ -299,7 +299,7 @@ def test_state_replace_is_atomic_on_write_failure(
         gate.save(
             "calibrate",
             {"old": True},
-            families=tuple(gate.transcripts.keys() | gate._readers.keys()),
+            families=tuple(gate.transcripts),
             status="interrupted",
         )
         path = gate.directory / "calibrate.json"
@@ -316,7 +316,7 @@ def test_state_replace_is_atomic_on_write_failure(
             gate.save(
                 "calibrate",
                 {"old": False},
-                families=tuple(gate.transcripts.keys() | gate._readers.keys()),
+                families=tuple(gate.transcripts),
                 status="interrupted",
             )
         assert path.read_bytes() == before
@@ -355,7 +355,7 @@ def test_state_field_checks_are_independent_of_envelope_checksum(
         state = gate.save(
             "calibrate",
             {"value": 1},
-            families=tuple(gate.transcripts.keys() | gate._readers.keys()),
+            families=tuple(gate.transcripts),
             status="interrupted",
         )
     state[field] = value
@@ -383,7 +383,7 @@ def test_interrupted_prerequisite_is_not_completion(root: Path) -> None:
         gate.save(
             "calibrate",
             {},
-            families=tuple(gate.transcripts.keys() | gate._readers.keys()),
+            families=tuple(gate.transcripts),
             status="interrupted",
         )
         with pytest.raises(clients.GuardRefusal, match="prerequisite"):
@@ -461,7 +461,7 @@ def test_step_envelope_checksum_is_checked(root: Path) -> None:
         state = gate.save(
             "calibrate",
             {},
-            families=tuple(gate.transcripts.keys() | gate._readers.keys()),
+            families=tuple(gate.transcripts),
             status="interrupted",
         )
     state["digest"] = "a" * 64
@@ -491,7 +491,7 @@ def test_report_repetition_keeps_its_original_commit_and_output(root: Path) -> N
         gate.save(
             "calibrate",
             {"outcome": {"H2": "no verdict", "H3": "no verdict", "reason": "FIT"}},
-            families=tuple(gate.transcripts.keys() | gate._readers.keys()),
+            families=tuple(gate.transcripts),
             status="terminal",
             reason="fit failed",
         )
@@ -499,7 +499,7 @@ def test_report_repetition_keeps_its_original_commit_and_output(root: Path) -> N
         report = gate.save(
             "report",
             {"result": "no verdict"},
-            families=tuple(gate.transcripts.keys() | gate._readers.keys()),
+            families=tuple(gate.transcripts),
             status="completed",
         )
     (root / "docs").mkdir()
@@ -511,7 +511,7 @@ def test_report_repetition_keeps_its_original_commit_and_output(root: Path) -> N
             gate.save(
                 "report",
                 {"result": "no verdict"},
-                families=tuple(gate.transcripts.keys() | gate._readers.keys()),
+                families=tuple(gate.transcripts),
                 status="completed",
             )
             == report
@@ -531,14 +531,14 @@ def test_terminal_state_requires_a_reason_and_both_outcomes(root: Path) -> None:
             gate.save(
                 "calibrate",
                 {},
-                families=tuple(gate.transcripts.keys() | gate._readers.keys()),
+                families=tuple(gate.transcripts),
                 status="terminal",
             )
         with pytest.raises(clients.GuardRefusal, match="both no-verdict"):
             gate.save(
                 "calibrate",
                 {"outcome": {"H2": "no verdict", "H3": "no verdict", "reason": "FIT"}},
-                families=tuple(gate.transcripts.keys() | gate._readers.keys()),
+                families=tuple(gate.transcripts),
                 status="terminal",
             )
         assert gate.state("calibrate") is None

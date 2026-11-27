@@ -42,7 +42,7 @@ def test_terminal_requires_each_hypothesis(root: Path) -> None:
             gate.save(
                 "calibrate",
                 {"outcome": {"H2": "no verdict", "reason": "FIT"}},
-                families=tuple(gate.transcripts.keys() | gate._readers.keys()),
+                families=tuple(gate.transcripts),
                 status="terminal",
                 reason="fit failed",
             )
@@ -68,7 +68,7 @@ def test_save_requires_the_same_step_to_pass_before(root: Path) -> None:
             gate.save(
                 "calibrate",
                 {},
-                families=tuple(gate.transcripts.keys() | gate._readers.keys()),
+                families=tuple(gate.transcripts),
                 status="running",
             )
         gate.before("calibrate")
@@ -76,7 +76,7 @@ def test_save_requires_the_same_step_to_pass_before(root: Path) -> None:
             gate.save(
                 "recall",
                 {},
-                families=tuple(gate.transcripts.keys() | gate._readers.keys()),
+                families=tuple(gate.transcripts),
                 status="running",
             )
 
@@ -154,7 +154,7 @@ def test_terminal_outcomes_are_validated_when_read(root: Path) -> None:
         state = gate.save(
             "calibrate",
             {},
-            families=tuple(gate.transcripts.keys() | gate._readers.keys()),
+            families=tuple(gate.transcripts),
             status="interrupted",
         )
         state.update(status="terminal", reason="fit failed")
@@ -221,7 +221,7 @@ def test_steps_register_and_reload_their_transcript_families(root: Path) -> None
         saved = gate.save(
             "calibrate",
             {},
-            families=tuple(gate.transcripts.keys() | gate._readers.keys()),
+            families=tuple(gate.transcripts),
             status="completed",
         )
         assert set(saved["transcripts"]) == {"second"}
@@ -304,7 +304,7 @@ def test_steps_register_their_own_transcript_format(root: Path) -> None:
         saved = gate.save(
             "closed-loop",
             {},
-            families=tuple(gate.transcripts.keys() | gate._readers.keys()),
+            families=("chat",),
             status="completed",
         )
         assert saved["transcripts"] == {"chat": read(None)}

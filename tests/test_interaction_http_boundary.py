@@ -229,7 +229,7 @@ def test_secret_refusal_precedes_response_validation_and_can_repeat(
         chunks = [
             secret[i * len(secret) // parts : (i + 1) * len(secret) // parts] for i in range(parts)
         ]
-        content = [{"text": chunk} for chunk in chunks]
+        content: list[Any] = [{"text": chunk} for chunk in chunks]
         if shape == "unprocessable body":
             content.insert(1, None)
         if candidate:
