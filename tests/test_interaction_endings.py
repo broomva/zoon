@@ -462,3 +462,37 @@ def test_recall_command_prints_stop_and_question_labels(
             f"[recall {reply['game']}] {label} | flagged = {reply['flagged']} | {text}\n"
             in output.out
         )
+
+
+@pytest.mark.parametrize("damage", ["missing", "directory", "permission"])
+def test_unreadable_guarded_output_command_uses_relative_name(
+    runs: Factory, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], damage: str
+) -> None:
+    runner = runs()
+    name = next(iter(state(runner)["payload"]["digests"]))
+    path = runner.guard.storage / name
+    if damage in ("missing", "directory"):
+        path.unlink()
+        if damage == "directory":
+            path.mkdir()
+    else:
+        original = Path.read_bytes
+
+        def read_bytes(current: Path) -> bytes:
+            if current == path:
+                raise PermissionError(str(current))
+            return original(current)
+
+        monkeypatch.setattr(Path, "read_bytes", read_bytes)
+
+    def local(**kwargs: Any) -> run.Run:
+        return runner
+
+    monkeypatch.setattr(run, "Run", local)
+    assert run.main(["closed-loop", "--stub"]) == 1
+    output = capsys.readouterr()
+    assert output.out == ""
+    assert output.err == f"GuardRefusal: missing guarded output {name}; it must be restored\n"
+    assert str(runner.guard.storage) not in output.err
+    assert state(runner)["status"] == "interrupted"
+    assert state(runner)["reason"] == "GuardRefusal"

@@ -62,7 +62,7 @@ class Store:
             raise clients.GuardRefusal("simulation path is outside run storage")
         try:
             raw = path.read_bytes()
-        except FileNotFoundError:
+        except OSError:
             name = path.relative_to(self.guard.storage).as_posix()
             raise clients.GuardRefusal(
                 f"missing guarded output {name}; it must be restored"
