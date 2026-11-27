@@ -68,7 +68,11 @@ class Run:
     def terminal(self, outcome: Outcome) -> dict[str, Any]:
         self.payload["outcome"] = {"H2": "no verdict", "H3": "no verdict", "reason": outcome.name}
         return self.guard.save(
-            "calibrate", {**self.payload, **self.totals()}, status="terminal", reason=outcome.value
+            "calibrate",
+            {**self.payload, **self.totals()},
+            families=("decision",),
+            status="terminal",
+            reason=outcome.value,
         )
 
     def execute(self, step: str = "calibrate", *, repair: str | None = None) -> dict[str, Any]:
@@ -92,7 +96,9 @@ class Run:
                 self.guard.identity,
             )
             self.guard.transcripts = {"decision": self.session.transcript}
-            self.guard.save(step, {**self.payload, **self.totals()}, status="running")
+            self.guard.save(
+                step, {**self.payload, **self.totals()}, families=("decision",), status="running"
+            )
             try:
                 return self.calibrate(groups)
             except clients.TerminalStop as error:
@@ -105,6 +111,7 @@ class Run:
                     self.guard.save(
                         step,
                         {**self.payload, **self.totals()},
+                        families=("decision",),
                         status="interrupted",
                         reason=type(error).__name__,
                     )
@@ -114,6 +121,7 @@ class Run:
                 self.guard.save(
                     step,
                     {**self.payload, **self.totals()},
+                    families=("decision",),
                     status="interrupted",
                     reason="StorageFault",
                 )
@@ -128,6 +136,7 @@ class Run:
                 self.guard.save(
                     step,
                     {**self.payload, **self.totals()},
+                    families=("decision",),
                     status="interrupted",
                     reason=type(error).__name__,
                 )
@@ -170,7 +179,12 @@ class Run:
                 return self.terminal(Outcome.FIT)
             self.payload["recalibration"] = recalibration.numbers.tolist()
             self.payload["fit_requests"] = request_digest
-            self.guard.save("calibrate", {**self.payload, **self.totals()}, status="running")
+            self.guard.save(
+                "calibrate",
+                {**self.payload, **self.totals()},
+                families=("decision",),
+                status="running",
+            )
         values = self.payload["recalibration"]
         recalibration = prompted.Recalibration(values[0], tuple(values[1:]))
         disguised_requests = [
@@ -204,7 +218,12 @@ class Run:
         if not all(np.isfinite(v) for v in metrics.values()):
             raise clients.StepFailure("non-finite disguise summary")
         self.payload["disguise"] = metrics
-        return self.guard.save("calibrate", {**self.payload, **self.totals()}, status="completed")
+        return self.guard.save(
+            "calibrate",
+            {**self.payload, **self.totals()},
+            families=("decision",),
+            status="completed",
+        )
 
 
 class Parser(argparse.ArgumentParser):

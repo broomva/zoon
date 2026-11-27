@@ -587,3 +587,36 @@ def test_guarded_output_registration_sentences() -> None:
         "match the recorded digest; this is not a decision about any outcome.",
     ):
         assert sentence in text
+
+
+@pytest.mark.parametrize("step", ["closed-loop", "recall"])
+@pytest.mark.parametrize("interrupted", [False, True])
+def test_calling_step_declares_both_transcripts(
+    runs: Factory, step: str, interrupted: bool
+) -> None:
+    runner = runs(prepared="closed-loop" if step == "recall" else "bands")
+    if interrupted:
+        runner.steps.chat_client = ChatFault("transport", at=1)
+        with pytest.raises(chat.TransportInterruption):
+            runner.execute(step)
+    else:
+        runner.execute(step)
+    assert set(state(runner, step)["transcripts"]) == {"decision", "chat"}
+
+
+def test_save_cannot_omit_previously_declared_family(runs: Factory) -> None:
+    runner = runs()
+    with runner.guard.lock():
+        runner.guard.before("closed-loop")
+        with pytest.raises(clients.GuardRefusal, match="families changed"):
+            runner.guard.save(
+                "closed-loop", state(runner)["payload"], families=("decision",), status="running"
+            )
+
+
+def test_save_declared_family_requires_reader(runs: Factory) -> None:
+    runner = runs(prepared="calibrated")
+    with runner.guard.lock():
+        runner.guard.before("closed-loop")
+        with pytest.raises(clients.GuardRefusal, match="transcript reader"):
+            runner.guard.save("closed-loop", {}, families=("unknown",), status="running")

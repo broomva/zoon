@@ -81,6 +81,7 @@ def ready(gate: Guard, *, digests: bool = True) -> None:
             {"digests": {log.name: digest(log.read_bytes())}}
             if step == "closed-loop" and digests
             else {},
+            families=tuple(gate.transcripts.keys() | gate._readers.keys()),
             status="completed",
         )
     gate.before("held-out")
@@ -300,6 +301,7 @@ def test_simulation_digest_paths_cannot_leave_storage(
                 {"digests": {str(outside): digest(outside.read_bytes())}}
                 if step == "closed-loop"
                 else {},
+                families=tuple(gate.transcripts.keys() | gate._readers.keys()),
                 status="completed",
             )
         gate.before("held-out")

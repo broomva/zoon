@@ -42,6 +42,7 @@ def test_terminal_requires_each_hypothesis(root: Path) -> None:
             gate.save(
                 "calibrate",
                 {"outcome": {"H2": "no verdict", "reason": "FIT"}},
+                families=tuple(gate.transcripts.keys() | gate._readers.keys()),
                 status="terminal",
                 reason="fit failed",
             )
@@ -64,10 +65,20 @@ def test_save_requires_the_same_step_to_pass_before(root: Path) -> None:
     gate = Guard(root)
     with gate.lock():
         with pytest.raises(clients.GuardRefusal, match="passed the guard"):
-            gate.save("calibrate", {}, status="running")
+            gate.save(
+                "calibrate",
+                {},
+                families=tuple(gate.transcripts.keys() | gate._readers.keys()),
+                status="running",
+            )
         gate.before("calibrate")
         with pytest.raises(clients.GuardRefusal, match="passed the guard"):
-            gate.save("recall", {}, status="running")
+            gate.save(
+                "recall",
+                {},
+                families=tuple(gate.transcripts.keys() | gate._readers.keys()),
+                status="running",
+            )
 
 
 @pytest.mark.parametrize("name", ["src/code.py", "pyproject.toml", "uv.lock"])
@@ -140,7 +151,12 @@ def test_terminal_outcomes_are_validated_when_read(root: Path) -> None:
     gate = Guard(root)
     with gate.lock():
         gate.before("calibrate")
-        state = gate.save("calibrate", {}, status="interrupted")
+        state = gate.save(
+            "calibrate",
+            {},
+            families=tuple(gate.transcripts.keys() | gate._readers.keys()),
+            status="interrupted",
+        )
         state.update(status="terminal", reason="fit failed")
         state.pop("digest")
         atomic(gate.directory / "calibrate.json", {**state, "digest": digest(encoded(state))})
@@ -202,7 +218,12 @@ def test_steps_register_and_reload_their_transcript_families(root: Path) -> None
         gate.transcripts["second"].append(
             "synthetic recall", clients.StubClient("second").ask("synthetic recall")
         )
-        saved = gate.save("calibrate", {}, status="completed")
+        saved = gate.save(
+            "calibrate",
+            {},
+            families=tuple(gate.transcripts.keys() | gate._readers.keys()),
+            status="completed",
+        )
         assert set(saved["transcripts"]) == {"second"}
     resumed = Guard(root)
     with resumed.lock():
@@ -278,9 +299,14 @@ def test_steps_register_their_own_transcript_format(root: Path) -> None:
     gate.register_transcript("chat", read)
     with gate.lock():
         gate.before("calibrate")
-        gate.save("calibrate", {}, status="completed")
+        gate.save("calibrate", {}, families=(), status="completed")
         gate.before("closed-loop")
-        saved = gate.save("closed-loop", {}, status="completed")
+        saved = gate.save(
+            "closed-loop",
+            {},
+            families=tuple(gate.transcripts.keys() | gate._readers.keys()),
+            status="completed",
+        )
         assert saved["transcripts"] == {"chat": read(None)}
     resumed = Guard(root)
     resumed.register_transcript("chat", read)

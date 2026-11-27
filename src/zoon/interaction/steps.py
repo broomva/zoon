@@ -113,7 +113,9 @@ class Steps:
         self.payload["chat"] = self.chat_record()
         transcript = self.session.transcript if self.session else self.transcript()
         self.payload["recall"] = [asdict(reply) for reply in chat.read_recall(transcript)]
-        return self.guard.save(self.step, self.payload, status=status, reason=reason)
+        return self.guard.save(
+            self.step, self.payload, families=("decision", "chat"), status=status, reason=reason
+        )
 
     def open_chat(self) -> chat.Session:
         transcript = self.transcript(read_only=False)
