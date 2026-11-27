@@ -629,7 +629,7 @@ def test_save_declared_family_requires_reader(runs: Factory) -> None:
 @pytest.mark.parametrize("step", ["closed-loop", "recall"])
 @pytest.mark.parametrize("point", ["first", "middle", "metadata", "none"])
 @pytest.mark.parametrize("flag", [False, True])
-def test_operator_flag_applies_only_to_chat_transport(
+def test_operator_flag_tracks_chat_request_progress(
     runs: Factory, step: str, point: str, flag: bool
 ) -> None:
     runner = runs(prepared="closed-loop" if step == "recall" else "bands")
@@ -885,7 +885,7 @@ def test_operator_flag_preserves_other_failures(
 
 
 @pytest.mark.parametrize("step", ["closed-loop", "recall"])
-def test_flag_requires_saved_chat_transport_interruption(runs: Factory, step: str) -> None:
+def test_flag_requires_a_saved_chat_request_failure(runs: Factory, step: str) -> None:
     runner = runs(prepared="closed-loop" if step == "recall" else "calibrated")
     with pytest.raises(clients.GuardRefusal, match="only after an attempt"):
         runner.execute(step, end_chat="Unavailable")
@@ -941,7 +941,7 @@ def test_numeric_recall_replies_do_not_count_as_decisions(runs: Factory) -> None
 
 @pytest.mark.parametrize("step", ["closed-loop", "recall"])
 @pytest.mark.parametrize("other", ["storage"])
-def test_flag_requires_exact_transport_reason(runs: Factory, step: str, other: str) -> None:
+def test_storage_failure_does_not_allow_the_flag(runs: Factory, step: str, other: str) -> None:
     runner = runs(prepared="closed-loop" if step == "recall" else "bands")
     interrupt_chat(runner, step)
 
