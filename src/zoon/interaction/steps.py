@@ -293,7 +293,7 @@ class Steps:
         if self.step == "recall":
             assert self.session is not None
             details["answered_recall"] = sum(
-                key.kind == "recall" for key in self.transcript().entries
+                key.kind == "recall" for key in self.session.transcript.entries
             )
         self.add_ending(
             "OPERATOR",

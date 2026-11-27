@@ -446,3 +446,31 @@ def test_cli_held_bearer_reason_is_not_recorded(
     saved = state(runner, step)
     assert not saved["payload"].get("chat_endings")
     assert "dummy-bearer" not in json.dumps(saved)
+
+
+def test_ending_counts_open_session_without_reopening(
+    runs: Factory, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runner = runs(prepared="closed-loop")
+    interrupted(runner, "recall")
+    original = runner.steps.operator_ending
+
+    def ending(reason: str | None, error: Any) -> None:
+        with monkeypatch.context() as patch:
+
+            def unexpected(**kwargs: Any) -> chat.Transcript:
+                pytest.fail("ending reopened the transcript")
+
+            patch.setattr(runner.steps, "transcript", unexpected)
+            patch.setattr(runner.steps, "save", lambda *args, **kwargs: {})
+            original(reason, error)
+
+    monkeypatch.setattr(runner.steps, "operator_ending", ending)
+    with (
+        connected(runner, answers=(Answer(200), Answer(503))),
+        pytest.raises(chat.TransportInterruption),
+    ):
+        runner.execute("recall", end_chat="Unavailable")
+    with connected(runner):
+        done = runner.execute("recall", end_chat="Unavailable")
+    assert done["payload"]["chat_endings"][-1]["answered_recall"] == 1
