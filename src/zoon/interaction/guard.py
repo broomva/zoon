@@ -12,6 +12,7 @@ import fcntl
 import io
 import json
 import os
+import stat
 import subprocess
 from collections.abc import Callable, Generator
 from contextlib import contextmanager
@@ -150,6 +151,8 @@ def guarded_output(storage: Path, name: str, expected: object) -> bytes:
         path = (storage / name).resolve()
         if not path.is_relative_to(storage):
             raise clients.GuardRefusal("simulation path is outside run storage")
+        if not stat.S_ISREG(path.stat().st_mode):
+            raise clients.GuardRefusal(f"guarded output {name} cannot be read")
         raw = path.read_bytes()
     except FileNotFoundError:
         raise clients.GuardRefusal(f"missing guarded output {name}") from None
