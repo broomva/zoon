@@ -218,6 +218,7 @@ def protect(value: object, bearer: str = "") -> None:
     for secret in (os.environ.get("ZOON_VERTEX_PROJECT", ""), bearer):
         if secret and secret in encoded:
             raise GuardRefusal("connection metadata refused; no record was written")
+    json.dumps(value, ensure_ascii=False, allow_nan=False)
 
 
 def validate(response: Response) -> None:
