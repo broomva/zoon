@@ -136,11 +136,11 @@ def require_permit(permit: object) -> Guard:
     return permit.guard
 
 
-def operator_reason(reason: str | None, bearer: str = "") -> None:
+def operator_reason(reason: str | None) -> None:
     """Keep operator-supplied reasons out of connection metadata."""
     if reason is not None:
         try:
-            chat.protect(reason, bearer)
+            chat.protect(reason)
         except chat.GuardRefusal:
             raise clients.GuardRefusal("operator reason contains connection metadata") from None
 

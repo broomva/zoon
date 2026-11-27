@@ -5,11 +5,6 @@ from pathlib import Path
 import pytest
 
 PINNED = (
-    (
-        "Both flag reasons are refused before any work if they contain the proj"
-        "ect identifier,\nand an ending reason is checked against the client's h"
-        "eld bearer before recording."
-    ),
     ("The `chat` arm decides nothing."),
     (
         "Three unusable replies for one decision, the model's withdrawal, a\nver"
@@ -18,10 +13,10 @@ PINNED = (
         "an operator ending,\nmake `chat` unusable with no scores."
     ),
     (
-        "A blank reason is refused before any work.\nBoth flag reasons are "
-        "refused before any work if they contain the project identifier,\na"
-        "nd an ending reason is checked against the client's held bearer b"
-        "efore recording.\nA chat request failure is a transport interrupti"
+        "A blank reason is refused before any work.\n"
+        "A reason for `--end-chat` or `--repair` that contains the project identifier is\n"
+        "refused before any work; the run does not otherwise inspect the operator's text.\n"
+        "A chat request failure is a transport interrupti"
         "on, a configuration refusal\n(including an unavailable credential)"
         ", or a secret refusal of a reply from the\nmetadata check or a gen"
         "erating request, leaving no recorded reply and no counted withdra"

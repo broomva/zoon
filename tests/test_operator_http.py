@@ -410,41 +410,40 @@ def test_missing_credential_failure_allows_ending(runs: Factory, step: str) -> N
     assert event["failure_class"] == "configuration" and event["chat_request_failures"] == 2
 
 
-@pytest.mark.parametrize("step", ["closed-loop", "recall"])
-@pytest.mark.parametrize("flag", ["--end-chat", "--repair"])
-def test_cli_project_reason_refuses_before_work(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], step: str, flag: str
+@pytest.mark.parametrize(
+    "step,flag",
+    [
+        ("closed-loop", "end_chat"),
+        ("recall", "end_chat"),
+        ("closed-loop", "repair"),
+        ("recall", "repair"),
+        ("calibrate", "repair"),
+    ],
+)
+def test_project_reason_refuses_before_work(
+    runs: Factory, monkeypatch: pytest.MonkeyPatch, step: str, flag: str
 ) -> None:
+    runner = runs()
     monkeypatch.setenv("ZOON_VERTEX_PROJECT", "fixture-project")
 
-    def unexpected(**kwargs: Any) -> run.Run:
-        pytest.fail("secret reason constructed a runner")
+    def unexpected(*args: Any, **kwargs: Any) -> None:
+        pytest.fail("project reason reached work")
 
-    monkeypatch.setattr(run, "Run", unexpected)
-    assert run.main([step, "--stub", flag, "contains fixture-project"]) == 1
-    output = capsys.readouterr()
-    assert not output.out and "fixture-project" not in output.err
-    assert "operator reason contains connection metadata" in output.err
+    monkeypatch.setattr(runner.guard, "_checkout", unexpected)
+    with (
+        connected(runner) as requests,
+        pytest.raises(clients.GuardRefusal, match="connection metadata"),
+    ):
+        runner.execute(step, **{flag: "contains fixture-project"})
+    assert not requests
 
 
 @pytest.mark.parametrize("step", ["closed-loop", "recall"])
-def test_cli_held_bearer_reason_is_not_recorded(
-    runs: Factory, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], step: str
-) -> None:
+def test_bearer_text_in_reason_is_recorded(runs: Factory, step: str) -> None:
     runner = runs(prepared="interrupted-" + step)
-
-    def local(**kwargs: Any) -> run.Run:
-        return runner
-
-    monkeypatch.setattr(run, "Run", local)
-    capsys.readouterr()
     with connected(runner):
-        assert run.main([step, "--stub", "--end-chat", "contains dummy-bearer"]) == 1
-    output = capsys.readouterr()
-    assert not output.out and "dummy-bearer" not in output.err
-    saved = state(runner, step)
-    assert not saved["payload"].get("chat_endings")
-    assert "dummy-bearer" not in json.dumps(saved)
+        done = runner.execute(step, end_chat="contains dummy-bearer")
+    assert done["payload"]["chat_endings"][-1]["reason"] == "contains dummy-bearer"
 
 
 def test_ending_counts_open_session_without_reopening(

@@ -19,7 +19,6 @@ from zoon.interaction.guard import (
     checkpoint,
     digest,
     encoded,
-    operator_reason,
 )
 from zoon.pilot import clients
 
@@ -255,8 +254,6 @@ def main(arguments: Sequence[str] | None = None) -> int:
                 raise clients.GuardRefusal("--end-chat requires closed-loop or recall")
             if not args.end_chat.strip():
                 raise clients.GuardRefusal("ending chat requires a nonempty reason")
-        operator_reason(args.end_chat)
-        operator_reason(args.repair)
         storage = os.environ.get("ZOON_INTERACTION_DATA")
         runner = Run(stub=args.stub, storage=Path(storage) if storage else None)
         state = runner.execute(

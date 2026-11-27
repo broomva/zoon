@@ -109,8 +109,8 @@ cause, and the report prints both the recall record and the later step's record.
 The operator may use `python -m zoon.interaction.run closed-loop --end-chat REASON`
 or `python -m zoon.interaction.run recall --end-chat REASON`.
 A blank reason is refused before any work.
-Both flag reasons are refused before any work if they contain the project identifier,
-and an ending reason is checked against the client's held bearer before recording.
+A reason for `--end-chat` or `--repair` that contains the project identifier is
+refused before any work; the run does not otherwise inspect the operator's text.
 A chat request failure is a transport interruption, a configuration refusal
 (including an unavailable credential), or a secret refusal of a reply from the
 metadata check or a generating request, leaving no recorded reply and no counted withdrawal;
