@@ -285,12 +285,7 @@ def test_saved_ending_never_causes_another_service_request(
             assert run.main([step, "--stub", "--end-chat", "Unavailable"]) == 0
             output = capsys.readouterr().out
             assert "ending already recorded: " in output and "flag had no effect" not in output
-            assert (
-                json.dumps(
-                    done["payload"]["chat_endings"][-1], sort_keys=True, separators=(",", ":")
-                )
-                in output
-            )
+            assert guard.encoded(done["payload"]["chat_endings"][-1]).decode().strip() in output
         assert not requests
 
 
