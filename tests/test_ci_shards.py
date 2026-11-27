@@ -98,4 +98,3 @@ def test_ci_shards_refuse_files_outside_the_collection_pattern(
     monkeypatch.chdir(tmp_path)
     with pytest.raises(ValueError, match="naming pattern"):
         ci_shards.main(["--check"])
-
