@@ -313,13 +313,40 @@ def test_unregistered_transcript_family_is_refused(runs: Factory, family: str) -
     assert path.read_bytes() == original
 
 
-def test_calibration_guard_does_not_read_chat(runs: Factory) -> None:
-    runner = runs(prepared="calibrated")
+@pytest.mark.parametrize("after", ["closed-loop", "recall"])
+def test_fresh_calibration_refuses_completed_calling_step(runs: Factory, after: str) -> None:
+    runner = runs(prepared="closed-loop")
+    if after == "recall":
+        runner.execute("recall")
+    fresh = run.Run(runner.guard.root, stub=True, storage=runner.guard.storage, simulation_groups=1)
+    with pytest.raises(clients.GuardRefusal, match="a completed calling step cannot be repeated"):
+        fresh.execute("calibrate")
+
+
+@pytest.mark.parametrize("step", ["closed-loop", "recall"])
+def test_chat_is_verified_before_each_step_attempt(
+    runs: Factory, monkeypatch: pytest.MonkeyPatch, step: str
+) -> None:
+    runner = runs(prepared="closed-loop" if step == "recall" else "bands")
+    if step == "recall":
+        runner.execute("recall")
+    calls = 0
+    original = runner.steps.transcript
+
+    def transcript(*, read_only: bool = True) -> chat.Transcript:
+        nonlocal calls
+        calls += 1
+        return original(read_only=read_only)
+
+    monkeypatch.setattr(runner.steps, "transcript", transcript)
     path = runner.guard.transcript_directory / "chat.jsonl"
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(b"unrelated chat bytes")
-    with runner.guard.lock(), pytest.raises(clients.GuardRefusal, match="completed calling step"):
-        runner.guard.before("calibrate")
+    raw = path.read_bytes() if path.exists() else b""
+    path.write_bytes(raw + b"garbage")
+    for attempt in (1, 2):
+        with pytest.raises(clients.GuardRefusal, match="incomplete transcript line"):
+            runner.execute(step)
+        assert calls == attempt
 
 
 def test_recall_repeat_keeps_withdrawal_after_replay_and_failed_completion(

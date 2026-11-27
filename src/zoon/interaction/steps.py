@@ -48,6 +48,7 @@ class Steps:
         self.decision: decisions.Session | None = None
         self.session: chat.Session | None = None
         guard.register_transcripts("decision")
+        guard.register_transcript("chat", self.chat_checkpoint)
 
     def transcript(self, *, read_only: bool = True) -> chat.Transcript:
         return chat.Transcript(
@@ -134,7 +135,6 @@ class Steps:
         if step not in ("closed-loop", "recall"):
             raise clients.GuardRefusal("unknown or unimplemented step")
         self.step = step
-        self.guard.register_transcript("chat", self.chat_checkpoint)
         with self.guard.lock():
             self.guard.before(step, repair)
             old = self.guard.state(step)
