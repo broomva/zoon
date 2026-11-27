@@ -278,7 +278,7 @@ class Steps:
             raise
         client = self.session.client if self.session is not None else None
         held = client.client if isinstance(client, PreflightClient) else None
-        operator_reason(reason, held._bearer or "" if isinstance(held, chat.VertexClient) else "")
+        operator_reason(reason, held.held_bearer if isinstance(held, chat.VertexClient) else "")
         self.ended = True
         self.payload["chat_request_failures"] = self.payload.get("chat_request_failures", 0) + 1
         details: dict[str, Any] = {

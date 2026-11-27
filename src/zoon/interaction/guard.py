@@ -266,6 +266,7 @@ class Guard:
         return checkpoint(self.transcripts[family], keys)
 
     def before(self, step: str, repair: str | None = None) -> None:
+        operator_reason(repair)
         self._require_lock()
         self.activation += 1
         self.checked_step = None

@@ -277,7 +277,11 @@ def test_saved_ending_never_causes_another_service_request(
                 return runner
 
             monkeypatch.setattr(run, "Run", local)
-            monkeypatch.setattr(runner, "execute", lambda *args, **kwargs: done)
+
+            def retained(*args: Any, **kwargs: Any) -> dict[str, Any]:
+                return done
+
+            monkeypatch.setattr(runner, "execute", retained)
             assert run.main([step, "--stub", "--end-chat", "Unavailable"]) == 0
             output = capsys.readouterr().out
             assert "ending already recorded: " in output and "flag had no effect" not in output
@@ -462,7 +466,11 @@ def test_ending_counts_open_session_without_reopening(
                 pytest.fail("ending reopened the transcript")
 
             patch.setattr(runner.steps, "transcript", unexpected)
-            patch.setattr(runner.steps, "save", lambda *args, **kwargs: {})
+
+            def skip_save(*args: Any, **kwargs: Any) -> dict[str, Any]:
+                return {}
+
+            patch.setattr(runner.steps, "save", skip_save)
             original(reason, error)
 
     monkeypatch.setattr(runner.steps, "operator_ending", ending)

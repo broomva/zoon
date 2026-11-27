@@ -101,8 +101,8 @@ def network(stage: str, answers: Sequence[Answer]) -> Generator[list[str]]:
             body = answer.body()
 
             class BodyTimeout(io.BytesIO):
-                def read(self, size: int = -1) -> bytes:
-                    super().read(max(1, size // 2))
+                def read(self, size: int | None = -1) -> bytes:
+                    super().read(max(1, (size or -1) // 2))
                     raise TimeoutError("body read timed out")
 
             stream = BodyTimeout if answer.kind == "body timeout" else io.BytesIO

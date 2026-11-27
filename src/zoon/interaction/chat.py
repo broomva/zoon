@@ -310,6 +310,10 @@ class VertexClient:
         self._bearer: str | None = None
         self._lock = Lock()
 
+    @property
+    def held_bearer(self) -> str:
+        return self._bearer or ""
+
     def bearer(self, rejected: str | None = None) -> str:
         with self._lock:
             if self._bearer is None or self._bearer == rejected:
