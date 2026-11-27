@@ -46,7 +46,7 @@ def test_chat_transport_resume_matches_uninterrupted_and_skips_finished_arms(
         resumed.guard.root, stub=True, storage=resumed.guard.storage, simulation_groups=1
     )
     completed = fresh.execute("closed-loop")
-    assert completed["payload"].pop("chat_transport_failures") == 1
+    assert completed["payload"].pop("chat_request_failures") == 1
     assert {k: v for k, v in completed.items() if k not in ("digest", "payload_digest")} == {
         k: v for k, v in expected.items() if k not in ("digest", "payload_digest")
     }
@@ -70,7 +70,7 @@ def test_recall_transport_resume_equals_uninterrupted(runs: Factory) -> None:
     with pytest.raises(chat.TransportInterruption):
         interrupted.execute("recall")
     final = run.Run(resumed.guard.root, stub=True, storage=resumed.guard.storage).execute("recall")
-    assert final["payload"].pop("chat_transport_failures") == 1
+    assert final["payload"].pop("chat_request_failures") == 1
     assert {k: v for k, v in final.items() if k not in ("digest", "payload_digest")} == {
         k: v for k, v in expected.items() if k not in ("digest", "payload_digest")
     }
@@ -197,7 +197,7 @@ def test_failure_handler_preserves_last_success_and_recovers(
         path.write_bytes(path.read_bytes().split(b'{"partial":')[0])
     actual = runner.execute("closed-loop")
     expected = runs("plain").execute("closed-loop")
-    assert actual["payload"].pop("chat_transport_failures", 0) == int(
+    assert actual["payload"].pop("chat_request_failures", 0) == int(
         fault == "chat" and not handler_fails
     )
     assert {k: v for k, v in actual.items() if k not in ("digest", "payload_digest")} == {

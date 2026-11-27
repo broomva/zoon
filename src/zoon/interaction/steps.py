@@ -150,13 +150,16 @@ class Steps:
             if end_chat is not None and not (
                 old
                 and (
-                    (old["status"] == "interrupted" and old["reason"] == "TransportInterruption")
+                    (
+                        old["status"] == "interrupted"
+                        and old["reason"] in {kind.__name__ for kind in chat.CHAT_REQUEST_FAILURES}
+                    )
                     or any(e["step"] == step for e in old["payload"].get("chat_endings", []))
                 )
             ):
                 raise clients.GuardRefusal(
                     "flag is accepted only after an attempt of this step "
-                    "that chat transport interrupted; repeat this step without --end-chat"
+                    "that a chat request failure interrupted; repeat this step without --end-chat"
                 )
             self.ended = False
             self.payload = old["payload"] if old else {}
@@ -204,9 +207,9 @@ class Steps:
                         "reason": error.reason.name,
                     }
                     return self.save("terminal", error.reason.value)
-                if isinstance(error, chat.TransportInterruption):
-                    self.payload["chat_transport_failures"] = (
-                        self.payload.get("chat_transport_failures", 0) + 1
+                if isinstance(error, chat.CHAT_REQUEST_FAILURES):
+                    self.payload["chat_request_failures"] = (
+                        self.payload.get("chat_request_failures", 0) + 1
                     )
                 self.save("interrupted", type(error).__name__)
                 if isinstance(error, decisions.StorageFault):
@@ -224,7 +227,7 @@ class Steps:
                 return
             session.check()
             store.chat(session, self.groups)
-        except chat.TransportInterruption as error:
+        except chat.CHAT_REQUEST_FAILURES as error:
             self.operator_ending(end_chat, error)
         except chat.Unusable as error:
             if error.cause in (chat.Cause.WITHDRAWN, chat.Cause.REPLAY):
@@ -239,7 +242,7 @@ class Steps:
                 return
         try:
             result = chat.recall(session)
-        except chat.TransportInterruption as error:
+        except chat.CHAT_REQUEST_FAILURES as error:
             self.operator_ending(end_chat, error)
             self.payload["stopped_by"] = "OPERATOR"
             return
@@ -253,7 +256,11 @@ class Steps:
             {"cause": cause, "step": self.step, **details}
         )
 
-    def operator_ending(self, reason: str | None, error: chat.TransportInterruption) -> None:
+    def operator_ending(
+        self,
+        reason: str | None,
+        error: chat.TransportInterruption | chat.ConfigurationInterruption | chat.SecretRefusal,
+    ) -> None:
         if reason is None or (
             self.session is not None
             and isinstance(self.session.client, PreflightClient)
@@ -261,17 +268,24 @@ class Steps:
         ):
             raise
         self.ended = True
-        self.payload["chat_transport_failures"] = self.payload.get("chat_transport_failures", 0) + 1
-        details: dict[str, Any] = {}
-        if error.stage is not None:
-            details.update(failure_stage=error.stage, last_status=error.last_status)
+        self.payload["chat_request_failures"] = self.payload.get("chat_request_failures", 0) + 1
+        details: dict[str, Any] = {
+            "failure_class": {
+                chat.TransportInterruption: "transport",
+                chat.ConfigurationInterruption: "configuration",
+                chat.SecretRefusal: "secret refusal",
+            }[type(error)],
+            "failure_stage": getattr(error, "stage", None),
+            "last_status": getattr(error, "last_status", None),
+        }
         if self.step == "recall":
+            assert self.session is not None
             details["answered_recall"] = sum(
                 key.kind == "recall" for key in self.transcript().entries
             )
         self.add_ending(
             "OPERATOR",
-            chat_transport_failures=self.payload["chat_transport_failures"],
+            chat_request_failures=self.payload["chat_request_failures"],
             **details,
             reason=reason,
             answered_decisions=self.chat_record()["answered_decisions"],

@@ -131,9 +131,13 @@ def observe(stage: str, answer: Answer) -> Outcome:
             category = "transport interruption"
         except chat.ConfigurationInterruption:
             category = "configuration refusal"
-        except chat.GuardRefusal:
-            category = "guard refusal"
-    return Outcome(category, len(requests), category == "transport interruption")
+        except chat.SecretRefusal:
+            category = "secret refusal"
+    return Outcome(
+        category,
+        len(requests),
+        category in ("transport interruption", "configuration refusal", "secret refusal"),
+    )
 
 
 def cases() -> Iterator[tuple[str, list[Answer]]]:

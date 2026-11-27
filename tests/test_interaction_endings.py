@@ -652,12 +652,12 @@ def test_operator_flag_applies_only_to_chat_transport(
         assert saved["status"] == "interrupted"
         assert saved["reason"] == "TransportInterruption"
         assert not saved["payload"].get("chat_endings")
-        assert saved["payload"]["chat_transport_failures"] == (2 if flag else 1)
+        assert saved["payload"]["chat_request_failures"] == (2 if flag else 1)
         if flag:
             runner.steps.chat_client = Fault("transport", at=1)
             done = runner.execute(step, end_chat="Unavailable")
             ending = done["payload"]["chat_endings"][-1]
-            assert ending["chat_transport_failures"] == 3
+            assert ending["chat_request_failures"] == 3
             assert ending["answered_decisions"] == (440 if step == "recall" else 2)
             if step == "recall":
                 assert ending["answered_recall"] == 2
@@ -670,7 +670,10 @@ def test_operator_flag_applies_only_to_chat_transport(
     else:
         assert events == [
             {
-                "chat_transport_failures": 2,
+                "chat_request_failures": 2,
+                "failure_class": "transport",
+                "failure_stage": None,
+                "last_status": None,
                 **({"answered_recall": 2 if point == "middle" else 0} if step == "recall" else {}),
                 "cause": "OPERATOR",
                 "reason": "Unavailable",
@@ -855,7 +858,6 @@ def test_cli_routes_operator_flag_in_either_mode(
     "failure",
     [
         chat.StorageInterruption,
-        chat.ConfigurationInterruption,
         chat.ConsistencyInterruption,
         chat.GuardRefusal,
         OSError,
@@ -877,7 +879,7 @@ def test_operator_flag_preserves_other_failures(
     saved = state(runner, step)
     assert saved["status"] == "interrupted"
     assert not saved["payload"].get("chat_endings")
-    assert saved["payload"]["chat_transport_failures"] == 1
+    assert saved["payload"]["chat_request_failures"] == 1
 
 
 @pytest.mark.parametrize("step", ["closed-loop", "recall"])
@@ -931,12 +933,12 @@ def test_numeric_recall_replies_do_not_count_as_decisions(runs: Factory) -> None
     ending = done["payload"]["chat_endings"][-1]
     assert ending["answered_decisions"] == 440
     assert ending["answered_recall"] == 2
-    assert ending["chat_transport_failures"] == 2
+    assert ending["chat_request_failures"] == 2
     assert done["payload"]["stopped_by"] == "OPERATOR"
 
 
 @pytest.mark.parametrize("step", ["closed-loop", "recall"])
-@pytest.mark.parametrize("other", ["storage", "configuration"])
+@pytest.mark.parametrize("other", ["storage"])
 def test_flag_requires_exact_transport_reason(runs: Factory, step: str, other: str) -> None:
     runner = runs(prepared="closed-loop" if step == "recall" else "bands")
     interrupt_chat(runner, step)
@@ -950,7 +952,7 @@ def test_flag_requires_exact_transport_reason(runs: Factory, step: str, other: s
     runner.steps.chat_client = Fault("none")
     with pytest.raises(chat.Interruption):
         runner.execute(step)
-    assert state(runner, step)["payload"]["chat_transport_failures"] == 1
+    assert state(runner, step)["payload"]["chat_request_failures"] == 1
     with pytest.raises(clients.GuardRefusal, match="only after an attempt"):
         runner.execute(step, end_chat="Unavailable")
 
@@ -960,11 +962,11 @@ def test_two_interruptions_before_operator_ending(runs: Factory, step: str) -> N
     runner = runs(prepared="closed-loop" if step == "recall" else "bands")
     interrupt_chat(runner, step)
     interrupt_chat(runner, step)
-    assert state(runner, step)["payload"]["chat_transport_failures"] == 2
+    assert state(runner, step)["payload"]["chat_request_failures"] == 2
     runner.steps.chat_client = ChatFault("transport", at=1)
     done = runner.execute(step, end_chat="Unavailable")
-    assert done["payload"]["chat_transport_failures"] == 3
-    assert done["payload"]["chat_endings"][-1]["chat_transport_failures"] == 3
+    assert done["payload"]["chat_request_failures"] == 3
+    assert done["payload"]["chat_endings"][-1]["chat_request_failures"] == 3
 
 
 @pytest.mark.parametrize("step", ["closed-loop", "recall"])

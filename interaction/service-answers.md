@@ -10,19 +10,19 @@ A metadata reply accepted here permits the generating request; it is not a chat 
 | Stage | Answer | Outcome | Requests | Flag acceptable next attempt |
 |---|---|---|---:|---|
 | metadata check | 100 JSON object | transport interruption | 4 | yes |
-| metadata check | 101-199 JSON object | configuration refusal | 1 | no |
+| metadata check | 101-199 JSON object | configuration refusal | 1 | yes |
 | metadata check | 200 JSON object | reply accepted | 2 | no |
-| metadata check | 201-203 JSON object | configuration refusal | 1 | no |
+| metadata check | 201-203 JSON object | configuration refusal | 1 | yes |
 | metadata check | 204 JSON object | transport interruption | 4 | yes |
-| metadata check | 205-400 JSON object | configuration refusal | 1 | no |
+| metadata check | 205-400 JSON object | configuration refusal | 1 | yes |
 | metadata check | 401 JSON object | transport interruption | 4 | yes |
-| metadata check | 402-403 JSON object | configuration refusal | 1 | no |
+| metadata check | 402-403 JSON object | configuration refusal | 1 | yes |
 | metadata check | 404 JSON object | reply accepted | 2 | no |
-| metadata check | 405-409 JSON object | configuration refusal | 1 | no |
+| metadata check | 405-409 JSON object | configuration refusal | 1 | yes |
 | metadata check | 410 JSON object | reply accepted | 2 | no |
-| metadata check | 411-428 JSON object | configuration refusal | 1 | no |
+| metadata check | 411-428 JSON object | configuration refusal | 1 | yes |
 | metadata check | 429 JSON object | transport interruption | 4 | yes |
-| metadata check | 430-499 JSON object | configuration refusal | 1 | no |
+| metadata check | 430-499 JSON object | configuration refusal | 1 | yes |
 | metadata check | 500-599 JSON object | transport interruption | 4 | yes |
 | metadata check | 200-299 not a JSON object | transport interruption | 4 | yes |
 | metadata check | 200-299 empty body | transport interruption | 4 | yes |
@@ -35,13 +35,13 @@ A metadata reply accepted here permits the generating request; it is not a chat 
 | metadata check | 307-308 redirect to unreachable | transport interruption | 8 | yes |
 | metadata check | failed connection | transport interruption | 4 | yes |
 | generating request | 100 JSON object | transport interruption | 5 | yes |
-| generating request | 101-199 JSON object | configuration refusal | 2 | no |
+| generating request | 101-199 JSON object | configuration refusal | 2 | yes |
 | generating request | 200 JSON object | reply accepted | 2 | no |
-| generating request | 201-203 JSON object | configuration refusal | 2 | no |
+| generating request | 201-203 JSON object | configuration refusal | 2 | yes |
 | generating request | 204 JSON object | transport interruption | 5 | yes |
-| generating request | 205-399 JSON object | configuration refusal | 2 | no |
+| generating request | 205-399 JSON object | configuration refusal | 2 | yes |
 | generating request | 400-402 JSON object | transport interruption | 5 | yes |
-| generating request | 403 JSON object | configuration refusal | 2 | no |
+| generating request | 403 JSON object | configuration refusal | 2 | yes |
 | generating request | 404 JSON object | withdrawal counted | 5 | no |
 | generating request | 405-409 JSON object | transport interruption | 5 | yes |
 | generating request | 410 JSON object | withdrawal counted | 5 | no |
@@ -50,9 +50,9 @@ A metadata reply accepted here permits the generating request; it is not a chat 
 | generating request | 200-299 empty body | transport interruption | 5 | yes |
 | generating request | 200 no model version | transport interruption | 5 | yes |
 | generating request | 200 bad token counts | transport interruption | 5 | yes |
-| generating request | 200 secret in text | guard refusal | 2 | no |
+| generating request | 200 secret in text | secret refusal | 2 | yes |
 | generating request | 301-303 redirect to reachable | reply accepted | 3 | no |
-| generating request | 307-308 redirect to reachable | configuration refusal | 2 | no |
+| generating request | 307-308 redirect to reachable | configuration refusal | 2 | yes |
 | generating request | 301-303 redirect to unreachable | transport interruption | 9 | yes |
-| generating request | 307-308 redirect to unreachable | configuration refusal | 2 | no |
+| generating request | 307-308 redirect to unreachable | configuration refusal | 2 | yes |
 | generating request | failed connection | transport interruption | 5 | yes |

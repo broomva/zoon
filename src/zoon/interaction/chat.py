@@ -155,7 +155,10 @@ class StorageInterruption(Interruption):
 
 
 class ConfigurationInterruption(Interruption):
-    """Credentials or configuration must be corrected before repeating."""
+    """Credentials or configuration prevented a chat request."""
+
+    stage: str | None = None
+    last_status: int | None = None
 
 
 class ConsistencyInterruption(Interruption):
@@ -164,6 +167,16 @@ class ConsistencyInterruption(Interruption):
 
 class GuardRefusal(Exception):
     pass
+
+
+class SecretRefusal(GuardRefusal):
+    """A generating reply contains connection secrets."""
+
+    stage: str | None = None
+    last_status: int | None = None
+
+
+CHAT_REQUEST_FAILURES = (TransportInterruption, ConfigurationInterruption, SecretRefusal)
 
 
 class TransientError(Exception):
@@ -201,7 +214,7 @@ def retry(call: Callable[[], Response], pause: Callable[[float], None] = time.sl
 
 
 def protect(value: object, bearer: str = "") -> None:
-    encoded = json.dumps(value, ensure_ascii=False, allow_nan=False)
+    encoded = json.dumps(value, ensure_ascii=False, allow_nan=True)
     for secret in (os.environ.get("ZOON_VERTEX_PROJECT", ""), bearer):
         if secret and secret in encoded:
             raise GuardRefusal("connection metadata refused; no record was written")
@@ -351,7 +364,7 @@ class VertexClient:
 
         try:
             retry(probe, self.pause)
-        except TransportInterruption as error:
+        except CHAT_REQUEST_FAILURES as error:
             error.stage, error.last_status = "metadata check", last_status
             raise
         self._preflight_pid = os.getpid()
@@ -409,7 +422,12 @@ class VertexClient:
                     raise TransientError
                 if status != 200:
                     raise ConfigurationInterruption("chat request refused")
-                protect(data, bearer)
+                try:
+                    protect(data, bearer)
+                except GuardRefusal:
+                    raise SecretRefusal(
+                        "connection metadata refused; no record was written"
+                    ) from None
                 texts: list[str] = []
                 candidates = data.get("candidates", [])
                 for item in cast(list[Any], candidates) if isinstance(candidates, list) else []:
@@ -431,7 +449,12 @@ class VertexClient:
                         )
                         if isinstance(text, str):
                             texts.append(text)
-                protect("".join(texts), bearer)
+                try:
+                    protect("".join(texts), bearer)
+                except GuardRefusal:
+                    raise SecretRefusal(
+                        "connection metadata refused; no record was written"
+                    ) from None
                 usage = data.get("usageMetadata", {})
                 candidates = data.get("candidates", [])
                 candidate: Any = candidates[0] if candidates else {}
@@ -481,7 +504,7 @@ class VertexClient:
 
         try:
             return retry(call, self.pause)
-        except TransportInterruption as error:
+        except CHAT_REQUEST_FAILURES as error:
             error.stage, error.last_status = "generating request", last_status
             raise
 
@@ -631,8 +654,8 @@ class Transcript:
 
     def check(self, entry: Entry) -> None:
         self.usable()
-        validate(entry.response)
         protect(asdict(entry), self.bearer)
+        validate(entry.response)
         if entry.run != self.identity:
             raise GuardRefusal("chat transcript entry run identity differs")
         if entry.request_digest != digest(entry.request) or entry.identity in self.entries:

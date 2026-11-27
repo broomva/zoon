@@ -20,7 +20,7 @@ def test_service_answer_table_regenerates() -> None:
         (Answer(200, "empty body"), "transport interruption", (4, 5), True),
         (Answer(200, "no model version"), None, (2, 5), None),
         (Answer(200, "bad token counts"), None, (2, 5), None),
-        (Answer(200, "secret in text"), None, (2, 2), False),
+        (Answer(200, "secret in text"), None, (2, 2), None),
         (Answer(302, "redirect to reachable"), "reply accepted", (3, 3), False),
         (Answer(302, "redirect to unreachable"), "transport interruption", (8, 9), True),
         (Answer(None), "transport interruption", (4, 5), True),
@@ -36,7 +36,7 @@ def test_http_response_shapes_and_redirects(
     generating = stage == "generating request"
     if category is None:
         category = (
-            ("guard refusal" if answer.kind == "secret in text" else "transport interruption")
+            ("secret refusal" if answer.kind == "secret in text" else "transport interruption")
             if generating
             else "reply accepted"
         )
@@ -63,7 +63,7 @@ def test_format_check_uses_the_real_request_and_response_path() -> None:
 @pytest.mark.parametrize("target", ["reachable", "unreachable"])
 def test_redirect_methods_follow_the_http_handler(stage: str, status: int, target: str) -> None:
     if stage == "generating request":
-        expected = service_answers.Outcome("configuration refusal", 2, False)
+        expected = service_answers.Outcome("configuration refusal", 2, True)
     elif target == "reachable":
         expected = service_answers.Outcome("reply accepted", 3, False)
     else:

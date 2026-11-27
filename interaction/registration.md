@@ -109,30 +109,37 @@ cause, and the report prints both the recall record and the later step's record.
 The operator may use `python -m zoon.interaction.run closed-loop --end-chat REASON`
 or `python -m zoon.interaction.run recall --end-chat REASON`.
 A blank reason is refused before any work.
-For a resumable step, the flag is accepted only after a saved chat transport
-interruption of that step, or when that step already has a saved ending.
-Otherwise repeat the step without the flag; a later chat transport interruption
-makes the flag acceptable on the next attempt.
-The flag ends the arm only on a chat transport interruption in this attempt,
-including its metadata check, before any generating request returns a reply.
-A returned reply uses up the flag before transcript append, so a later chat transport
-failure interrupts the step; replies reused from the transcript do not use it up.
-A decision-model failure cannot create an operator ending.
+A chat request failure is a transport interruption, a configuration refusal
+(including an unavailable credential), or a secret refusal of a reply from the
+metadata check or a generating request, leaving no recorded reply and no counted withdrawal;
+the flag applies to all three classes.
+For an unfinished closed-loop or recall step, the flag is accepted only after
+that step saved an interruption by a chat request failure, or an ending of that
+step is already saved; otherwise repeat the step without the flag.
+It ends the arm only if a chat request fails in this attempt before any generating
+request returns a reply; a returned reply uses up the flag before transcript append,
+while replies reused from the transcript do not use it up.
+Decision-model and storage failures, three unusable replies, the cap, a version
+change and withdrawal never create an operator ending.
 
-The ending records OPERATOR, the reason, step, this step's count of recorded chat
-transport interruptions including this one, and number of answered chat decisions;
-recall also records the number of answered recall questions.
-Service-client endings also record the failed stage and last HTTP status.
+The run cannot check the operator's reason or distinguish a service failure from
+an operator-side fault such as a broken network or a rejected or missing credential.
+The ending records OPERATOR, the class, stage, last HTTP status, reason, step,
+this step's count of recorded chat request failures including this one, and answered
+chat decisions (and answered recall questions in recall); it removes chat scores
+and changes no verdict.
 The last status is the final HTTP status of the last attempt after redirects,
 or null if that attempt received no final HTTP answer.
-An operator ending makes chat unusable with no scores and completes this step;
-recall retains and judges its answers and marks the rest "not asked".
+An operator ending completes this step; recall retains and judges its answers
+and marks the rest "not asked".
 On completion the command prints the chat status and ending records, and prints
-"flag had no effect" once if this flagged attempt created no ending.
+"flag had no effect" once if this flagged attempt has no ending.
 If a flagged attempt raises after a generating request returned in that attempt,
 it prints "flag used up: a chat request succeeded in this attempt" before propagating the failure.
-An ending already saved in this resumable step is retained without new chat requests;
-a completed or terminal calling step is still refused.
+An ending already saved in this unfinished step is retained without new chat requests
+and printed as "ending already recorded"; a completed or terminal step is still refused.
+An ending during closed-loop does not stop recall from asking, so a service still
+failing then needs its own interrupted attempt and its own flagged attempt.
 Apart from a declared repair, the incomplete-line cut and restoring a guarded output
 under Guard, repairs and persistence, this is the only operator decision the run
 allows, and it cannot be taken once `held-out` has started.
@@ -140,8 +147,7 @@ allows, and it cannot be taken once `held-out` has started.
 Each step keeps at most one ending event, written once. Recall carries earlier
 ending events forward unchanged and may add its own.
 The earliest cause, however detected, governs the arm's reported cause; once a
-completed step records a cause, later steps retain it. A withdrawal or an ending event in `recall` stops further
-recall questions. A withdrawal, an ending already in the current step, the cap,
+completed step records a cause, later steps retain it. A withdrawal, an ending already in the current step, the cap,
 a version change or an invalid first version prevents further recall questions.
 Completed state files remain unchanged; the recall state exposes all ending events.
 An arm usable at the end of `closed-loop` can become unusable during `recall`.
@@ -532,26 +538,9 @@ Record the version each response reports. The decision model must report exactly
 its name above. For chat, fix the version to the first response's reported version,
 which must begin with its model name, as in the pilot. Withdrawal means the
 service says the model does not exist on every bounded attempt at a request.
-The client has five outcome classes: an accepted generating reply is returned
-for recording and uses up the flag; withdrawal counted on every bounded generating
-attempt makes chat unusable; a transport interruption leaves the request unrecorded
-and interrupts the step unless the eligible flag ends the arm; configuration and
-guard refusals leave the request unrecorded and interrupt the step without ending the arm.
-The generated [service-answer table](service-answers.md) records which answers fall
-in each class, their request counts, and whether a persistent answer leaves the flag
-acceptable on the next attempt.
-Under the required check of the request format against the live service before
-tagging, a persistent generating refusal in the transport-interruption class is
-treated as a service change on which the operator may end the arm.
-
-An uncorrectable configuration refusal, an unavailable credential, or a persistent
-guard refusal from a service putting the project identifier in every processable
-generating reply cannot be ended by the flag and can block this step and held-out.
-Correct the configuration or obtain the credential and repeat without the flag;
-for persistent guard refusals there is no permitted way around the secret check.
-For a JSON-object generating answer entering response processing, the secret check
-runs first on all readable text parts joined together: a secret refuses the reply
-even if processing would otherwise fail, with no record or use of the flag.
+A reply whose text holds a secret is never recorded.
+The generated [service-answer table](service-answers.md) records the outcome class,
+request count and eligibility of the flag on the next attempt for each answer.
 The outcomes for withdrawal and version change are under Data.
 
 ### Calls made before registration

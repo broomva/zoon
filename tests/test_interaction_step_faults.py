@@ -51,7 +51,7 @@ def prepared_states(
         saved = runner.guard.state("closed-loop")
         assert saved is not None
         payload = saved["payload"]
-        assert payload.pop("chat_transport_failures") == 1
+        assert payload.pop("chat_request_failures") == 1
         runner.guard.save("closed-loop", payload, families=("decision", "chat"), status="running")
     completed = directory / "closed-loop"
     shutil.copytree(bands, completed)
@@ -513,7 +513,7 @@ def test_each_step_can_end_chat_without_losing_the_first_event(runs: Factory) ->
             "reason": "Recall unavailable",
             "answered_decisions": 44,
             "answered_recall": 2,
-            "chat_transport_failures": 2,
+            "chat_request_failures": 2,
         },
     ]
     assert first == {
@@ -521,7 +521,7 @@ def test_each_step_can_end_chat_without_losing_the_first_event(runs: Factory) ->
         "step": "closed-loop",
         "reason": "Requests unavailable",
         "answered_decisions": 44,
-        "chat_transport_failures": 2,
+        "chat_request_failures": 2,
     }
     assert completed["payload"]["chat"]["endings"] == events
     assert completed["payload"]["chat"]["cause"] == "OPERATOR"

@@ -46,8 +46,8 @@ def test_first_flag_refuses_before_requests(runs: Factory, step: str) -> None:
     [
         (stage, answer)
         for stage in service_answers.STAGES
-        for answer in (Answer(400), Answer(503), Answer(200, "empty body"), Answer(None))
-        if stage != "metadata check" or answer.status != 400
+        for answer in (Answer(503), Answer(403), Answer(200, "secret in text"))
+        if stage != "metadata check" or answer.kind != "secret in text"
     ],
 )
 def test_first_request_can_end_after_chat_interruption(
@@ -68,7 +68,14 @@ def test_first_request_can_end_after_chat_interruption(
         "cause": "OPERATOR",
         "step": step,
         "reason": "Unavailable",
-        "chat_transport_failures": 2,
+        "chat_request_failures": 2,
+        "failure_class": (
+            "configuration"
+            if answer.status == 403
+            else "secret refusal"
+            if answer.kind == "secret in text"
+            else "transport"
+        ),
         "failure_stage": stage,
         "last_status": answer.status,
         "answered_decisions": before["answered_decisions"],
@@ -77,49 +84,17 @@ def test_first_request_can_end_after_chat_interruption(
     assert done["status"] == "completed" and done["payload"]["chat"]["cause"] == "OPERATOR"
     assert done["payload"]["chat"]["status"] == "unusable"
     assert "outcome" not in done["payload"]
-    assert len(requests) == (4 if stage == "metadata check" else 5)
+    assert len(requests) == (
+        (4 if stage == "metadata check" else 5)
+        if answer.status == 503
+        else (1 if stage == "metadata check" else 2)
+    )
     assert json.loads(capsys.readouterr().out.removeprefix("[chat ending] ")) == event
     if step == "closed-loop":
         assert "chat_logs" not in done["payload"]
     else:
         assert done["payload"]["stopped_by"] == "OPERATOR"
         assert all(row["status"] == "not asked" for row in done["payload"]["recall"])
-
-
-@pytest.mark.parametrize("step", ["closed-loop", "recall"])
-@pytest.mark.parametrize(
-    "stage,answer,error",
-    [
-        ("metadata check", Answer(400), chat.ConfigurationInterruption),
-        ("metadata check", Answer(403), chat.ConfigurationInterruption),
-        ("generating request", Answer(403), chat.ConfigurationInterruption),
-        ("generating request", Answer(200, "secret in text"), chat.GuardRefusal),
-    ],
-)
-def test_nontransport_refusal_requires_unflagged_recovery(
-    runs: Factory,
-    capsys: pytest.CaptureFixture[str],
-    step: str,
-    stage: str,
-    answer: Answer,
-    error: type[Exception],
-) -> None:
-    runner = runs(prepared="closed-loop" if step == "recall" else "bands")
-    interrupted(runner, step)
-    with connected(runner, stage, (answer,)), pytest.raises(error):
-        runner.execute(step, end_chat="Unavailable")
-    saved = state(runner, step)
-    assert not saved["payload"].get("chat_endings")
-    assert saved["reason"] == error.__name__
-    capsys.readouterr()
-    with connected(runner) as requests, pytest.raises(clients.GuardRefusal, match="only after"):
-        runner.execute(step, end_chat="Unavailable")
-    assert not requests and state(runner, step) == saved
-    assert not capsys.readouterr().out
-    interrupted(runner, step)
-    with connected(runner):
-        done = runner.execute(step, end_chat="Unavailable")
-    assert done["payload"]["chat_endings"][-1]["chat_transport_failures"] == 3
 
 
 @pytest.mark.parametrize("step", ["closed-loop", "recall"])
@@ -140,14 +115,14 @@ def test_success_and_replayed_replies_control_attempt_authority(
         "[chat ending] flag used up: a chat request succeeded in this attempt\n" if flag else ""
     )
     saved = state(runner, step)
-    assert saved["payload"]["chat_transport_failures"] == 2
+    assert saved["payload"]["chat_request_failures"] == 2
     assert not saved["payload"].get("chat_endings")
     before = saved["payload"]["chat"]
     with connected(runner) as requests:
         done = runner.execute(step, end_chat="Unavailable")
     assert len(requests) == 5
     event = done["payload"]["chat_endings"][-1]
-    assert event["chat_transport_failures"] == 3
+    assert event["chat_request_failures"] == 3
     assert event["answered_decisions"] == before["answered_decisions"]
     if step == "recall":
         assert event["answered_recall"] == 1
@@ -208,7 +183,7 @@ def test_http_ending_survives_only_successful_saves(
         with connected(runner):
             done = runner.execute(step, end_chat="Unavailable")
         event = done["payload"]["chat_endings"][-1]
-        assert event["chat_transport_failures"] == 3
+        assert event["chat_request_failures"] == 3
         assert json.loads(capsys.readouterr().out.removeprefix("[chat ending] ")) == event
 
 
@@ -225,19 +200,13 @@ def test_operator_endings_in_both_steps_preserve_the_first(
     assert not requests
     with connected(runner, answers=(Answer(403),)), pytest.raises(chat.ConfigurationInterruption):
         runner.execute("recall")
-    saved = state(runner, "recall")
-    assert [e["step"] for e in saved["payload"]["chat_endings"]] == ["closed-loop"]
-    with connected(runner) as requests, pytest.raises(clients.GuardRefusal, match="only after"):
-        runner.execute("recall", end_chat="Recall unavailable")
-    assert not requests and state(runner, "recall") == saved
-    interrupted(runner, "recall")
     with connected(runner):
         recalled = runner.execute("recall", end_chat="Recall unavailable")
     assert recalled["payload"]["chat_endings"][0] == first
     assert [e["step"] for e in recalled["payload"]["chat_endings"]] == ["closed-loop", "recall"]
     assert state(runner) == closed
     events = recalled["payload"]["chat_endings"]
-    assert [event["chat_transport_failures"] for event in events] == [2, 2]
+    assert [event["chat_request_failures"] for event in events] == [2, 2]
     printed = [json.loads(block) for block in capsys.readouterr().out.split("[chat ending] ")[1:]]
     assert printed == events
 
@@ -310,7 +279,7 @@ def test_redirect_target_failure_has_no_final_status(runs: Factory, step: str, s
 
 
 @pytest.mark.parametrize("step", ["closed-loop", "recall"])
-@pytest.mark.parametrize("fault", ["first flag", "ending", "consumed", "configuration"])
+@pytest.mark.parametrize("fault", ["first flag", "ending", "consumed"])
 def test_http_command_prints_the_attempt_result(
     runs: Factory,
     monkeypatch: pytest.MonkeyPatch,
@@ -350,39 +319,6 @@ def test_http_command_prints_the_attempt_result(
         assert output.err == "TransportInterruption: chat transport failure after bounded retries\n"
     else:
         assert not output.out and output.err == "ConfigurationInterruption: chat request refused\n"
-
-
-@pytest.mark.parametrize("step", ["closed-loop", "recall"])
-@pytest.mark.parametrize("stage", service_answers.STAGES)
-@pytest.mark.parametrize("fault", ["obtain", "refresh"])
-def test_http_credential_refusal_cannot_end_the_arm(
-    runs: Factory, capsys: pytest.CaptureFixture[str], step: str, stage: str, fault: str
-) -> None:
-    runner = runs(prepared="closed-loop" if step == "recall" else "bands")
-    interrupted(runner, step)
-    tokens = 0
-
-    def token() -> str:
-        nonlocal tokens
-        tokens += 1
-        if fault == "refresh" and tokens == 1:
-            return "dummy-bearer"
-        raise ConnectionError("credentials unavailable")
-
-    capsys.readouterr()
-    with connected(runner, stage, (Answer(401),)) as requests:
-        client = runner.steps.chat_client
-        assert isinstance(client, chat.VertexClient)
-        client.token = token
-        with pytest.raises(chat.ConfigurationInterruption, match="credentials unavailable"):
-            runner.execute(step, end_chat="Unavailable")
-    assert len(requests) == (0 if fault == "obtain" else 1 if stage == "metadata check" else 2)
-    saved = state(runner, step)
-    assert saved["reason"] == "ConfigurationInterruption"
-    assert not saved["payload"].get("chat_endings") and not capsys.readouterr().out
-    with connected(runner) as requests, pytest.raises(clients.GuardRefusal, match="only after"):
-        runner.execute(step, end_chat="Unavailable")
-    assert not requests and state(runner, step) == saved
 
 
 @pytest.mark.parametrize("step", ["closed-loop", "recall"])
@@ -435,3 +371,19 @@ def test_decision_failure_with_flag_prints_no_chat_ending(
     assert output.err == "StepFailure: decision transport unavailable\n"
     saved = state(runner)
     assert saved["reason"] == "StepFailure" and not saved["payload"].get("chat_endings")
+
+
+@pytest.mark.parametrize("step", ["closed-loop", "recall"])
+def test_missing_credential_failure_allows_ending(runs: Factory, step: str) -> None:
+    runner = runs(prepared="closed-loop" if step == "recall" else "bands")
+    with connected(runner) as requests:
+        client = runner.steps.chat_client
+        assert isinstance(client, chat.VertexClient)
+        client.token = lambda: ""
+        with pytest.raises(chat.ConfigurationInterruption):
+            runner.execute(step)
+        assert not requests
+        done = runner.execute(step, end_chat="Unavailable")
+        assert not requests
+    event = done["payload"]["chat_endings"][-1]
+    assert event["failure_class"] == "configuration" and event["chat_request_failures"] == 2
