@@ -387,3 +387,41 @@ def test_missing_credential_failure_allows_ending(runs: Factory, step: str) -> N
         assert not requests
     event = done["payload"]["chat_endings"][-1]
     assert event["failure_class"] == "configuration" and event["chat_request_failures"] == 2
+
+
+@pytest.mark.parametrize("step", ["closed-loop", "recall"])
+@pytest.mark.parametrize("flag", ["--end-chat", "--repair"])
+def test_cli_project_reason_refuses_before_work(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], step: str, flag: str
+) -> None:
+    monkeypatch.setenv("ZOON_VERTEX_PROJECT", "fixture-project")
+
+    def unexpected(**kwargs: Any) -> run.Run:
+        pytest.fail("secret reason constructed a runner")
+
+    monkeypatch.setattr(run, "Run", unexpected)
+    assert run.main([step, "--stub", flag, "contains fixture-project"]) == 1
+    output = capsys.readouterr()
+    assert not output.out and "fixture-project" not in output.err
+    assert "operator reason contains connection metadata" in output.err
+
+
+@pytest.mark.parametrize("step", ["closed-loop", "recall"])
+def test_cli_held_bearer_reason_is_not_recorded(
+    runs: Factory, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], step: str
+) -> None:
+    runner = runs(prepared="closed-loop" if step == "recall" else "bands")
+    interrupted(runner, step)
+
+    def local(**kwargs: Any) -> run.Run:
+        return runner
+
+    monkeypatch.setattr(run, "Run", local)
+    capsys.readouterr()
+    with connected(runner):
+        assert run.main([step, "--stub", "--end-chat", "contains dummy-bearer"]) == 1
+    output = capsys.readouterr()
+    assert not output.out and "dummy-bearer" not in output.err
+    saved = state(runner, step)
+    assert not saved["payload"].get("chat_endings")
+    assert "dummy-bearer" not in json.dumps(saved)

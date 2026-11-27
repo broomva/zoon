@@ -5,6 +5,11 @@ from pathlib import Path
 import pytest
 
 PINNED = (
+    (
+        "Both flag reasons are refused before any work if they contain the proj"
+        "ect identifier,\nand an ending reason is checked against the client's h"
+        "eld bearer before recording."
+    ),
     ("The `chat` arm decides nothing."),
     (
         "Three unusable replies for one decision, the model's withdrawal, a\nver"
@@ -13,39 +18,41 @@ PINNED = (
         "an operator ending,\nmake `chat` unusable with no scores."
     ),
     (
-        "A blank reason is refused before any work.\nA chat request failure is a"
-        " transport interruption, a configuration refusal\n(including an unavail"
-        "able credential), or a secret refusal of a reply from the\nmetadata che"
-        "ck or a generating request, leaving no recorded reply and no counted w"
-        "ithdrawal;\nthe flag applies to all three classes.\nFor an unfinished cl"
-        "osed-loop or recall step, the flag is accepted only after\nthat step sa"
-        "ved an interruption by a chat request failure, or an ending of that\nst"
-        "ep is already saved; otherwise repeat the step without the flag.\nIt en"
-        "ds the arm only if a chat request fails in this attempt before any gen"
-        "erating\nrequest returns a reply; a returned reply uses up the flag bef"
-        "ore transcript append,\nwhile replies reused from the transcript do not"
-        " use it up.\nDecision-model and storage failures, three unusable replie"
-        "s, the cap, a version\nchange and withdrawal never create an operator e"
-        "nding.\n\nThe run cannot check the operator's reason or distinguish a se"
-        "rvice failure from\nan operator-side fault such as a broken network or "
-        "a rejected or missing credential.\nThe ending records OPERATOR, the cla"
-        "ss, stage, last HTTP status, reason, step,\nthis step's count of record"
-        "ed chat request failures including this one, and answered\nchat decisio"
-        "ns (and answered recall questions in recall); it removes chat scores\na"
-        "nd changes no verdict.\nThe last status is the final HTTP status of the"
-        " last attempt after redirects,\nor null if that attempt received no fin"
-        "al HTTP answer.\nAn operator ending completes this step; recall retains"
-        ' and judges its answers\nand marks the rest "not asked".\nOn completion '
-        'the command prints the chat status and ending records, and prints\n"fla'
-        'g had no effect" once if this flagged attempt has no ending.\nIf a flag'
-        "ged attempt raises after a generating request returned in that attempt"
-        ',\nit prints "flag used up: a chat request succeeded in this attempt" b'
-        "efore propagating the failure.\nAn ending already saved in this unfinis"
-        'hed step is retained without new chat requests\nand printed as "ending '
-        'already recorded"; a completed or terminal step is still refused.\nAn e'
-        "nding during closed-loop does not stop recall from asking, so a servic"
-        "e still\nfailing then needs its own interrupted attempt and its own fla"
-        "gged attempt.\n"
+        "A blank reason is refused before any work.\nBoth flag reasons are refus"
+        "ed before any work if they contain the project identifier,\nand an endi"
+        "ng reason is checked against the client's held bearer before recording"
+        ".\nA chat request failure is a transport interruption, a configuration "
+        "refusal\n(including an unavailable credential), or a secret refusal of "
+        "a reply from the\nmetadata check or a generating request, leaving no re"
+        "corded reply and no counted withdrawal;\nthe flag applies to all three "
+        "classes.\nFor an unfinished closed-loop or recall step, the flag is acc"
+        "epted only after\nthat step saved an interruption by a chat request fai"
+        "lure, or an ending of that\nstep is already saved; otherwise repeat the"
+        " step without the flag.\nIt ends the arm only if a chat request fails i"
+        "n this attempt before any generating\nrequest returns a reply; a return"
+        "ed reply uses up the flag before transcript append,\nwhile replies reus"
+        "ed from the transcript do not use it up.\nDecision-model and storage fa"
+        "ilures, three unusable replies, the cap, a version\nchange and withdraw"
+        "al never create an operator ending.\n\nThe run cannot check the operator"
+        "'s reason or distinguish a service failure from\nan operator-side fault"
+        " such as a broken network or a rejected or missing credential.\nThe end"
+        "ing records OPERATOR, the class, stage, last HTTP status, reason, step"
+        ",\nthis step's count of recorded chat request failures including this o"
+        "ne, and answered\nchat decisions (and answered recall questions in reca"
+        "ll); it removes chat scores\nand changes no verdict.\nThe last status is"
+        " the final HTTP status of the last attempt after redirects,\nor null if"
+        " that attempt received no final HTTP answer.\nAn operator ending comple"
+        "tes this step; recall retains and judges its answers\nand marks the res"
+        't "not asked".\nOn completion the command prints the chat status and en'
+        'ding records, and prints\n"flag had no effect" once if this flagged att'
+        "empt has no ending.\nIf a flagged attempt raises after a generating req"
+        'uest returned in that attempt,\nit prints "flag used up: a chat request'
+        ' succeeded in this attempt" before propagating the failure.\nAn ending '
+        "already saved in this unfinished step is retained without new chat req"
+        'uests\nand printed as "ending already recorded"; a completed or termina'
+        "l step is still refused.\nAn ending during closed-loop does not stop re"
+        "call from asking, so a service still\nfailing then needs its own interr"
+        "upted attempt and its own flagged attempt.\n"
     ),
     (
         "A reply whose text holds a secret is never recorded.\nThe generated [se"

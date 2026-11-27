@@ -5,7 +5,14 @@ from decimal import Decimal
 from typing import Any
 
 from zoon.interaction import budget, chat, decisions, score, simulation
-from zoon.interaction.guard import Guard, StateReplacedError, checkpoint, digest, encoded
+from zoon.interaction.guard import (
+    Guard,
+    StateReplacedError,
+    checkpoint,
+    digest,
+    encoded,
+    operator_reason,
+)
 from zoon.pilot import clients
 
 
@@ -143,6 +150,8 @@ class Steps:
             raise clients.GuardRefusal("unknown or unimplemented step")
         if end_chat is not None and not end_chat.strip():
             raise clients.GuardRefusal("ending chat requires a nonempty reason")
+        operator_reason(end_chat)
+        operator_reason(repair)
         self.step = step
         with self.guard.lock():
             self.guard.before(step, repair)
@@ -267,6 +276,9 @@ class Steps:
             and self.session.client.succeeded
         ):
             raise
+        client = self.session.client if self.session is not None else None
+        held = client.client if isinstance(client, PreflightClient) else None
+        operator_reason(reason, held._bearer or "" if isinstance(held, chat.VertexClient) else "")
         self.ended = True
         self.payload["chat_request_failures"] = self.payload.get("chat_request_failures", 0) + 1
         details: dict[str, Any] = {

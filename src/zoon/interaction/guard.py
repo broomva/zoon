@@ -135,6 +135,15 @@ def require_permit(permit: object) -> Guard:
     return permit.guard
 
 
+def operator_reason(reason: str | None, bearer: str = "") -> None:
+    """Keep operator-supplied reasons out of connection metadata."""
+    if reason is not None:
+        try:
+            chat.protect(reason, bearer)
+        except chat.GuardRefusal:
+            raise clients.GuardRefusal("operator reason contains connection metadata") from None
+
+
 def guarded_output(storage: Path, name: str, expected: object) -> bytes:
     """Read one recorded output; messages expose only its recorded name."""
     try:
